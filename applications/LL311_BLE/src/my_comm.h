@@ -39,6 +39,9 @@
 #include <zephyr/sys/reboot.h>
 #include <zephyr/sys/util.h>
 
+/* Zephyr shell */
+#include <zephyr/shell/shell.h>
+
 /* Zephyr蓝牙 */
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/gatt.h>
@@ -70,7 +73,6 @@
 typedef enum
 {
     MOD_MAIN,        // 主处理程序
-    MOD_SHELL,       // Shell处理程序
     MOD_BLE,         // BLE处理程序
     MOD_CTRL,        // Control处理程序
     MOD_LTE,         // LTE处理程序
@@ -102,6 +104,7 @@ typedef enum
     MY_MSG_SYS_SHUTDOWN,
     MY_MSG_POWER_OFF,
     MY_MSG_SYS_REBOOT, // 10
+    MY_MSG_BLE_DATA_EVENT,
 
 } MY_MAIN_TASK_MSG;
 

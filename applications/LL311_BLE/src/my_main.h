@@ -16,7 +16,6 @@
 
 /* 任务栈大小定义 */
 #define MY_MAIN_TASK_STACK_SIZE    8 * 1024
-#define MY_SHELL_TASK_STACK_SIZE   2 * 1024
 #define MY_BLE_TASK_STACK_SIZE     CONFIG_BT_NUS_THREAD_STACK_SIZE
 #define MY_CTRL_TASK_STACK_SIZE    1 * 1024
 #define MY_LTE_TASK_STACK_SIZE     8 * 1024
@@ -25,7 +24,6 @@
 
 /* 任务优先级定义 */
 #define MY_MAIN_TASK_PRIORITY    7
-#define MY_SHELL_TASK_PRIORITY   7
 #define MY_BLE_TASK_PRIORITY     5
 #define MY_CTRL_TASK_PRIORITY    5
 #define MY_LTE_TASK_PRIORITY     5

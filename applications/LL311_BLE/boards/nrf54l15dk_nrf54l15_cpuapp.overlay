@@ -10,7 +10,6 @@
 
 / {
 	chosen {
-		nordic,nus-uart = &uart20;
 	};
 
 	/* 定义别名，方便代码调用 */
@@ -70,23 +69,17 @@
 	};
 };
 
+/* 配置 NFC 使用的引脚做为IO口 */
+&uicr {
+	nfct-pins-as-gpios;
+};
+
+&uart20 {
+	status = "disabled";
+};
+
 /* 配置 LTE 模块使用的串口引脚 P2.00, P2.01 */
 &pinctrl {
-	i2c22_default: i2c22_default {
-		group1 {
-			psels = <NRF_PSEL(TWIM_SCL, 1, 5)>,
-				<NRF_PSEL(TWIM_SDA, 1, 6)>;
-		};
-	};
-
-	i2c22_sleep: i2c22_sleep {
-		group1 {
-			psels = <NRF_PSEL(TWIM_SCL, 1, 5)>,
-				<NRF_PSEL(TWIM_SDA, 1, 6)>;
-			low-power-enable;
-		};
-	};
-
 	i2c21_default: i2c21_default {
 		group1 {
 			psels = <NRF_PSEL(TWIM_SCL, 1, 3)>,
@@ -98,6 +91,21 @@
 		group1 {
 			psels = <NRF_PSEL(TWIM_SCL, 1, 3)>,
 				<NRF_PSEL(TWIM_SDA, 1, 4)>;
+			low-power-enable;
+		};
+	};
+
+	i2c22_default: i2c22_default {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SCL, 1, 5)>,
+				<NRF_PSEL(TWIM_SDA, 1, 6)>;
+		};
+	};
+
+	i2c22_sleep: i2c22_sleep {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SCL, 1, 5)>,
+				<NRF_PSEL(TWIM_SDA, 1, 6)>;
 			low-power-enable;
 		};
 	};
@@ -141,14 +149,12 @@
 	pinctrl-names = "default", "sleep";
 };
 
-/* 确保 GPIO2 控制器已开启 */
-&gpio2 {
+/* 开启并配置 PWM 用于蜂鸣器 */
+&pwm20 {
 	status = "okay";
-};
-
-/* 确保 GPIO1 控制器已开启 */
-&gpio1 {
-	status = "okay";
+	pinctrl-0 = <&pwm20_default>;
+	pinctrl-1 = <&pwm20_sleep>;
+	pinctrl-names = "default", "sleep";
 };
 
 /* 开启并配置 I2C22 用于 NFC */
@@ -160,15 +166,7 @@
 	clock-frequency = <I2C_BITRATE_STANDARD>;
 };
 
-/* 开启并配置 PWM 用于蜂鸣器 */
-&pwm20 {
-	status = "okay";
-	pinctrl-0 = <&pwm20_default>;
-	pinctrl-1 = <&pwm20_sleep>;
-	pinctrl-names = "default", "sleep";
-};
 
-/* 开启并配置 I2C21 用于 GSENSOR */
 &i2c21 {
 	status = "disabled";
 	pinctrl-0 = <&i2c21_default>;
@@ -177,4 +175,4 @@
 	clock-frequency = <I2C_BITRATE_STANDARD>;
 };
 
-/* 开启并配置 I2C21 用于 GSENSOR */
+

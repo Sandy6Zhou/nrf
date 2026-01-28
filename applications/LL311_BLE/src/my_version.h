@@ -12,7 +12,18 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260117"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260123"
+/* 软件版本:        V1.0
+** 完成日期:        2026.01.23
+** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)
+** 修改内容:        1. 修改my_shell为纯RTT输入和输出，支持人机页面，并做了几个简单交互应用；
+**                  2. 取消透传功能，增加自定义GATT服务功能，将收到的蓝牙数据发消息到main模块进行日志输出；
+**                  3. 更新board overlay文件，匹配我们使用的硬件平台；
+**                  4. 增加内部flash分区管理文件pm_static.yml；
+**                  5. 增加内部flash分区管理说明文件partitions.xlsx；
+*/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260117"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.01.17
 ** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)

@@ -18,15 +18,11 @@
 
 /*
  * BLE 核心初始化参数：
- * - uart_rx_to_ble_fifo: UART RX 收到的数据，放入此 FIFO 等待 BLE 发送
- * - ble_tx_to_uart_fifo: BLE 收到的数据，放入此 FIFO 等待 UART 发送
+ * 目前暂无特定参数，预留结构体
  */
 struct my_ble_core_init_param
 {
-    /* UART -> BLE: UART RX 收到的数据，等待通过 BLE 发送 */
-    struct k_fifo *uart_rx_to_ble_fifo;
-    /* BLE -> UART: BLE 收到的数据，等待通过 UART 发送 */
-    struct k_fifo *ble_tx_to_uart_fifo;
+    uint32_t reserved;
 };
 
 /********************************************************************
@@ -43,7 +39,7 @@ int my_ble_core_init(const struct my_ble_core_init_param *param, k_tid_t *tid);
 **函数名称:  my_ble_core_start
 **入口参数:  无
 **出口参数:  无
-**函数功能:  启动 BLE 协议栈、NUS 服务、相关广播与透传线程，建立完整 BLE 连接与数据通路
+**函数功能:  启动 BLE 协议栈、相关广播及 GATT 服务
 **返 回 值:  0 表示成功，负值表示失败（如协议栈初始化失败等）
 *********************************************************************/
 int my_ble_core_start(void);

@@ -372,8 +372,8 @@ LL311_BLE 是基于 Nordic nRF54L15 SoC 开发的多功能蓝牙应用项目。
 ********
 
 * **my_main**: 系统入口，负责各模块的初始化顺序管理及主消息循环。
-* **my_ble_core**: 蓝牙协议栈管理、NUS 服务实现及多广播（Beacon）管理。
-* **my_shell**: 串口命令行交互逻辑，及 UART 与 BLE 之间的数据 FIFO 转发。
+* **my_ble_core**: 蓝牙协议栈管理、自定义 GATT 服务实现及多广播（Beacon）管理。
+* **my_shell**: 基于 Zephyr Shell 子系统的 RTT 命令行交互模块，用于系统诊断和设备控制。
 * **my_ctrl**: 硬件外设控制（LED、按键、蜂鸣器）。
 * **my_lte**: LTE 模块驱动与通信接口。
 * **my_gsensor**: 加速度传感器（LIS2DH12）数据采集。
@@ -405,8 +405,13 @@ LL311_BLE 是基于 Nordic nRF54L15 SoC 开发的多功能蓝牙应用项目。
 调试日志
 ********
 
-本工程默认通过 **RTT** 输出调试日志。请使用 Segger RTT Viewer 或 `nrfutil device terminal` 观察输出。
-日志模块名为 `peripheral_uart` (Main), `my_ble_core`, `my_shell` 等。
+本工程默认通过 **RTT** 输出调试日志，并支持 **Shell 命令行交互**。
+
+**使用方式**：
+
+1. 使用 Segger RTT Viewer 或 `nrfutil device terminal` 连接设备。
+2. 输入命令（如 `app sysinfo`）查看系统信息，或使用内置命令（如 `kernel threads`）查看线程状态。
+3. 日志模块名为 `my_main` (Main), `my_ble_core`, `my_shell` 等。
 
 注意事项
 ********

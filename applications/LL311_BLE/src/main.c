@@ -9,12 +9,11 @@
  */
 #include "my_comm.h"
 
-#define LOG_MODULE_NAME peripheral_uart
+#define LOG_MODULE_NAME my_main
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 
 /* 线程 ID 声明 */
 k_tid_t my_main_task_id = NULL;
-k_tid_t my_shell_task_id = NULL;
 k_tid_t my_ble_task_id = NULL;
 k_tid_t my_ctrl_task_id = NULL;
 k_tid_t my_lte_task_id = NULL;
@@ -33,13 +32,6 @@ bool g_my_timer_init_status[MY_TIMER_MAX_ID] = {false};
 /* 运行状态 LED 定义 */
 #define RUN_STATUS_LED         DK_LED1
 #define RUN_LED_BLINK_INTERVAL 1000
-
-/* Shell UART 透传 FIFO：
- * - fifo_uart_rx_data: UART RX -> BLE 方向的数据缓存
- * - fifo_uart_tx_data: BLE -> UART 方向的数据缓存
- */
-static K_FIFO_DEFINE(fifo_uart_tx_data);
-static K_FIFO_DEFINE(fifo_uart_rx_data);
 
 /********************************************************************
 **函数名称:  error
@@ -109,7 +101,6 @@ void my_system_reset(void)
 void custom_task_info_init(void)
 {
     g_my_task_info[MOD_MAIN] = my_main_task_id;
-    g_my_task_info[MOD_SHELL] = my_shell_task_id;
     g_my_task_info[MOD_BLE] = my_ble_task_id;
     g_my_task_info[MOD_CTRL] = my_ctrl_task_id;
     g_my_task_info[MOD_LTE] = my_lte_task_id;
@@ -329,23 +320,16 @@ int main(void)
     /* 获取当前线程 ID 并保存 */
     my_main_task_id = k_current_get();
 
-    /* 初始化 Shell 模块，并将透传 FIFO 交给 Shell 管理 */
-    struct my_shell_init_param shell_param = {
-        .uart_dev = DEVICE_DT_GET(DT_CHOSEN(nordic_nus_uart)),
-        .uart_rx_to_ble_fifo = &fifo_uart_rx_data,
-        .ble_tx_to_uart_fifo = &fifo_uart_tx_data,
-    };
-
-    err = my_shell_init(&shell_param, &my_shell_task_id);
+    /* 初始化 Shell 模块 */
+    err = my_shell_init();
     if (err)
     {
-        error();
+        LOG_ERR("Failed to initialize Shell module (err %d)", err);
     }
 
-    /* 初始化 BLE 核心模块，将同一组 FIFO 交给 BLE 使用 */
+    /* 初始化 BLE 核心模块 */
     struct my_ble_core_init_param ble_param = {
-        .uart_rx_to_ble_fifo = &fifo_uart_rx_data,
-        .ble_tx_to_uart_fifo = &fifo_uart_tx_data,
+        .reserved = 0,
     };
 
     err = my_ble_core_init(&ble_param, &my_ble_task_id);
@@ -411,8 +395,14 @@ int main(void)
 
         switch (msg.msgID)
         {
-                /* TODO: 处理主任务相关消息 */
-
+            case MY_MSG_BLE_DATA_EVENT:
+                if (msg.pData && msg.DataLen > 0)
+                {
+                    LOG_INF("BLE Rx (len %d): %s", msg.DataLen, (char *)msg.pData);
+                    LOG_HEXDUMP_INF(msg.pData, msg.DataLen, "BLE RAW");
+                    MY_FREE_BUFFER(msg.pData);
+                }
+                break;
             default:
                 break;
         }

@@ -8,8 +8,8 @@
 *********************************************************************
 ** 功能描述:        蓝牙核心任务处理模块
 **                 1. 蓝牙低功耗连接管理
-**                 2. Nordic UART服务实现
-**                 3. 通过消息队列与UART任务进行数据交换
+**                 2. 自定义 GATT 服务接收数据
+**                 3. 通过消息队列将收到数据转发至 main 任务
 **                 4. 连接状态指示和安全管理
 *********************************************************************/
 
@@ -21,7 +21,7 @@ LOG_MODULE_REGISTER(my_ble_core, LOG_LEVEL_INF);
 #define NON_CONNECTABLE_ADV_1_IDX 1
 #define NON_CONNECTABLE_ADV_2_IDX 2
 
-#define STACKSIZE CONFIG_BT_NUS_THREAD_STACK_SIZE
+#define STACKSIZE 1024
 #define PRIORITY  7
 
 #define DEVICE_NAME     CONFIG_BT_DEVICE_NAME
@@ -55,7 +55,9 @@ static const struct bt_data ad[] = {
 };
 
 static const struct bt_data sd[] = {
-    BT_DATA_BYTES(BT_DATA_UUID128_ALL, BT_UUID_NUS_VAL),
+    BT_DATA_BYTES(BT_DATA_UUID128_ALL,
+                  0x00, 0xde, 0xbc, 0x9a, 0x78, 0x56, 0x34, 0x12,
+                  0x78, 0x56, 0x34, 0x12, 0x78, 0x56, 0x34, 0x12),
 };
 
 /* Non-connectable advertising data for Beacon 1 */
@@ -83,14 +85,11 @@ static const struct bt_data beacon2_sd_data[] = {
 };
 
 /*
- * BLE 核心模块上下文：
- *  - uart_rx_to_ble_fifo: UART RX -> BLE 发送方向的数据 FIFO
- *  - ble_tx_to_uart_fifo: BLE -> UART 发送方向的数据 FIFO
+ * BLE 核心模块上下文
  */
 struct my_ble_core_context
 {
-    struct k_fifo *uart_rx_to_ble_fifo; /* UART -> BLE: 等待通过 BLE 发送的数据 */
-    struct k_fifo *ble_tx_to_uart_fifo; /* BLE -> UART: 等待通过 UART 发送的数据 */
+    uint32_t reserved;
 };
 
 static struct my_ble_core_context g_ble_ctx;
@@ -336,9 +335,6 @@ static void connected(struct bt_conn *conn, uint8_t err)
     current_conn = bt_conn_ref(conn);
 
     dk_set_led_on(CON_STATUS_LED);
-
-    /* 通知 Shell 模块蓝牙已连接 */
-    my_shell_set_ble_connected(true);
 }
 
 /********************************************************************
@@ -368,9 +364,6 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
         bt_conn_unref(current_conn);
         current_conn = NULL;
         dk_set_led_off(CON_STATUS_LED);
-
-        /* 通知 Shell 模块蓝牙已断开 */
-        my_shell_set_ble_connected(false);
     }
 }
 
@@ -587,93 +580,51 @@ void my_ble_button_changed(uint32_t button_state, uint32_t has_changed)
 }
 #endif /* CONFIG_BT_NUS_SECURITY_ENABLED */
 
-/********************************************************************
-**函数名称:  bt_receive_cb
-**入口参数:  conn     ---        当前 BLE 连接句柄
-**          data     ---        收到的数据缓冲区指针
-**          len      ---        收到的数据长度
-**出口参数:  无
-**函数功能:  处理来自对端的 NUS 数据，并转发给 UART 模块发送到串口
-**返 回 值:  无
-*********************************************************************/
-static void bt_receive_cb(struct bt_conn *conn, const uint8_t *const data,
-                          uint16_t len)
+#define BT_UUID_MY_SERVICE_VAL \
+    BT_UUID_128_ENCODE(0x12345678, 0x1234, 0x5678, 0x1234, 0x56789abcde00)
+
+#define BT_UUID_MY_CHAR_VAL \
+    BT_UUID_128_ENCODE(0x12345678, 0x1234, 0x5678, 0x1234, 0x56789abcde01)
+
+static struct bt_uuid_128 my_service_uuid = BT_UUID_INIT_128(BT_UUID_MY_SERVICE_VAL);
+static struct bt_uuid_128 my_char_uuid = BT_UUID_INIT_128(BT_UUID_MY_CHAR_VAL);
+
+static ssize_t my_char_write_cb(struct bt_conn *conn,
+                                const struct bt_gatt_attr *attr,
+                                const void *buf, uint16_t len,
+                                uint16_t offset, uint8_t flags)
 {
-    int err;
-    char addr[BT_ADDR_LE_STR_LEN] = {0};
+    LOG_INF("BLE Write Callback: len %d", len);
 
-    bt_addr_le_to_str(bt_conn_get_dst(conn), addr, ARRAY_SIZE(addr));
-
-    LOG_INF("Received data from: %s", addr);
-
-    err = my_shell_send_from_ble(data, len);
-    if (err)
+    if (len > 0)
     {
-        LOG_WRN("Failed to forward data from BLE to UART (err: %d)", err);
+        /* 多申请 1 字节用于存放 '\0' */
+        uint8_t *data = k_malloc(len + 1);
+        if (data)
+        {
+            memcpy(data, buf, len);
+            data[len] = '\0'; /* 确保字符串安全打印 */
+            MSG_S msg = {
+                .msgID = MY_MSG_BLE_DATA_EVENT,
+                .pData = data,
+                .DataLen = len};
+            my_send_msg_data(MOD_BLE, MOD_MAIN, &msg);
+        }
     }
+    return len;
 }
 
-static struct bt_nus_cb nus_cb = {
-    .received = bt_receive_cb,
-};
-
-/********************************************************************
-**函数名称:  ble_write_thread
-**入口参数:  无
-**出口参数:  无
-**函数功能:  从 UART→BLE 透传 FIFO 读取数据，组帧后通过 NUS 接口发送到对端
-**返 回 值:  无（线程函数，不返回）
-*********************************************************************/
-static void ble_write_thread(void)
-{
-    /* 必须等待蓝牙初始化完成 */
-    k_sem_take(&ble_init_ok, K_FOREVER);
-
-    LOG_INF("BLE write thread started");
-
-    for (;;)
-    {
-        /* 从 FIFO 获取 UART 接收到的数据块 */
-        struct shell_uart_data_t *buf = k_fifo_get(g_ble_ctx.uart_rx_to_ble_fifo,
-                                                   K_FOREVER);
-
-        /*
-         * 检查当前是否有活跃的蓝牙连接：
-         * - current_conn 是在 connected 回调中赋值的句柄
-         */
-        if (current_conn)
-        {
-            int err = bt_nus_send(current_conn, buf->data, buf->len);
-            if (err)
-            {
-                /*
-                 * 发送失败的常见原因：
-                 * -EBUSY: 缓冲区满
-                 * -EMSGSIZE: 数据包超过 MTU (NUS 默认会处理分包，但此处需注意)
-                 * -ENOTCONN: 连接已断开
-                 */
-                LOG_WRN("Failed to send data over BLE connection (err %d, len %d)",
-                        err, buf->len);
-            }
-        }
-        else
-        {
-            LOG_DBG("No active BLE connection, discarding UART data");
-        }
-
-        /* 释放由 UART 模块分配的内存 */
-        k_free(buf);
-    }
-}
-
-K_THREAD_DEFINE(ble_write_thread_id, STACKSIZE, ble_write_thread, NULL, NULL,
-                NULL, PRIORITY, 0, 0);
+BT_GATT_SERVICE_DEFINE(my_svc,
+                       BT_GATT_PRIMARY_SERVICE(&my_service_uuid),
+                       BT_GATT_CHARACTERISTIC(&my_char_uuid.uuid,
+                                              BT_GATT_CHRC_WRITE | BT_GATT_CHRC_WRITE_WITHOUT_RESP,
+                                              BT_GATT_PERM_WRITE, NULL, my_char_write_cb, NULL), );
 
 /********************************************************************
 **函数名称:  my_ble_core_start
 **入口参数:  无
 **出口参数:  无
-**函数功能:  初始化并启动 BLE 协议栈、NUS 服务、连接安全与广播，以及 BLE 写线程
+**函数功能:  初始化并启动 BLE 协议栈、相关广播及自定义 GATT 服务
 **返 回 值:  0 表示成功，负值表示失败（如协议栈初始化失败等）
 *********************************************************************/
 int my_ble_core_start(void)
@@ -712,13 +663,6 @@ int my_ble_core_start(void)
         settings_load();
     }
 
-    err = bt_nus_init(&nus_cb);
-    if (err)
-    {
-        LOG_ERR("Failed to initialize UART service (err: %d)", err);
-        return err;
-    }
-
     k_work_init(&adv_work, adv_work_handler);
 
     /* Create and start connectable advertising (NUS) */
@@ -750,10 +694,10 @@ int my_ble_core_start(void)
 
 /********************************************************************
 **函数名称:  my_ble_core_init
-**入口参数:  param    ---        BLE 核心初始化参数结构体（包含 UART-BLE 透传 FIFO ）
+**入口参数:  param    ---        BLE 核心初始化参数结构体
 **           tid      ---        指向线程 ID 变量的指针
 **出口参数:  tid      ---        存储启动后的线程 ID
-**函数功能:  保存 UART 与 BLE 透传 FIFO 指针，初始化消息队列并启动 BLE 任务线程
+**函数功能:  初始化消息队列并启动 BLE 任务线程
 **返回值:  0 表示成功，负值表示失败（如参数非法等）
 *********************************************************************/
 int my_ble_core_init(const struct my_ble_core_init_param *param, k_tid_t *tid)
@@ -762,10 +706,6 @@ int my_ble_core_init(const struct my_ble_core_init_param *param, k_tid_t *tid)
     {
         return -EINVAL;
     }
-
-    /* 保存 UART 与 BLE 透传 FIFO 指针 */
-    g_ble_ctx.uart_rx_to_ble_fifo = param->uart_rx_to_ble_fifo;
-    g_ble_ctx.ble_tx_to_uart_fifo = param->ble_tx_to_uart_fifo;
 
     /* 初始化消息队列 */
     my_init_msg_handler(MOD_BLE, &my_ble_msgq);
