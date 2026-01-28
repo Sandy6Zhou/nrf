@@ -16,11 +16,6 @@
 #ifndef _MY_SHELL_H_
 #define _MY_SHELL_H_
 
-#include <stdbool.h>
-#include <zephyr/device.h>
-#include <zephyr/kernel.h>
-#include <zephyr/types.h>
-
 /* UART 缓冲区及超时配置，沿用 NUS 示例的配置项 */
 #define SHELL_UART_BUF_SIZE           CONFIG_BT_NUS_UART_BUFFER_SIZE
 #define SHELL_UART_WAIT_FOR_BUF_DELAY K_MSEC(50)

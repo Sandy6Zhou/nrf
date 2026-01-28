@@ -13,29 +13,7 @@
 **                 4. 连接状态指示和安全管理
 *********************************************************************/
 
-#include "my_ble_core.h"
 #include "my_comm.h"
-#include "my_main.h"
-#include "my_shell.h"
-
-#include <errno.h>
-#include <zephyr/kernel.h>
-#include <zephyr/types.h>
-
-#include <soc.h>
-#include <zephyr/device.h>
-#include <zephyr/devicetree.h>
-
-#include <zephyr/bluetooth/bluetooth.h>
-#include <zephyr/bluetooth/gatt.h>
-#include <zephyr/bluetooth/hci.h>
-#include <zephyr/bluetooth/uuid.h>
-
-#include <bluetooth/services/nus.h>
-
-#include <dk_buttons_and_leds.h>
-#include <zephyr/logging/log.h>
-#include <zephyr/settings/settings.h>
 
 LOG_MODULE_REGISTER(my_ble_core, LOG_LEVEL_INF);
 

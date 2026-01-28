@@ -11,14 +11,7 @@
 **                 3. 封装通用的读取接口以兼容未来扩展
 *********************************************************************/
 
-#include "my_gsensor.h"
 #include "my_comm.h"
-#include "my_main.h"
-#include <zephyr/device.h>
-#include <zephyr/drivers/gpio.h>
-#include <zephyr/drivers/i2c.h>
-#include <zephyr/kernel.h>
-#include <zephyr/logging/log.h>
 
 /* 注册 G-Sensor 模块日志 */
 LOG_MODULE_REGISTER(my_gsensor, LOG_LEVEL_INF);

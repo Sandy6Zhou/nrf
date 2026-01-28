@@ -14,11 +14,6 @@
 #ifndef _MY_LTE_H_
 #define _MY_LTE_H_
 
-#include <stdbool.h>
-#include <stddef.h>
-#include <zephyr/kernel.h>
-#include <zephyr/types.h>
-
 /* LTE 模块 UART 缓冲区大小 */
 #define LTE_UART_BUF_SIZE 256
 

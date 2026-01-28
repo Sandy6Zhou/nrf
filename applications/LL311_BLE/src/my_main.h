@@ -13,8 +13,6 @@
 #define _MY_MAIN_H_
 
 #include "my_comm.h"
-#include <stddef.h>
-#include <zephyr/types.h>
 
 /* 任务栈大小定义 */
 #define MY_MAIN_TASK_STACK_SIZE    8 * 1024

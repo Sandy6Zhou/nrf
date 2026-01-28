@@ -13,20 +13,7 @@
 **                 4. 将蓝牙数据透传到 UART 输出
 *********************************************************************/
 
-#include "my_shell.h"
 #include "my_comm.h"
-#include "my_main.h"
-
-#include <errno.h>
-#include <stdio.h>
-#include <string.h>
-#include <uart_async_adapter.h>
-#include <zephyr/device.h>
-#include <zephyr/devicetree.h>
-#include <zephyr/drivers/uart.h>
-#include <zephyr/kernel.h>
-#include <zephyr/logging/log.h>
-#include <zephyr/sys/util.h>
 
 LOG_MODULE_REGISTER(my_shell, LOG_LEVEL_INF);
 

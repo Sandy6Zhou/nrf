@@ -14,10 +14,6 @@
 #ifndef _MY_GSENSOR_H_
 #define _MY_GSENSOR_H_
 
-#include <stdbool.h>
-#include <zephyr/kernel.h>
-#include <zephyr/types.h>
-
 /* 三轴数据结构体 */
 struct gsensor_data
 {

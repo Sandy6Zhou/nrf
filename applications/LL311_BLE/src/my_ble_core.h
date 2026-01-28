@@ -16,9 +16,6 @@
 #ifndef _MY_BLE_CORE_H_
 #define _MY_BLE_CORE_H_
 
-#include <zephyr/kernel.h>
-#include <zephyr/types.h>
-
 /*
  * BLE 核心初始化参数：
  * - uart_rx_to_ble_fifo: UART RX 收到的数据，放入此 FIFO 等待 BLE 发送

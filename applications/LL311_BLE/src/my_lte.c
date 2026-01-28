@@ -11,14 +11,7 @@
 **                 3. 包含串口回环测试逻辑
 *********************************************************************/
 
-#include "my_lte.h"
 #include "my_comm.h"
-#include "my_main.h"
-#include <zephyr/device.h>
-#include <zephyr/drivers/gpio.h>
-#include <zephyr/drivers/uart.h>
-#include <zephyr/kernel.h>
-#include <zephyr/logging/log.h>
 
 /* 注册 LTE 模块日志 */
 LOG_MODULE_REGISTER(my_lte, LOG_LEVEL_INF);

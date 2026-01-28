@@ -7,33 +7,7 @@
 /** @file
  *  @brief Nordic UART Bridge Service (NUS) sample
  */
-#include <uart_async_adapter.h>
-
-#include <errno.h>
-#include <zephyr/drivers/uart.h>
-#include <zephyr/kernel.h>
-#include <zephyr/sys/reboot.h>
-#include <zephyr/types.h>
-
-#include "my_ble_core.h"
 #include "my_comm.h"
-#include "my_ctrl.h"
-// #include "my_gsensor.h"
-#include "my_lte.h"
-#include "my_main.h"
-// #include "my_nfc.h"
-#include "my_shell.h"
-
-#include <soc.h>
-#include <zephyr/device.h>
-#include <zephyr/devicetree.h>
-
-#include <dk_buttons_and_leds.h>
-
-#include <stdio.h>
-#include <string.h>
-
-#include <zephyr/logging/log.h>
 
 #define LOG_MODULE_NAME peripheral_uart
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);

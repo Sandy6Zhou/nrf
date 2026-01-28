@@ -11,14 +11,7 @@
 **                 3. 包含延时自动关闭功能
 *********************************************************************/
 
-#include "my_nfc.h"
 #include "my_comm.h"
-#include "my_main.h"
-#include <zephyr/device.h>
-#include <zephyr/drivers/gpio.h>
-#include <zephyr/drivers/i2c.h>
-#include <zephyr/kernel.h>
-#include <zephyr/logging/log.h>
 
 /* 注册 NFC 模块日志 */
 LOG_MODULE_REGISTER(my_nfc, LOG_LEVEL_INF);

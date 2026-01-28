@@ -14,10 +14,6 @@
 #ifndef _MY_NFC_H_
 #define _MY_NFC_H_
 
-#include <stdbool.h>
-#include <zephyr/kernel.h>
-#include <zephyr/types.h>
-
 /* 默认 NFC 工作时长 (秒) */
 #define NFC_DEFAULT_WORK_TIME_S 30
 

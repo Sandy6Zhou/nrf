@@ -10,14 +10,7 @@
 **                 2. 实现独立线程处理按键扫描与逻辑
 *********************************************************************/
 
-#include <dk_buttons_and_leds.h>
-#include <zephyr/drivers/gpio.h>
-#include <zephyr/drivers/pwm.h>
-#include <zephyr/kernel.h>
-#include <zephyr/logging/log.h>
-
-#include "my_ctrl.h"
-#include "my_main.h"
+#include "my_comm.h"
 
 /* 注册控制模块日志 */
 LOG_MODULE_REGISTER(my_ctrl, LOG_LEVEL_INF);

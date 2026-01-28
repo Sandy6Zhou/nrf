@@ -12,12 +12,19 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260115"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260117"
+/* 软件版本:        V1.0
+** 完成日期:        2026.01.17
+** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)
+** 修改内容:        头文件集中管理
+*/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260115"
 /*
 ** 软件版本:        V1.0
 ** 完成日期:        2026.01.15
 ** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)
-** 功能描述:        完成初台框架
+** 修改内容:        完成初台框架
 */
 
 #endif /* _MY_VERSION_H_ */

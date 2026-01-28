@@ -15,8 +15,6 @@
 #ifndef _MY_CTRL_H_
 #define _MY_CTRL_H_
 
-#include <zephyr/types.h>
-
 /* --- 蜂鸣器相关定义 --- */
 struct my_buzzer_note
 {

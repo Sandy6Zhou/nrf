@@ -1,21 +1,58 @@
 /********************************************************************
 **版权所有         深圳市几米物联有限公司
-**文件名称:        my_common.h
-**文件描述:        main.c头文件声明
+**文件名称:        my_comm.h
+**文件描述:        LL311_BLE 工程统一头文件
 **当前版本:        V1.0
 **作    者:        Harrison Wu (wuyujiao@jimiiot.com)
 **完成日期:        2026.01.15
 *********************************************************************
-** 功能描述:        系统主任务处理
+** 功能描述:        集中引用所有模块头文件，便于统一管控
+**                 包含：Main、BLE、Shell、Ctrl、LTE、NFC、GSensor 模块
 *********************************************************************/
 
 #ifndef _MY_COMMON_H_
 #define _MY_COMMON_H_
 
+/* ========== 系统头文件引用 ========== */
+/* 标准C库 */
+#include <errno.h>
+#include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <string.h>
+
+/* Zephyr核心 */
+#include <zephyr/device.h>
+#include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
 #include <zephyr/types.h>
 
+/* Zephyr驱动 */
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/i2c.h>
+#include <zephyr/drivers/pwm.h>
+#include <zephyr/drivers/uart.h>
+
+/* Zephyr系统功能 */
+#include <zephyr/logging/log.h>
+#include <zephyr/settings/settings.h>
+#include <zephyr/sys/reboot.h>
+#include <zephyr/sys/util.h>
+
+/* Zephyr蓝牙 */
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/gatt.h>
+#include <zephyr/bluetooth/hci.h>
+#include <zephyr/bluetooth/uuid.h>
+
+/* Nordic SDK */
+#include <bluetooth/services/nus.h>
+#include <dk_buttons_and_leds.h>
+#include <soc.h>
+#include <uart_async_adapter.h>
+
+/* ========== 通用宏定义 ========== */
+#define JM_SLEEP(timeout) k_sleep(timeout)
 #define MY_MALLOC_BUFFER(PTR, BUFFER_SIZE) \
     {                                      \
         (PTR) = k_malloc((BUFFER_SIZE));   \
@@ -29,10 +66,7 @@
         }                      \
     } // TODO
 
-#define JM_SLEEP  k_sleep
-#define JM_MALLOC k_malloc
-#define JM_FREE   k_free
-
+/* ========== 模块类型枚举 ========== */
 typedef enum
 {
     MOD_MAIN,        // 主处理程序
@@ -46,7 +80,7 @@ typedef enum
     MAX_MY_MOD_TYPE, // 最大模块类型
 } module_type;
 
-/* 定时器ID定义 */
+/* ========== 定时器相关定义 ========== */
 typedef enum
 {
     MY_TIMER_ONE_MINUTE = 0, // 最核心定时器，一分钟定时器使用
@@ -70,5 +104,15 @@ typedef enum
     MY_MSG_SYS_REBOOT, // 10
 
 } MY_MAIN_TASK_MSG;
+
+/* ========== 集中引用所有模块头文件 ========== */
+#include "my_version.h"
+#include "my_main.h"
+#include "my_ble_core.h"
+#include "my_shell.h"
+#include "my_ctrl.h"
+#include "my_lte.h"
+#include "my_nfc.h"
+#include "my_gsensor.h"
 
 #endif /* _MY_COMMON_H_ */
