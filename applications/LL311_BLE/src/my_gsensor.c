@@ -1,17 +1,18 @@
 /********************************************************************
 **版权所有         深圳市几米物联有限公司
 **文件名称:        my_gsensor.c
-**文件描述:        G-Sensor 管理模块实现文件 (DA215S)
+**文件描述:        G-Sensor 管理模块实现文件 (LSM6DSV16X)
 **当前版本:        V1.0
 **作    者:        Harrison Wu (wuyujiao@jimiiot.com)
 **完成日期:        2026.01.15
 *********************************************************************
-** 功能描述:        1. 实现 DA215S 的 I2C 初始化与数据读取
-**                 2. 实现电源控制逻辑 (P2.10)
-**                 3. 封装通用的读取接口以兼容未来扩展
+** 功能描述:        1. 实现 LSM6DSV16X 的 I2C 初始化与数据读取
+**                 2. 实现电源控制逻辑 (P2.6)
+**                 3. 使用 ST 官方 STdC 驱动库
 *********************************************************************/
 
 #include "my_comm.h"
+#include "lsm6dsv16x_reg.h"
 
 /* 注册 G-Sensor 模块日志 */
 LOG_MODULE_REGISTER(my_gsensor, LOG_LEVEL_INF);
@@ -25,21 +26,35 @@ static const struct gpio_dt_spec gsensor_pwr_gpio = GPIO_DT_SPEC_GET(GSENSOR_PWR
 
 static const struct gpio_dt_spec gsen_int = GPIO_DT_SPEC_GET(DT_ALIAS(gsensor_int), gpios);
 static struct gpio_callback gsensor_gpio_cb;
-/* DA215S I2C 从机地址 (通常为 0x27) */
-#define DA215S_I2C_ADDR 0x27
 
-/* DA215S 寄存器定义 */
-#define DA215S_REG_CHIP_ID    0x01
-#define DA215S_REG_X_LSB      0x02
-#define DA215S_REG_X_MSB      0x03
-#define DA215S_REG_Y_LSB      0x04
-#define DA215S_REG_Y_MSB      0x05
-#define DA215S_REG_Z_LSB      0x06
-#define DA215S_REG_Z_MSB      0x07
-#define DA215S_REG_RESOLUTION 0x0F
+/* LSM6DSV16X I2C 从机地址 */
+#define MY_LSM6DSV16X_I2C_ADDR 0x6A
 
-/* 当前识别到的传感器类型 */
-static enum gsensor_type current_sensor = GSENSOR_TYPE_UNKNOWN;
+/* LSM6DSV16X 芯片 ID */
+#define MY_LSM6DSV16X_ID 0x71
+
+/* STdC 接口实现 */
+static int32_t lsm6dsv16x_write(void *handle, uint8_t reg, const uint8_t *data, uint16_t len)
+{
+    const struct device *dev = (const struct device *)handle;
+    return i2c_burst_write(dev, MY_LSM6DSV16X_I2C_ADDR, reg, data, len);
+}
+
+static int32_t lsm6dsv16x_read(void *handle, uint8_t reg, uint8_t *data, uint16_t len)
+{
+    const struct device *dev = (const struct device *)handle;
+    return i2c_burst_read(dev, MY_LSM6DSV16X_I2C_ADDR, reg, data, len);
+}
+
+static stmdev_ctx_t lsm_ctx = {
+    .write_reg = lsm6dsv16x_write,
+    .read_reg = lsm6dsv16x_read,
+    .mdelay = k_msleep,
+    .handle = (void *)DEVICE_DT_GET(I2C_NODE),
+};
+
+/* 当前识别到的传感器类型 (仅支持 LSM6DSV16X) */
+static bool sensor_ready = false;
 
 /* 消息队列定义 */
 K_MSGQ_DEFINE(my_gsensor_msgq, sizeof(MSG_S), 10, 4);
@@ -68,10 +83,43 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
     for (;;)
     {
         my_recv_msg(&my_gsensor_msgq, (void *)&msg, sizeof(MSG_S), K_FOREVER);
-
+        
         switch (msg.msgID)
         {
-            /* TODO: 添加 G-Sensor 相关的消息处理逻辑 */
+            case MY_MSG_GSENSOR_READ:
+            {
+                /* 读取六轴数据 */
+                if (sensor_ready)
+                {
+                    int16_t acc_raw[3], gyro_raw[3];
+                    
+                    /* 读取加速度计数据 */
+                    if (lsm6dsv16x_acceleration_raw_get(&lsm_ctx, acc_raw) == 0)
+                    {
+                        LOG_INF("ACC: X=%6d, Y=%6d, Z=%6d", acc_raw[0], acc_raw[1], acc_raw[2]);
+                    }
+                    else
+                    {
+                        LOG_ERR("Failed to read accelerometer");
+                    }
+                    
+                    /* 读取陀螺仪数据 */
+                    if (lsm6dsv16x_angular_rate_raw_get(&lsm_ctx, gyro_raw) == 0)
+                    {
+                        LOG_INF("GYR: X=%6d, Y=%6d, Z=%6d", gyro_raw[0], gyro_raw[1], gyro_raw[2]);
+                    }
+                    else
+                    {
+                        LOG_ERR("Failed to read gyroscope");
+                    }
+                }
+                else
+                {
+                    LOG_WRN("Sensor not ready");
+                }
+                break;
+            }
+            
             default:
                 break;
         }
@@ -79,30 +127,23 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
 }
 
 /********************************************************************
-**函数名称:  da215s_check_id
+**函数名称:  lsm6dsv16x_check_id
 **入口参数:  无
 **出口参数:  无
-**函数功能:  通过 I2C 读取芯片 ID 以确认 DA215S 是否在线
-**返 回 值:  true 表示识别成功，false 表示失败
+**函数功能:  检查 LSM6DSV16X 是否在线
+**返 回 值:  true 表示识别成功
 *********************************************************************/
-static bool da215s_check_id(void)
+static bool lsm6dsv16x_check_id(void)
 {
     uint8_t chip_id = 0;
-    int err;
 
-    err = i2c_reg_read_byte(i2c_dev, DA215S_I2C_ADDR, DA215S_REG_CHIP_ID, &chip_id);
-    if (err)
+    if (lsm6dsv16x_device_id_get(&lsm_ctx, &chip_id) == 0)
     {
-        LOG_ERR("I2C read DA215S ID failed (err %d)", err);
-        return false;
-    }
-
-    LOG_INF("DA215S Chip ID: 0x%02X", chip_id);
-
-    /* DA215S 的默认 ID 通常为 0x13 */
-    if (chip_id == 0x13)
-    {
-        return true;
+        if (chip_id == MY_LSM6DSV16X_ID)
+        {
+            LOG_INF("LSM6DSV16X identified ID: 0x%02X", chip_id);
+            return true;
+        }
     }
 
     return false;
@@ -116,31 +157,22 @@ int my_gsensor_pwr_on(bool on)
 
 int my_gsensor_read_data(struct gsensor_data *data)
 {
-    uint8_t raw_data[6];
-    int err;
-
-    if (current_sensor == GSENSOR_TYPE_DA215S)
+    int16_t data_raw[3];
+    
+    if (!sensor_ready)
     {
-        /* DA215S 支持自动增量读取，一次读取 6 个字节 (X_L, X_M, Y_L, Y_M, Z_L, Z_M) */
-        err = i2c_burst_read(i2c_dev, DA215S_I2C_ADDR, DA215S_REG_X_LSB, raw_data, 6);
-        if (err)
-        {
-            LOG_ERR("Failed to read DA215S data (err %d)", err);
-            return err;
-        }
-
-        /* 组合三轴数据 (DA215S 是 12位 或 14位，此处按 16位 补齐解析) */
-        data->x = (int16_t)((raw_data[1] << 8) | raw_data[0]);
-        data->y = (int16_t)((raw_data[3] << 8) | raw_data[2]);
-        data->z = (int16_t)((raw_data[5] << 8) | raw_data[4]);
-
-        /* 根据 DA215S 的数据对齐方式，可能需要右移 4 位 (如果是 12 位模式) */
-        // data->x >>= 4; ...
-
-        return 0;
+        return -ENODEV;
     }
 
-    return -ENOTSUP;
+    if (lsm6dsv16x_acceleration_raw_get(&lsm_ctx, data_raw) == 0)
+    {
+        data->x = data_raw[0];
+        data->y = data_raw[1];
+        data->z = data_raw[2];
+        return 0;
+    }
+    
+    return -EIO;
 }
 
 static void gsensor_gpio_isr(const struct device *dev,
@@ -206,18 +238,28 @@ int my_gsensor_init(k_tid_t *tid)
     /* 等待芯片上电稳定 */
     k_sleep(K_MSEC(50));
 
-    /* 3. 识别传感器型号 */
-    if (da215s_check_id())
+    /* 3. 识别 LSM6DSV16X 传感器 */
+    if (lsm6dsv16x_check_id())
     {
-        current_sensor = GSENSOR_TYPE_DA215S;
-        LOG_INF("GSENSOR identified as DA215S");
+        sensor_ready = true;
+        LOG_INF("GSENSOR identified as LSM6DSV16X");
 
-        /* 可以在这里进行 DA215S 的具体配置，如量程、采样率等 */
-        // i2c_reg_write_byte(i2c_dev, DA215S_I2C_ADDR, ...);
+        /* 初始化 LSM6DSV16X */
+        lsm6dsv16x_reset_set(&lsm_ctx, LSM6DSV16X_GLOBAL_RST);
+        k_sleep(K_MSEC(30));
+        lsm6dsv16x_block_data_update_set(&lsm_ctx, PROPERTY_ENABLE);
+        
+        /* 配置加速度计：120Hz, 2g */
+        lsm6dsv16x_xl_data_rate_set(&lsm_ctx, LSM6DSV16X_ODR_AT_120Hz);
+        lsm6dsv16x_xl_full_scale_set(&lsm_ctx, LSM6DSV16X_2g);
+        
+        /* 配置陀螺仪：120Hz, 250dps */
+        lsm6dsv16x_gy_data_rate_set(&lsm_ctx, LSM6DSV16X_ODR_AT_120Hz);
+        lsm6dsv16x_gy_full_scale_set(&lsm_ctx, LSM6DSV16X_250dps);
     }
     else
     {
-        LOG_WRN("Unknown GSENSOR type or device not responding");
+        LOG_ERR("LSM6DSV16X not detected");
         return -ENODEV;
     }
 

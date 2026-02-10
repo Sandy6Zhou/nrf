@@ -321,13 +321,12 @@ int main(void)
     }
 
     /* 初始化 G-Sensor 模块 */
-#if 0
     err = my_gsensor_init(&my_gsensor_task_id);
     if (err)
     {
         LOG_ERR("Failed to initialize G-Sensor (err %d)", err);
     }
-
+#if 0
     /* 初始化 NFC 模块 */
     err = my_nfc_init(&my_nfc_task_id);
     if (err)

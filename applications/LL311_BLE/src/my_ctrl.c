@@ -283,45 +283,6 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
                 break;
         }
     }
-
-#if 0
-        /* 1. 处理来自外部的消息队列任务 */
-        if (k_msgq_get(&my_ctrl_msgq, &msg, K_NO_WAIT) == 0) {
-            switch (msg.type) {
-                case MY_CTRL_MSG_TYPE_LED:
-                    dk_set_led(msg.data.led.led_idx, msg.data.led.val);
-                    break;
-                case MY_CTRL_MSG_TYPE_BUZZER:
-                    my_ctrl_buzzer_play_tone(msg.data.buzzer.freq_hz, msg.data.buzzer.duration_ms);
-                    break;
-                default:
-                    LOG_WRN("Unknown ctrl msg type: %d", msg.type);
-                    break;
-            }
-        }
-
-        /* 2. 按键扫描 */
-        int val = gpio_pin_get_dt(&fun_key);
-        if (val != last_key_val) {
-            if (val == 1) {
-                LOG_INF("FUN_KEY Pressed");
-                my_ctrl_buzzer_play_tone(2000, 50);
-            } else {
-                LOG_INF("FUN_KEY Released");
-            }
-            last_key_val = val;
-        }
-
-        /* 3. 运行指示灯闪烁 */
-        uint32_t now = k_uptime_get_32();
-        if (now - last_blink_time >= 1000) {
-            dk_set_led(DK_LED1, (++blink_status) % 2);
-            last_blink_time = now;
-        }
-
-        k_msleep(20);
-    }
-#endif
 }
 
 /********************************************************************
@@ -333,8 +294,6 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
 *********************************************************************/
 int my_ctrl_init(k_tid_t *tid)
 {
-    int err;
-
     /* 1. 初始化按键、光感、剪线、LED GPIO、motor、batt */
     misc_io_init();
     leds_init();

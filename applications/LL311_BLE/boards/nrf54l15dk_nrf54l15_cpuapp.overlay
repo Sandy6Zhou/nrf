@@ -349,3 +349,9 @@
 &gpio0 {
 	wakeup-source;
 };
+
+/*
+&wdt31 {
+	status = "okay";
+};
+*/

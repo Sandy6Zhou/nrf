@@ -90,6 +90,7 @@ typedef enum
 {
     MY_TIMER_ONE_MINUTE = 0, // 最核心定时器，一分钟定时器使用
     MY_TIMER_TEST,           // 1
+    // MY_TIMER_WDT_FEED,       /* 看门狗喂狗定时器 */
 
     MY_TIMER_MAX_ID,
 } MY_E_TIMER;
@@ -110,6 +111,7 @@ typedef enum
     MY_MSG_BLE_DATA_EVENT,
     MY_MSG_CTRL_LED,    /* LED 控制消息 */
     MY_MSG_CTRL_BUZZER, /* 蜂鸣器控制消息 */
+    MY_MSG_GSENSOR_READ,   /* G-Sensor 读取六轴数据 */
 
 } MY_MAIN_TASK_MSG;
 
@@ -124,5 +126,6 @@ typedef enum
 #include "my_gsensor.h"
 #include "my_motor.h"
 #include "my_battery.h"
+// #include "my_wdt.h"
 
 #endif /* _MY_COMMON_H_ */

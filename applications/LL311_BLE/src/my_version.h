@@ -12,7 +12,18 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260123"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260206"
+/* 软件版本:        V1.0
+** 完成日期:        2026.02.06
+** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)
+** 修改内容:        1. 适配了LSM6DSV16X传感器并启用my_gsensor模块；
+**                 2. 删除了DA215S传感器支持; 
+**                 3. 在my_shell中添加了六轴传感器数据读取功能;
+**                 4. 添加了my_wdt模块，但未启用;
+**                 5. 在prj.conf中启用电源管理功能;
+*/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260123"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.01.23
 ** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)

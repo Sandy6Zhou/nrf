@@ -8,6 +8,11 @@ source "Kconfig.zephyr"
 
 menu "Nordic UART BLE GATT service sample"
 
+config USE_STDC_LSM6DSV16X
+	bool "LSM6DSV16X STdC driver"
+	default y
+	select HAS_STMEMSC
+
 config BT_NUS_THREAD_STACK_SIZE
 	int "Thread stack size"
 	default 1024

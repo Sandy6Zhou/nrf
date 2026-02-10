@@ -19,6 +19,7 @@ target_sources(app PRIVATE
   src/my_ctrl.c
   src/my_motor.c
   src/my_battery.c
+#  src/my_wdt.c
 )
 
 # NORDIC SDK APP END
