@@ -12,7 +12,14 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260206"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260207"
+/* 软件版本:        V1.0
+** 完成日期:        2026.02.06
+** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)
+** 修改内容:        1. 建立doc文件夹，将项目需要参考的文件统一放到该文件夹中；
+*/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260206"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.02.06
 ** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)
