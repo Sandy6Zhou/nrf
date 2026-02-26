@@ -132,6 +132,7 @@ typedef enum
 
 /* ========== 集中引用所有模块头文件 ========== */
 #include "my_version.h"
+#include "my_ring_buf.h"
 #include "my_main.h"
 #include "my_ble_core.h"
 #include "my_shell.h"

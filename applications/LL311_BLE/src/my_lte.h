@@ -27,14 +27,14 @@
 int my_lte_init(k_tid_t *tid);
 
 /********************************************************************
-**函数名称:  my_lte_send
+**函数名称:  my_lte_uart_send
 **入口参数:  data     ---        待发送数据指针
 **            len      ---        数据长度
 **出口参数:  无
 **函数功能:  通过 UART 向 LTE 模块发送数据
 **返 回 值:  0 表示成功，其他表示失败
 *********************************************************************/
-int my_lte_send(const uint8_t *data, uint16_t len);
+int my_lte_uart_send(const uint8_t *data, uint16_t len);
 
 /********************************************************************
 **函数名称:  my_lte_pwr_on
@@ -44,5 +44,10 @@ int my_lte_send(const uint8_t *data, uint16_t len);
 **返 回 值:  0 表示成功，其他表示失败
 *********************************************************************/
 int my_lte_pwr_on(bool on);
+
+/*
+ * 处理LTE串口接收到的数据，负责组包拆包成独立指令
+ */
+void my_lte_handle_recv(uint8_t *pData, uint32_t iLen);
 
 #endif /* _MY_LTE_H_ */

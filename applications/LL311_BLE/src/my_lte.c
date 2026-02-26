@@ -26,10 +26,15 @@ static const struct device *lte_uart_dev = DEVICE_DT_GET(LTE_UART_NODE);
 #define LTE_PWR_CTRL_NODE DT_ALIAS(lte_pwr_ctrl)
 static const struct gpio_dt_spec lte_pwr_gpio = GPIO_DT_SPEC_GET(LTE_PWR_CTRL_NODE, gpios);
 
-/* UART 接收双缓冲 */
+/* UART驱动层使用的接收双缓冲 */
 static uint8_t lte_rx_buf_1[LTE_UART_BUF_SIZE];
 static uint8_t lte_rx_buf_2[LTE_UART_BUF_SIZE];
 static uint8_t *lte_next_buf = lte_rx_buf_2;
+
+// 串口接收循环缓冲区（建议用2的幂，如1024，取模效率更高）
+#define LTE_UART_RB_SIZE    512
+static uint8_t g_lte_rb_buf[LTE_UART_RB_SIZE];
+static ring_buffer_t g_lte_rb;
 
 /* 消息队列定义 */
 K_MSGQ_DEFINE(my_lte_msgq, sizeof(MSG_S), 10, 4);
@@ -72,6 +77,26 @@ static void my_lte_task(void *p1, void *p2, void *p3)
 
             // 收到4G发送的消息,例如返回UTC时间,在里面进行数据解析
             case MY_MSG_LTE_REV:
+            {
+                static uint8_t read_buf[128];
+                int len = 0;
+
+                while (1)
+                {
+                    memset(read_buf, 0, sizeof(read_buf));
+
+                    // 读取数据（无锁安全）
+                    len = my_rb_read(&g_lte_rb, read_buf, sizeof(read_buf));
+                    if (len > 0)
+                    {
+                        my_lte_handle_recv(read_buf, len);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+            }
                 break;
 
             default:
@@ -101,8 +126,15 @@ static void lte_uart_cb(const struct device *dev, struct uart_event *evt, void *
 
         case UART_RX_RDY:
             LOG_DBG("LTE UART RX Ready, len: %d", evt->data.rx.len);
+#if 0
             /* 串口回环测试：将收到的数据直接原样发回 */
-            my_lte_send(&evt->data.rx.buf[evt->data.rx.offset], evt->data.rx.len);
+            my_lte_uart_send(&evt->data.rx.buf[evt->data.rx.offset], evt->data.rx.len);
+#else
+            // 将收到的数据写入循环缓冲区
+            my_rb_write(&g_lte_rb, &evt->data.rx.buf[evt->data.rx.offset], evt->data.rx.len);
+            // 通知LTE线程读取循环缓冲区数据
+            my_send_msg(MOD_MAIN, MOD_LTE, MY_MSG_LTE_REV);
+#endif
             break;
 
         case UART_RX_BUF_REQUEST:
@@ -130,14 +162,14 @@ static void lte_uart_cb(const struct device *dev, struct uart_event *evt, void *
 }
 
 /********************************************************************
-**函数名称:  my_lte_send
+**函数名称:  my_lte_uart_send
 **入口参数:  data      ---        发送数据
 **            len       ---        发送长度
 **出口参数:  无
 **函数功能:  LTE 模块发送数据函数
 **返 回 值:  无
 *********************************************************************/
-int my_lte_send(const uint8_t *data, uint16_t len)
+int my_lte_uart_send(const uint8_t *data, uint16_t len)
 {
     if (len == 0 || data == NULL)
     {
@@ -182,6 +214,45 @@ int my_lte_pwr_on(bool on)
     return err;
 }
 
+void my_lte_parse_cmd(char *cmd, int cmd_len)
+{
+    // TODO:
+    LOG_INF("%s: %s", __func__, cmd);
+}
+
+
+// 暂定单条指令长度最长128个字节
+// 请根据实际需求修改
+#define MAX_CMD_LEN     128
+void my_lte_handle_recv(uint8_t *pData, uint32_t iLen)
+{
+    static char command[MAX_CMD_LEN] = {0};
+    static uint32_t index = 0;
+    uint32_t i;
+
+    for (i = 0; i < iLen; i++)
+    {
+        if (pData[i] == '\r' || pData[i] == '\n') // 回车是\r 为了兼容同时处理 \n
+        {
+            my_lte_parse_cmd(command, index);
+
+            command[0] = 0;
+            index = 0;
+
+            // 如果下个字符是\n，跳过
+            if (pData[i + 1] == '\n')
+            {
+                i++;
+            }
+        }
+        else if (index < (MAX_CMD_LEN - 1))
+        {
+            command[index++] = pData[i];
+            command[index] = '\0';
+        }
+    }
+}
+
 /********************************************************************
 **函数名称:  my_lte_init
 **入口参数:  tid      ---        线程ID
@@ -213,6 +284,9 @@ int my_lte_init(k_tid_t *tid)
         LOG_ERR("Failed to configure LTE Power GPIO (err %d)", err);
         return err;
     }
+
+    // 初始化串口接收循环缓冲区
+    my_rb_init(&g_lte_rb, g_lte_rb_buf, LTE_UART_RB_SIZE);
 
     /* 设置 UART 异步回调 */
     err = uart_callback_set(lte_uart_dev, lte_uart_cb, NULL);
