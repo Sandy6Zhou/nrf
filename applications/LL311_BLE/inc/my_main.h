@@ -12,11 +12,13 @@
 #ifndef _MY_MAIN_H_
 #define _MY_MAIN_H_
 
-#include "my_comm.h"
+/*直包含必要的头文件，避免循环包含 */
+#include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
 
 /* 任务栈大小定义 */
 #define MY_MAIN_TASK_STACK_SIZE    8 * 1024
-#define MY_BLE_TASK_STACK_SIZE     CONFIG_BT_NUS_THREAD_STACK_SIZE
+#define MY_BLE_TASK_STACK_SIZE     2 * 1024
 #define MY_CTRL_TASK_STACK_SIZE    1 * 1024
 #define MY_LTE_TASK_STACK_SIZE     8 * 1024
 #define MY_NFC_TASK_STACK_SIZE     8 * 1024

@@ -15,6 +15,17 @@
 #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260228"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.02.28
+** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)
+** 修改内容:        1. 增加ext_module文件夹，为未来使用外部来源的代码引入目录；
+**                 2. 完成NFC模块功能移植，并形成模块化放入ext_module\nfc目录下；
+**                 3. 将原P1.14引脚改为NFC RST控制引脚，删除原电池NTC功能（已和硬件确认，NTC会由充电IC自动管理）；
+**                 4. 删除my_battery.c中与NTC相关代码；
+**                 5. 修改MY_BLE_TASK_STACK_SIZE定义，因没有使用系统自带的NUS功能，直接用数字代替。
+*/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260228"
+/* 软件版本:        V1.0
+** 完成日期:        2026.02.28
 ** 作    者:        周森达 (zhousenda@jimiiot.com)
 ** 修改内容:        1.增加双路广播TAG(默认只开启IOS,预留GOOGLE)
 **                 2.增加自定义SHELL指令并解析(RTT串口发送格式为:app AT_TEST "AT^GT_CM=PCBA,BT,xxxx")

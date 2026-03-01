@@ -32,6 +32,7 @@
 		gsensor-pwr-ctrl = &gsensor_pwr_en;
 		nfc-i2c = &i2c22;
 		nfc-pwr-ctrl = &nfc_pwr_en;
+		nfc-npd-ctrl = &nfc_npd_set;
 		buzzer-pwm = &buzzer_pwm_0;
 		fun-key = &button_fun;
 		motor-ctrl-a = &motor_a;
@@ -74,6 +75,13 @@
 	nfc_pwr_en: nfc-pwr-en {
 		compatible = "nordic,gpio-pins";
 		gpios = <&gpio2 4 GPIO_ACTIVE_HIGH>;
+		status = "okay";
+	};
+
+	/* NFC NPD 复位引脚配置:P1.14 */
+	nfc_npd_set: nfc-npd-set {
+		compatible = "nordic,gpio-pins";
+		gpios = <&gpio1 14 GPIO_ACTIVE_HIGH>;
 		status = "okay";
 	};
 
@@ -156,10 +164,8 @@
 
 	/* 把要用的 ADC 通道挂到 zephyr,user，方便 C 代码用 ADC_DT_SPEC_GET(DT_PATH(zephyr_user)) */
 	zephyr,user {
-		/* 通道 0：电池电压（P1.13 / AIN6）
-		 * 通道 1：NTC 温度（P1.14 / AIN7）
-		 */
-		io-channels = <&adc 0>, <&adc 1>;
+		/* 通道 0：电池电压（P1.13 / AIN6）*/
+		io-channels = <&adc 0>;
 	};
 
 	/* 光感检测：P1.10，默认上拉，外部拉低触发 */
@@ -327,16 +333,6 @@
 		zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
 		zephyr,input-positive = <NRF_SAADC_AIN6>;  /* AIN6 = P1.13 */
 		zephyr,resolution = <14>;                  /* nRF54L15 为 14 bit */
-	};
-
-	/* 通道 1：NTC 温度采集，AIN7 = P1.14 */
-	channel@1 {
-		reg = <1>;
-		zephyr,gain = "ADC_GAIN_1_4";
-		zephyr,reference = "ADC_REF_INTERNAL";
-		zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
-		zephyr,input-positive = <NRF_SAADC_AIN7>;  /* AIN7 = P1.14 */
-		zephyr,resolution = <14>;
 	};
 };
 

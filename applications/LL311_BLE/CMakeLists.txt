@@ -11,6 +11,8 @@ project(LL311_BLE)
 target_include_directories(app PRIVATE
  ./inc
  ./src
+ ./ext_module/nfc/api
+ ./ext_module/nfc/drivers/FM175XX/inc
 )
 
 # NORDIC SDK APP START
@@ -29,6 +31,11 @@ target_sources(app PRIVATE
   src/my_tool.c
   src/my_cmd_setting.c
   src/my_zms_param.c
+  ext_module/nfc/api/nfc_api.c
+  ext_module/nfc/drivers/FM175XX/src/fm175xx_driver.c
+  ext_module/nfc/drivers/FM175XX/src/nfc_reader_api.c
+  ext_module/nfc/drivers/FM175XX/src/nfc_mifare.c
+  ext_module/nfc/drivers/FM175XX/src/nfc_ntag.c
 )
 
 # NORDIC SDK APP END

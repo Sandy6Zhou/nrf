@@ -129,6 +129,8 @@ typedef enum
     MY_MSG_GSENSOR_PWROFF,
     MY_MSG_GSENSOR_GET_MOTION_STATUS,
     MY_MSG_GSENSOR_INIT,
+    MY_MSG_NFC_START_POLL,     /* 启动NFC轮询 */
+    MY_MSG_NFC_STOP_POLL,      /* 停止NFC轮询 */
 
 } MY_MAIN_TASK_MSG;
 

@@ -502,14 +502,13 @@ int main(void)
     {
         LOG_ERR("Failed to initialize G-Sensor (err %d)", err);
     }
-#if 0
+
     /* 初始化 NFC 模块 */
     err = my_nfc_init(&my_nfc_task_id);
     if (err)
     {
         LOG_ERR("Failed to initialize NFC (err %d)", err);
     }
-#endif
 
     /* 初始化系统控制模块 (LED, Buzzer, Key) */
     err = my_ctrl_init(&my_ctrl_task_id);

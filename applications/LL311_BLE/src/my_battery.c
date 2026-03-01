@@ -18,8 +18,6 @@ LOG_MODULE_REGISTER(my_battery, LOG_LEVEL_INF);
 #define ZEPHYR_USER_NODE DT_PATH(zephyr_user)
 /* 通道 0：电池电压 */
 static const struct adc_dt_spec batt_adc = ADC_DT_SPEC_GET_BY_IDX(ZEPHYR_USER_NODE, 0);
-/* 通道 1：NTC 温度 */
-static const struct adc_dt_spec ntc_adc = ADC_DT_SPEC_GET_BY_IDX(ZEPHYR_USER_NODE, 1);
 
 static const struct gpio_dt_spec batt_pwr_en = GPIO_DT_SPEC_GET(DT_ALIAS(batt_pwr_ctrl), gpios);
 static const struct gpio_dt_spec charge_state = GPIO_DT_SPEC_GET(DT_ALIAS(batt_state), gpios);
@@ -28,16 +26,10 @@ static const struct gpio_dt_spec charge_det = GPIO_DT_SPEC_GET(DT_ALIAS(charge_d
 static struct gpio_callback batt_gpio_cb;
 // ADC原始采样值
 static int16_t batt_raw;
-static int16_t ntc_raw;
 
 static struct adc_sequence batt_seq = {
     .buffer = &batt_raw,
     .buffer_size = sizeof(batt_raw),
-};
-
-static struct adc_sequence ntc_seq = {
-    .buffer = &ntc_raw,
-    .buffer_size = sizeof(ntc_raw),
 };
 
 /* 读取电池电压原始值，并转换为 mV（不含分压系数） */
@@ -58,18 +50,6 @@ int batt_read_mv(int32_t *mv)
     return 0;
 }
 
-/* 读取 NTC 原始 ADC 值（后续可在应用层根据电阻/温度表换算） */
-int ntc_read_raw(int16_t *raw)
-{
-    int err;
-
-    err = adc_read(ntc_adc.dev, &ntc_seq);
-    if (err < 0) return err;
-
-    *raw = ntc_raw;
-    return 0;
-}
-
 int batt_adc_init(void)
 {
     int err;
@@ -80,18 +60,12 @@ int batt_adc_init(void)
         return -ENODEV;
     }
 
-    /* 配置两个通道（配置来自 devicetree） */
+    /* 配置电池电压通道（配置来自 devicetree） */
     err = adc_channel_setup_dt(&batt_adc);
-    if (err < 0) return err;
-
-    err = adc_channel_setup_dt(&ntc_adc);
     if (err < 0) return err;
 
     /* 初始化 sequence（会填充通道掩码等） */
     err = adc_sequence_init_dt(&batt_adc, &batt_seq);
-    if (err < 0) return err;
-
-    err = adc_sequence_init_dt(&ntc_adc, &ntc_seq);
     if (err < 0) return err;
 
     return 0;
