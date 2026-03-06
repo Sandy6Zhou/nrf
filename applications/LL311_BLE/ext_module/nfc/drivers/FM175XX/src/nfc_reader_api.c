@@ -33,10 +33,13 @@ static const uint8_t RF_CMD_ANTICOL[3] = {0x93, 0x95, 0x97};
 *********************************************************************/
 void nfc_set_send_crc(uint8_t mode)
 {
-    if (mode) {
+    if (mode)
+    {
         fm175xx_modify_reg(JREG_TXMODE, JBIT_TXCRCEN, JBIT_TXCRCEN);
-    } else {
-        fm175xx_modify_reg(JREG_TXMODE, JBIT_TXCRCEN, 0);
+    }
+    else
+    {
+        fm175xx_modify_reg(JREG_TXMODE, JBIT_TXCRCEN, FM175XX_RESET);
     }
 }
 
@@ -48,10 +51,13 @@ void nfc_set_send_crc(uint8_t mode)
 *********************************************************************/
 void nfc_set_receive_crc(uint8_t mode)
 {
-    if (mode) {
+    if (mode)
+    {
         fm175xx_modify_reg(JREG_RXMODE, JBIT_RXCRCEN, JBIT_RXCRCEN);
-    } else {
-        fm175xx_modify_reg(JREG_RXMODE, JBIT_RXCRCEN, 0);
+    }
+    else
+    {
+        fm175xx_modify_reg(JREG_RXMODE, JBIT_RXCRCEN, FM175XX_RESET);
     }
 }
 
@@ -63,29 +69,60 @@ void nfc_set_receive_crc(uint8_t mode)
 *********************************************************************/
 void nfc_set_timeout(uint32_t microseconds)
 {
-    uint16_t preset;
-    uint8_t mode;
-    
-    /* 计算定时器预置值 */
-    preset = (uint16_t)(microseconds / 10);  /* 假设定时器时钟为100kHz */
-    
-    /* 设置定时器模式 */
-    mode = 0x80 | ((preset >> 8) & 0x0F);    /* 自动模式 + 高4位 */
-    fm175xx_write_reg(JREG_TMODE, mode);
-    fm175xx_write_reg(JREG_TPRESCALER, 0x3E);  /* 预分频 */
-    fm175xx_write_reg(JREG_TRELOADHI, (preset >> 8) & 0xFF);
-    fm175xx_write_reg(JREG_TRELOADLO, preset & 0xFF);
+    uint32_t timereload;
+    uint32_t prescaler;
+
+    if (microseconds == 0)
+    {
+        microseconds = 1; /* 时间不能为0 */
+    }
+
+    prescaler = 0;
+    timereload = 0;
+    while (prescaler < 0xFFF)
+    {
+        timereload = ((microseconds * 13560UL) - 1) / (prescaler * 2 + 1);
+        if (timereload < 0xFFFF)
+        {
+            break;
+        }
+        prescaler++;
+    }
+    timereload = timereload & 0xFFFF;
+
+    /* JBIT_TAUTO打开计时器，TX结束自动启动计时，TPrescaler_Hi高4bit */
+    fm175xx_write_reg(JREG_TMODE, JBIT_TAUTO | ((prescaler >> 8) & 0x0F));
+    fm175xx_write_reg(JREG_TPRESCALER, prescaler & 0xFF); /* TPrescaler_Lo低8bit */
+    fm175xx_write_reg(JREG_TRELOADHI, timereload >> 8);   /* TReloadVal_Hi */
+    fm175xx_write_reg(JREG_TRELOADLO, timereload & 0xFF); /* TReloadVal_Lo */
 }
 
 /********************************************************************
 **函数名称:  nfc_set_cw
-**入口参数:  mode --- CW_DISABLE/CW_ENABLE
-**函数功能:  设置载波开关
+**入口参数:  mode --- 载波模式(CW_DISABLE/CW1_ENABLE/CW2_ENABLE/CW_ENABLE)
+**函数功能:  设置载波开关模式(CW_DISABLE/CW1_ENABLE/CW2_ENABLE/CW_ENABLE)
 **返 回 值:  无
 *********************************************************************/
 void nfc_set_cw(uint8_t mode)
 {
-    fm175xx_write_reg(JREG_TXCONTROL, (mode & 0x03) | 0x80);
+    if (mode == CW_DISABLE)
+    {
+        fm175xx_modify_reg(JREG_TXCONTROL, JBIT_TX1RFEN | JBIT_TX2RFEN, FM175XX_RESET); /* 关闭载波 */
+    }
+    else if (mode == CW1_ENABLE)
+    {
+        fm175xx_modify_reg(JREG_TXCONTROL, JBIT_TX1RFEN | JBIT_TX2RFEN, JBIT_TX1RFEN); /* 开启载波1 */
+    }
+    else if (mode == CW2_ENABLE)
+    {
+        fm175xx_modify_reg(JREG_TXCONTROL, JBIT_TX1RFEN | JBIT_TX2RFEN, JBIT_TX2RFEN); /* 开启载波2 */
+    }
+    else if (mode == CW_ENABLE)
+    {
+        fm175xx_modify_reg(JREG_TXCONTROL, JBIT_TX1RFEN | JBIT_TX2RFEN, JBIT_TX1RFEN | JBIT_TX2RFEN); /* 开启载波1和载波2 */
+    }
+
+    k_sleep(K_MSEC(5)); /* M1卡1ms，CPU卡或身份证卡5ms */
 }
 
 /********************************************************************
@@ -96,86 +133,150 @@ void nfc_set_cw(uint8_t mode)
 *********************************************************************/
 uint8_t nfc_command_execute(struct command_struct *cmd_status)
 {
-    uint8_t reg_val;
-    uint8_t irq_val;
-    uint8_t result = FM175XX_SUCCESS;
-    uint32_t timeout_cnt = 0;
-    const uint32_t MAX_TIMEOUT = 10000;  /* 最大超时计数 */
-    
-    /* 清空FIFO */
-    fm175xx_clear_fifo();
-    
-    /* 写入发送数据到FIFO */
-    if (cmd_status->nBytesToSend > 0) {
-        fm175xx_write_fifo(cmd_status->nBytesToSend, cmd_status->pSendBuf);
+    uint8_t reg_data;
+    uint8_t send_length, receive_length, send_finish;
+    uint8_t irq;
+    uint8_t result;
+    uint32_t timeout_cnt = 0; /* 软件超时计数器 */
+
+    send_length = cmd_status->nBytesToSend; /* 发送长度 */
+    receive_length = 0;                     /* 接收长度 */
+    send_finish = 0;                        /* 发送完成标志 */
+    cmd_status->nBitsReceived = 0;          /* 接收位数 */
+    cmd_status->nBytesReceived = 0;         /* 接收字节数 */
+    cmd_status->CollPos = 0;                /* 碰撞位置 */
+    cmd_status->Error = 0;                  /* 错误标志 */
+
+    fm175xx_write_reg(JREG_COMMAND, CMD_IDLE);         /* 命令为空闲模式 */
+    fm175xx_write_reg(JREG_FIFOLEVEL, JBIT_FLUSHFIFO); /* 清空FIFO */
+    fm175xx_write_reg(JREG_COMMIRQ, 0x7F);             /* 使能命令中断 */
+    fm175xx_write_reg(JREG_DIVIRQ, 0x7F);              /* 使能时钟中断 */
+    fm175xx_write_reg(JREG_COMMIEN, 0x80);             /* 使能命令完成中断 */
+    fm175xx_write_reg(JREG_DIVIEN, 0x00);              /* 禁用时钟中断 */
+    fm175xx_write_reg(JREG_WATERLEVEL, 0x20);          /* 设置水位 */
+
+    nfc_set_send_crc(cmd_status->SendCRCEnable);       /* 设置发送CRC */
+    nfc_set_receive_crc(cmd_status->ReceiveCRCEnable); /* 设置接收CRC */
+    nfc_set_timeout(cmd_status->Timeout);              /* 设置超时时间 */
+
+    if (cmd_status->Cmd == CMD_AUTHENT)
+    {
+        fm175xx_write_fifo(send_length, cmd_status->pSendBuf); /* 写发送数据 */
+        send_length = 0;
+        fm175xx_write_reg(JREG_COMMAND, cmd_status->Cmd);                             /* 写命令 AUTHENT */
+        fm175xx_write_reg(JREG_BITFRAMING, JBIT_STARTSEND | cmd_status->nBitsToSend); /* 写位 framing */
     }
-    
-    /* 设置位帧 */
-    fm175xx_modify_reg(JREG_BITFRAMING, JMASK_RXBITS, cmd_status->nBitsToSend);
-    
-    /* 设置接收等待 */
-    fm175xx_write_reg(JREG_RXSEL, RXWAIT);
-    
-    /* 设置CRC */
-    nfc_set_send_crc(cmd_status->SendCRCEnable);
-    nfc_set_receive_crc(cmd_status->ReceiveCRCEnable);
-    
-    /* 清除中断标志 */
-    fm175xx_read_reg(JREG_COMMIRQ, &reg_val);
-    fm175xx_read_reg(JREG_DIVIRQ, &reg_val);
-    
-    /* 启动命令 */
-    fm175xx_write_reg(JREG_COMMAND, cmd_status->Cmd);
-    
-    /* 等待命令完成或超时 */
-    timeout_cnt = 0;
-    while (1) {
-        fm175xx_read_reg(JREG_COMMIRQ, &irq_val);
-        
-        /* 检查定时器中断（超时） */
-        if (irq_val & JBIT_TIMERIRq) {
+
+    if (cmd_status->Cmd == CMD_TRANSCEIVE) /* 命令为 TRANSCEIVE */
+    {
+        fm175xx_write_reg(JREG_COMMAND, cmd_status->Cmd);                                                /* 写命令 */
+        fm175xx_write_reg(JREG_BITFRAMING, (cmd_status->nBitsToReceive << 4) | cmd_status->nBitsToSend); /* 写位 framing，防冲突 */
+    }
+
+    while (1)
+    {
+        /* 软件超时保护，防止死循环 */
+        if (++timeout_cnt > 100)
+        {
+            result = FM175XX_TIMER_ERR;
+            LOG_ERR("Command execute timeout (software)");
+            break;
+        }
+
+        fm175xx_read_reg(JREG_COMMIRQ, &irq); /* 读命令中断 */
+
+        if (irq & JBIT_TIMERI)
+        {                                                 /* 超时中断 */
+            fm175xx_write_reg(JREG_COMMIRQ, JBIT_TIMERI); /* 清除超时中断 */
             result = FM175XX_TIMER_ERR;
             break;
         }
-        
-        /* 检查命令完成中断 */
-        if (irq_val & JBIT_IRQ) {
+
+        if (irq & JBIT_ERRI)
+        {                                            /* 错误中断 */
+            fm175xx_read_reg(JREG_ERROR, &reg_data); /* 读错误标志 */
+            cmd_status->Error = reg_data;
+            if (cmd_status->Error & JBIT_COLLERR) /* 碰撞错误 */
+            {
+                fm175xx_read_reg(JREG_COLL, &reg_data); /* 读碰撞位置 */
+                cmd_status->CollPos = reg_data & 0x1F;
+                result = FM175XX_COLL_ERR;
+                break;
+            }
+            result = FM175XX_COMM_ERR;                  /* 命令错误 */
+            fm175xx_write_reg(JREG_COMMIRQ, JBIT_ERRI); /* 清除错误中断 */
             break;
         }
-        
-        /* 超时保护 */
-        if (++timeout_cnt > MAX_TIMEOUT) {
-            result = FM175XX_TIMER_ERR;
+
+        /* 低水位中断 */
+        if (irq & JBIT_LOALERTI)
+        {
+            if (send_length > 0)
+            {
+                if (send_length > 32)
+                {
+                    fm175xx_write_fifo(32, cmd_status->pSendBuf); /* 写发送数据 */
+                    cmd_status->pSendBuf = cmd_status->pSendBuf + 32;
+                    send_length = send_length - 32;
+                }
+                else
+                {
+                    fm175xx_write_fifo(send_length, cmd_status->pSendBuf);
+                    send_length = 0;
+                }
+                fm175xx_modify_reg(JREG_BITFRAMING, JBIT_STARTSEND, JBIT_STARTSEND);
+            }
+            fm175xx_write_reg(JREG_COMMIRQ, JBIT_LOALERTI); /* 清除低水位中断 */
+        }
+
+        /* 高水位中断 */
+        if (irq & JBIT_HIALERTI)
+        {
+            if (send_finish == 1) /* 发送完成标志 */
+            {
+                fm175xx_read_fifo(32, cmd_status->pReceiveBuf + cmd_status->nBytesReceived);
+                cmd_status->nBytesReceived = cmd_status->nBytesReceived + 32;
+            }
+            fm175xx_write_reg(JREG_COMMIRQ, JBIT_HIALERTI);
+        }
+
+        if ((irq & JBIT_IDLEI) && (cmd_status->Cmd == CMD_AUTHENT)) /* 命令为 AUTHENT */
+        {
+            fm175xx_write_reg(JREG_COMMIRQ, JBIT_IDLEI); /* 清除空闲中断 */
+            result = FM175XX_SUCCESS;
             break;
         }
-    }
-    
-    /* 读取错误寄存器 */
-    fm175xx_read_reg(JREG_ERROR, &reg_val);
-    if (reg_val & 0x13) {  /* 协议错误、奇偶校验错误或CRC错误 */
-        result = FM175XX_COMM_ERR;
-    }
-    
-    /* 读取接收数据 */
-    if ((result == FM175XX_SUCCESS) && (cmd_status->nBytesToReceive > 0)) {
-        fm175xx_read_reg(JREG_FIFOLEVEL, &reg_val);
-        cmd_status->nBytesReceived = reg_val & 0x7F;
-        
-        if (cmd_status->nBytesReceived > 0) {
-            fm175xx_read_fifo(cmd_status->nBytesReceived, cmd_status->pReceiveBuf);
+
+        /* 接收完成标志 */
+        if ((irq & JBIT_RXI) && (cmd_status->Cmd == CMD_TRANSCEIVE))
+        {
+            fm175xx_read_reg(JREG_CONTROL, &reg_data);
+            cmd_status->nBitsReceived = reg_data & 0x07;
+            fm175xx_read_reg(JREG_FIFOLEVEL, &reg_data);
+            receive_length = reg_data & 0x7F;
+
+            fm175xx_read_fifo(receive_length, cmd_status->pReceiveBuf + cmd_status->nBytesReceived);
+            cmd_status->nBytesReceived = cmd_status->nBytesReceived + receive_length;
+
+            if ((cmd_status->nBytesToReceive != cmd_status->nBytesReceived) && (cmd_status->nBytesToReceive != 0))
+            {
+                result = FM175XX_LENGTH_ERR;
+                break;
+            }
+            fm175xx_write_reg(JREG_COMMIRQ, JBIT_RXI); /* 清除接收完成标志 */
+            result = FM175XX_SUCCESS;
+            break;
         }
-        
-        /* 检查接收长度 */
-        if (cmd_status->nBytesReceived != cmd_status->nBytesToReceive) {
-            result = FM175XX_LENGTH_ERR;
+
+        if (irq & JBIT_TXI)
+        {
+            fm175xx_write_reg(JREG_COMMIRQ, JBIT_TXI); /* 清除发送完成标志 */
+            if (cmd_status->Cmd == CMD_TRANSCEIVE)
+                send_finish = 1; /* 发送完成标志 */
         }
     }
-    
-    /* 读取冲突位置 */
-    fm175xx_read_reg(JREG_COLL, &reg_val);
-    cmd_status->CollPos = reg_val & 0x1F;
-    
-    cmd_status->Error = result;
+    fm175xx_modify_reg(JREG_BITFRAMING, JBIT_STARTSEND, FM175XX_RESET); /* 清除发送完成标志 */
+    fm175xx_write_reg(JREG_COMMAND, CMD_IDLE);                          /* 命令为空闲模式 */
     return result;
 }
 
@@ -187,31 +288,36 @@ uint8_t nfc_command_execute(struct command_struct *cmd_status)
 *********************************************************************/
 void nfc_init_reader_a(void)
 {
-    uint8_t reg_val;
-    
-    /* 设置接收增益 */
-    fm175xx_read_reg(JREG_RFCFG, &reg_val);
-    reg_val = (reg_val & ~JMASK_RXGAIN) | (RXGAIN_A << 4);
-    fm175xx_write_reg(JREG_RFCFG, reg_val);
-    
-    /* 设置GSN */
-    fm175xx_write_reg(JREG_GSN, (GSNON_A << 4) | GSP_A);
-    
-    /* 设置接收阈值 */
-    fm175xx_read_reg(JREG_RXTHRESHOLD, &reg_val);
-    reg_val = (reg_val & ~JMASK_MINLEVEL) | (MINLEVEL_A << 4);
-    reg_val = (reg_val & ~JMASK_COLLEVEL) | COLLLEVEL_A;
-    fm175xx_write_reg(JREG_RXTHRESHOLD, reg_val);
-    
-    /* 设置调制宽度（106Kbps） */
-    fm175xx_write_reg(JREG_MODWIDTH, MODWIDTH_106);
-    
     /* 设置TX/RX模式 */
-    fm175xx_write_reg(JREG_TXMODE, 0x00);  /* 106Kbps, ISO14443A */
-    fm175xx_write_reg(JREG_RXMODE, 0x00);  /* 106Kbps, ISO14443A */
-    
-    /* 清空FIFO */
-    fm175xx_clear_fifo();
+    fm175xx_write_reg(JREG_TXMODE, 0x00);         /* TxCRCEnable=0, TxSpeed=106kbps, InvMode=0, TxFraming=ISO14443A */
+    fm175xx_write_reg(JREG_RXMODE, JBIT_RXNOERR); /* RxCRCEnable=0, RxSpeed=106kbps, RxNoError=1, RxMultiple=0, RxFraming=ISO14443A */
+
+    /* 强制100% ASK */
+    fm175xx_modify_reg(JREG_TXAUTO, JBIT_FORCE100ASK, JBIT_FORCE100ASK);
+
+    /* 设置调制宽度 */
+    fm175xx_write_reg(JREG_MODWIDTH, MODWIDTH_106);
+
+    /* 设置Initiator模式 */
+    fm175xx_write_reg(JREG_CONTROL, JBIT_INITIATOR);
+
+    /* 设置GSN */
+    fm175xx_write_reg(JREG_GSN, 0xF1);
+
+    /* 设置CWGSP */
+    fm175xx_write_reg(JREG_CWGSP, 0x3F);
+
+    /* 设置MODGSP */
+    fm175xx_write_reg(JREG_MODGSP, 0x01);
+
+    /* 设置接收增益 */
+    fm175xx_write_reg(JREG_RFCFG, RXGAIN_A << 4);
+
+    /* 设置接收阈值 */
+    fm175xx_write_reg(JREG_RXTHRESHOLD, 0x84);
+
+    /* 清空认证标志，针对M1卡 */
+    fm175xx_modify_reg(JREG_STATUS2, JBIT_CRYPTO1ON, FM175XX_RESET);
 }
 
 /********************************************************************
@@ -223,29 +329,30 @@ void nfc_init_reader_a(void)
 uint8_t nfc_reader_a_wakeup(void)
 {
     struct command_struct cmd_status;
-    uint8_t outbuf[1] = {0x52};  /* WUPA命令 */
+    uint8_t outbuf[1] = {RF_CMD_WUPA}; /* WUPA命令 */
     uint8_t inbuf[2];
     uint8_t result;
-    
+
     cmd_status.SendCRCEnable = FM175XX_RESET;
     cmd_status.ReceiveCRCEnable = FM175XX_RESET;
     cmd_status.pSendBuf = outbuf;
     cmd_status.pReceiveBuf = inbuf;
     cmd_status.nBytesToSend = 1;
-    cmd_status.nBitsToSend = 7;  /* 短帧，7位 */
+    cmd_status.nBitsToSend = 7; /* 短帧，7位 */
     cmd_status.nBytesToReceive = 2;
     cmd_status.nBitsToReceive = 0;
-    cmd_status.Timeout = 10;
+    cmd_status.Timeout = 1; /* 超时时间设置为1MS，与原厂DEMO保持一致 */
     cmd_status.Cmd = CMD_TRANSCEIVE;
-    
+
     result = nfc_command_execute(&cmd_status);
-    
-    if (result == FM175XX_SUCCESS) {
+
+    if (result == FM175XX_SUCCESS && cmd_status.nBytesReceived == 2)
+    {
         PICC_A.ATQA[0] = inbuf[0];
         PICC_A.ATQA[1] = inbuf[1];
-        LOG_INF("ATQA: %02X %02X", PICC_A.ATQA[0], PICC_A.ATQA[1]);
+        LOG_DBG("ATQA: %02X %02X", PICC_A.ATQA[0], PICC_A.ATQA[1]);
     }
-    
+
     return result;
 }
 
@@ -258,29 +365,30 @@ uint8_t nfc_reader_a_wakeup(void)
 uint8_t nfc_reader_a_request(void)
 {
     struct command_struct cmd_status;
-    uint8_t outbuf[1] = {0x26};  /* REQA命令 */
+    uint8_t outbuf[1] = {RF_CMD_REQA}; /* REQA命令 */
     uint8_t inbuf[2];
     uint8_t result;
-    
+
     cmd_status.SendCRCEnable = FM175XX_RESET;
     cmd_status.ReceiveCRCEnable = FM175XX_RESET;
     cmd_status.pSendBuf = outbuf;
     cmd_status.pReceiveBuf = inbuf;
     cmd_status.nBytesToSend = 1;
-    cmd_status.nBitsToSend = 7;  /* 短帧，7位 */
+    cmd_status.nBitsToSend = 7; /* 短帧，7位 */
     cmd_status.nBytesToReceive = 2;
     cmd_status.nBitsToReceive = 0;
-    cmd_status.Timeout = 10;
+    cmd_status.Timeout = 1; /* 超时时间设置为1MS，与原厂DEMO保持一致 */
     cmd_status.Cmd = CMD_TRANSCEIVE;
-    
+
     result = nfc_command_execute(&cmd_status);
-    
-    if (result == FM175XX_SUCCESS) {
+
+    if (result == FM175XX_SUCCESS && cmd_status.nBytesReceived == 2)
+    {
         PICC_A.ATQA[0] = inbuf[0];
         PICC_A.ATQA[1] = inbuf[1];
-        LOG_INF("ATQA: %02X %02X", PICC_A.ATQA[0], PICC_A.ATQA[1]);
+        LOG_DBG("ATQA: %02X %02X", PICC_A.ATQA[0], PICC_A.ATQA[1]);
     }
-    
+
     return result;
 }
 
@@ -296,14 +404,12 @@ uint8_t nfc_reader_a_anticoll(uint8_t cascade_level)
     uint8_t outbuf[2] = {RF_CMD_ANTICOL[cascade_level], 0x20};
     uint8_t inbuf[5];
     uint8_t result;
-    
-    if (cascade_level > 2) {
+
+    if (cascade_level > 2)
+    {
         return FM175XX_PARAM_ERR;
     }
-    
-    /* 设置冲突后值 */
-    fm175xx_modify_reg(JREG_COLL, JBIT_VALUESAFTERCOLL, JBIT_VALUESAFTERCOLL);
-    
+
     cmd_status.SendCRCEnable = FM175XX_RESET;
     cmd_status.ReceiveCRCEnable = FM175XX_RESET;
     cmd_status.pSendBuf = outbuf;
@@ -312,26 +418,32 @@ uint8_t nfc_reader_a_anticoll(uint8_t cascade_level)
     cmd_status.nBitsToSend = 0;
     cmd_status.nBytesToReceive = 5;
     cmd_status.nBitsToReceive = 0;
-    cmd_status.Timeout = 10;
+    cmd_status.Timeout = 1; /* 超时时间设置为1MS，与原厂DEMO保持一致 */
     cmd_status.Cmd = CMD_TRANSCEIVE;
-    
-    result = nfc_command_execute(&cmd_status);
-    
-    if ((result == FM175XX_SUCCESS) && (cmd_status.nBytesReceived == 5)) {
+
+    result = nfc_command_execute(&cmd_status); /* 执行命令 */
+
+    fm175xx_modify_reg(JREG_COLL, JBIT_VALUESAFTERCOLL, JBIT_VALUESAFTERCOLL); /* 忽略冲突后值 */
+
+    if ((result == FM175XX_SUCCESS) && (cmd_status.nBytesReceived == 5))
+    {
         memcpy(PICC_A.UID + (cascade_level * 4), inbuf, 4);
         PICC_A.BCC[cascade_level] = inbuf[4];
-        
+
         /* 校验BCC */
-        if ((PICC_A.UID[cascade_level * 4] ^ 
-             PICC_A.UID[cascade_level * 4 + 1] ^ 
-             PICC_A.UID[cascade_level * 4 + 2] ^ 
-             PICC_A.UID[cascade_level * 4 + 3]) != PICC_A.BCC[cascade_level]) {
+        if ((PICC_A.UID[cascade_level * 4] ^
+             PICC_A.UID[cascade_level * 4 + 1] ^
+             PICC_A.UID[cascade_level * 4 + 2] ^
+             PICC_A.UID[cascade_level * 4 + 3]) != PICC_A.BCC[cascade_level])
+        {
             result = FM175XX_COMM_ERR;
         }
-    } else {
+    }
+    else
+    {
         result = FM175XX_COMM_ERR;
     }
-    
+
     return result;
 }
 
@@ -347,16 +459,17 @@ uint8_t nfc_reader_a_select(uint8_t cascade_level)
     uint8_t outbuf[7];
     uint8_t inbuf[1];
     uint8_t result;
-    
-    if (cascade_level > 2) {
+
+    if (cascade_level > 2)
+    {
         return FM175XX_PARAM_ERR;
     }
-    
+
     outbuf[0] = RF_CMD_ANTICOL[cascade_level];
     outbuf[1] = 0x70;
     memcpy(&outbuf[2], PICC_A.UID + (cascade_level * 4), 4);
     outbuf[6] = PICC_A.BCC[cascade_level];
-    
+
     cmd_status.SendCRCEnable = FM175XX_SET;
     cmd_status.ReceiveCRCEnable = FM175XX_SET;
     cmd_status.pSendBuf = outbuf;
@@ -365,18 +478,21 @@ uint8_t nfc_reader_a_select(uint8_t cascade_level)
     cmd_status.nBitsToSend = 0;
     cmd_status.nBytesToReceive = 1;
     cmd_status.nBitsToReceive = 0;
-    cmd_status.Timeout = 10;
+    cmd_status.Timeout = 1; /* 超时时间设置为1MS，与原厂DEMO保持一致 */
     cmd_status.Cmd = CMD_TRANSCEIVE;
-    
+
     result = nfc_command_execute(&cmd_status);
-    
-    if ((result == FM175XX_SUCCESS) && (cmd_status.nBytesReceived == 1)) {
+
+    if ((result == FM175XX_SUCCESS) && (cmd_status.nBytesReceived == 1))
+    {
         PICC_A.SAK[cascade_level] = inbuf[0];
-        LOG_INF("SAK%d: %02X", cascade_level, PICC_A.SAK[cascade_level]);
-    } else {
+        LOG_DBG("SAK%d: %02X", cascade_level, PICC_A.SAK[cascade_level]);
+    }
+    else
+    {
         result = FM175XX_COMM_ERR;
     }
-    
+
     return result;
 }
 
@@ -392,7 +508,7 @@ uint8_t nfc_reader_a_halt(void)
     uint8_t outbuf[2] = {0x50, 0x00};
     uint8_t inbuf[1];
     uint8_t result;
-    
+
     cmd_status.SendCRCEnable = FM175XX_SET;
     cmd_status.ReceiveCRCEnable = FM175XX_SET;
     cmd_status.pSendBuf = outbuf;
@@ -401,16 +517,17 @@ uint8_t nfc_reader_a_halt(void)
     cmd_status.nBitsToSend = 0;
     cmd_status.nBytesToReceive = 0;
     cmd_status.nBitsToReceive = 0;
-    cmd_status.Timeout = 10;
+    cmd_status.Timeout = 1; /* 超时时间设置为1MS，与原厂DEMO保持一致 */
     cmd_status.Cmd = CMD_TRANSCEIVE;
-    
+
     result = nfc_command_execute(&cmd_status);
-    
+
     /* HALT命令无响应表示成功 */
-    if (result == FM175XX_TIMER_ERR) {
+    if (result == FM175XX_TIMER_ERR)
+    {
         result = FM175XX_SUCCESS;
     }
-    
+
     return result;
 }
 
@@ -424,44 +541,87 @@ uint8_t nfc_reader_a_card_activate(void)
 {
     uint8_t result;
     uint8_t cascade_level;
-    
+
     /* 唤醒卡片 */
     result = nfc_reader_a_wakeup();
-    if (result != FM175XX_SUCCESS) {
+    if (result != FM175XX_SUCCESS)
+    {
         return result;
     }
-    
+    LOG_DBG("Wakeup OK, ATQA: %02X %02X", PICC_A.ATQA[0], PICC_A.ATQA[1]);
+
     /* 根据ATQA判断级联等级 */
-    if ((PICC_A.ATQA[0] & 0xC0) == 0x00) {
-        cascade_level = 1;  /* 4字节UID */
-    } else if ((PICC_A.ATQA[0] & 0xC0) == 0x40) {
-        cascade_level = 2;  /* 7字节UID */
-    } else if ((PICC_A.ATQA[0] & 0xC0) == 0x80) {
-        cascade_level = 3;  /* 10字节UID */
-    } else {
+    if ((PICC_A.ATQA[0] & 0xC0) == 0x00)
+    {
+        cascade_level = 1; /* 4字节UID */
+    }
+    else if ((PICC_A.ATQA[0] & 0xC0) == 0x40)
+    {
+        cascade_level = 2; /* 7字节UID */
+    }
+    else if ((PICC_A.ATQA[0] & 0xC0) == 0x80)
+    {
+        cascade_level = 3; /* 10字节UID */
+    }
+    else
+    {
+        LOG_WRN("Invalid ATQA: %02X %02X", PICC_A.ATQA[0], PICC_A.ATQA[1]);
         return FM175XX_PARAM_ERR;
     }
-    
-    LOG_INF("Cascade level: %d", cascade_level);
-    
+
+    LOG_DBG("Cascade level: %d", cascade_level);
+
     /* 防冲突和选择流程 */
-    for (PICC_A.CASCADE_LEVEL = 0; PICC_A.CASCADE_LEVEL < cascade_level; PICC_A.CASCADE_LEVEL++) {
+    for (PICC_A.CASCADE_LEVEL = 0; PICC_A.CASCADE_LEVEL < cascade_level; PICC_A.CASCADE_LEVEL++)
+    {
         result = nfc_reader_a_anticoll(PICC_A.CASCADE_LEVEL);
-        if (result != FM175XX_SUCCESS) {
+        if (result != FM175XX_SUCCESS)
+        {
             return result;
         }
-        
+
         result = nfc_reader_a_select(PICC_A.CASCADE_LEVEL);
-        if (result != FM175XX_SUCCESS) {
+        if (result != FM175XX_SUCCESS)
+        {
             return result;
         }
     }
-    
+
+    #if 0
     /* 打印UID */
     LOG_INF("UID: ");
-    for (uint8_t i = 0; i < (cascade_level * 4); i++) {
+    for (uint8_t i = 0; i < (cascade_level * 4); i++)
+    {
         LOG_INF("%02X ", PICC_A.UID[i]);
     }
-    
+    #endif
+
     return FM175XX_SUCCESS;
+}
+
+/********************************************************************
+**函数名称:  Type_A_App
+**入口参数:  无
+**函数功能:  Type A卡片应用主循环（兼容原厂DEMO）
+**返 回 值:  FM175XX_SUCCESS或错误码
+*********************************************************************/
+uint8_t Type_A_App(void)
+{
+    uint8_t result;
+
+    /* 执行硬件复位 */
+    fm175xx_npd_reset();
+
+    /* 初始化读卡器 */
+    nfc_init_reader_a();
+
+    /* 启动载波 */
+    nfc_set_cw(CW_ENABLE);
+
+    /* 激活卡片 */
+    result = nfc_reader_a_card_activate();
+
+    nfc_set_cw(CW_DISABLE); /* 关闭载波 */
+
+    return result;
 }

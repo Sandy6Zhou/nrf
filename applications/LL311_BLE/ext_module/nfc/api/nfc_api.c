@@ -193,3 +193,36 @@ nfc_result_t nfc_api_get_version(uint8_t *version)
 
     return NFC_SUCCESS;
 }
+
+/********************************************************************
+**函数名称:  nfc_api_enter_hpd
+**入口参数:  无
+**出口参数:  无
+**函数功能:  进入 Hard Power Down (HPD) 低功耗模式
+**返 回 值:  NFC_SUCCESS 表示成功
+*********************************************************************/
+nfc_result_t nfc_api_enter_hpd(void)
+{
+    fm175xx_enter_hpd();
+    return NFC_SUCCESS;
+}
+
+/********************************************************************
+**函数名称:  nfc_api_exit_hpd
+**入口参数:  无
+**出口参数:  无
+**函数功能:  退出 HPD 模式，恢复 NFC 功能
+**返 回 值:  NFC_SUCCESS 表示成功
+*********************************************************************/
+nfc_result_t nfc_api_exit_hpd(void)
+{
+    int ret;
+
+    ret = fm175xx_exit_hpd();
+    if (ret != 0)
+    {
+        return NFC_ERROR_COMM;
+    }
+
+    return NFC_SUCCESS;
+}

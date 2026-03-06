@@ -34,7 +34,7 @@
 		nfc-pwr-ctrl = &nfc_pwr_en;
 		nfc-npd-ctrl = &nfc_npd_set;
 		buzzer-pwm = &buzzer_pwm_0;
-		fun-key = &button_fun;
+		fun-key = &fun_key_pin;
 		motor-ctrl-a = &motor_a;
 		motor-ctrl-b = &motor_b;
 		motor-pwr-ctrl = &motor_pwr_en;
@@ -56,10 +56,13 @@
 	/delete-node/ buttons;
 	/delete-node/ pwmleds;
 
-	/* 定义按键 */
+	/* 定义按键 - 使用 gpio-keys 兼容类型 */
 	button_fun: button_fun {
-		compatible = "nordic,gpio-pins";
-		gpios = <&gpio1 9 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+		compatible = "gpio-keys";
+		fun_key_pin: fun_key_pin {
+			gpios = <&gpio1 9 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "FUN KEY";
+		};
 	};
 
 	/* 定义蜂鸣器 PWM 节点 */

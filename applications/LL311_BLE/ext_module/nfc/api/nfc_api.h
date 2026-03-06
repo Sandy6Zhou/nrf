@@ -24,6 +24,16 @@ typedef enum
     NFC_CARD_TYPE_NTAG,        /* NTag Type 2 */
 } nfc_card_type_t;
 
+/* NFC 卡片信息结构体 */
+struct nfc_card_info
+{
+    nfc_card_type_t type;
+    uint8_t uid[8];
+    uint8_t uid_len;
+    uint8_t data[64];
+    uint8_t data_len;
+};
+
 /* NFC 操作结果 */
 typedef enum
 {
@@ -106,5 +116,23 @@ nfc_result_t nfc_api_write_block(uint8_t block, const uint8_t *data, uint8_t len
 **返 回 值:  NFC_SUCCESS 表示成功
 *********************************************************************/
 nfc_result_t nfc_api_get_version(uint8_t *version);
+
+/********************************************************************
+**函数名称:  nfc_api_enter_hpd
+**入口参数:  无
+**出口参数:  无
+**函数功能:  进入 Hard Power Down (HPD) 低功耗模式
+**返 回 值:  NFC_SUCCESS 表示成功
+*********************************************************************/
+nfc_result_t nfc_api_enter_hpd(void);
+
+/********************************************************************
+**函数名称:  nfc_api_exit_hpd
+**入口参数:  无
+**出口参数:  无
+**函数功能:  退出 HPD 模式，恢复 NFC 功能
+**返 回 值:  NFC_SUCCESS 表示成功
+*********************************************************************/
+nfc_result_t nfc_api_exit_hpd(void);
 
 #endif /* _NFC_API_H_ */

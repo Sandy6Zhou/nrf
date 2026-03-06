@@ -98,10 +98,10 @@ static int cmd_gsensor_read(const struct shell *shell, size_t argc, char **argv)
     msg.msgID = MY_MSG_GSENSOR_READ;
     msg.pData = NULL;
     msg.DataLen = 0;
-    
+
     my_send_msg_data(MOD_MAIN, MOD_GSENSOR, &msg);
     shell_print(shell, "G-Sensor read command sent");
-    
+
     return 0;
 }
 
@@ -132,15 +132,15 @@ static int cmd_switch_mode(const struct shell *sh, size_t argc, char **argv)
         return -EINVAL;
     }
 
-    mode_str  = argv[1];
+    mode_str = argv[1];
     state_str = (argc >= 3) ? argv[2] : NULL;
 
     /* 解析工作模式 */
     if (strcmp(mode_str, "longlife") == 0)
     {
-        p_workmode->current_mode   = MY_MODE_LONG_LIFE;
+        p_workmode->current_mode = MY_MODE_LONG_LIFE;
         gsensor_state = STATE_UNKNOWN;
-    } 
+    }
     else if (strcmp(mode_str, "smart") == 0)
     {
         p_workmode->current_mode = MY_MODE_SMART;
@@ -156,27 +156,27 @@ static int cmd_switch_mode(const struct shell *sh, size_t argc, char **argv)
         if (strcmp(state_str, "static") == 0)
         {
             gsensor_state = STATE_STATIC;
-        } 
+        }
         else if (strcmp(state_str, "land") == 0)
         {
             gsensor_state = STATE_LAND_TRANSPORT;
-        } 
+        }
         else if (strcmp(state_str, "sea") == 0)
         {
             gsensor_state = STATE_SEA_TRANSPORT;
-        } 
+        }
         else
         {
             shell_error(sh, "Invalid state '%s' for smart mode", state_str);
             shell_print(sh, "Valid states: still | land | sea");
             return -EINVAL;
         }
-    } 
+    }
     else if (strcmp(mode_str, "continuous") == 0)
     {
-        p_workmode->current_mode   = MY_MODE_CONTINUOUS;
+        p_workmode->current_mode = MY_MODE_CONTINUOUS;
         gsensor_state = STATE_UNKNOWN;
-    } 
+    }
     else
     {
         shell_error(sh, "Invalid mode '%s'", mode_str);
@@ -216,7 +216,7 @@ static int cmd_switch_mode(const struct shell *sh, size_t argc, char **argv)
 *********************************************************************/
 static int cmd_set_time(const struct shell *sh, size_t argc, char **argv)
 {
-    DeviceWorkModeConfig* p_workmode;
+    DeviceWorkModeConfig *p_workmode;
     int ret;
 
     p_workmode = get_workmode_config_ptr();
@@ -279,7 +279,7 @@ static int cmd_get_time(const struct shell *sh, size_t argc, char **argv)
 *********************************************************************/
 static int cmd_modeset(const struct shell *sh, size_t argc, char **argv)
 {
-    DeviceWorkModeConfig* p_workmode;
+    DeviceWorkModeConfig *p_workmode;
     char *endptr;
     uint32_t mode_flag;
     uint32_t report_interval, static_int, land_int, land_distance, sea_int;
@@ -287,7 +287,7 @@ static int cmd_modeset(const struct shell *sh, size_t argc, char **argv)
 
     p_workmode = get_workmode_config_ptr();
 
-    /* 第一步：解析模式标识（mode_flag），校验是否为有效数字 */ 
+    /* 第一步：解析模式标识（mode_flag），校验是否为有效数字 */
     mode_flag = strtoul(argv[1], &endptr, 10);
     if (*endptr != '\0')
     {
@@ -295,7 +295,7 @@ static int cmd_modeset(const struct shell *sh, size_t argc, char **argv)
         return -1;
     }
 
-    /* 第二步：根据模式标识校验参数个数，并处理对应逻辑 */ 
+    /* 第二步：根据模式标识校验参数个数，并处理对应逻辑 */
     switch (mode_flag)
     {
         case 1: // 长续航模式
@@ -336,7 +336,7 @@ static int cmd_modeset(const struct shell *sh, size_t argc, char **argv)
             // 设置长续航模式参数
             set_long_battery_params(p_workmode, report_interval, argv[3]);
             shell_print(sh, "Longlife mode config success!");
-        
+
             break;
         }
         case 2: // 智能模式
@@ -458,7 +458,8 @@ static int shell_at_test(const struct shell *sh, size_t argc, char **argv)
     uint8_t rx_buff[512] = {0};
     int len;
 
-    if (argc < 2) {
+    if (argc < 2)
+    {
         shell_error(sh, "Missing parameter");
         return -EINVAL;
     }
@@ -477,6 +478,56 @@ static int shell_at_test(const struct shell *sh, size_t argc, char **argv)
     return 0;
 }
 
+/********************************************************************
+**函数名称:  cmd_nfc_poll
+**入口参数:  shell   ---        Shell 实例指针
+**           argc    ---        参数数量
+**           argv    ---        参数数组
+**出口参数:  无
+**函数功能:  启动或停止 NFC 轮询（读到卡或超时后自动进入 HPD）
+**返 回 值:  0 表示成功
+*********************************************************************/
+static int cmd_nfc_poll(const struct shell *shell, size_t argc, char **argv)
+{
+    if (argc < 2)
+    {
+        shell_print(shell, "Usage: app nfc_poll <start|stop> [timeout_sec]");
+        shell_print(shell, "  start [timeout_sec] - Start NFC polling (default 30s, auto HPD after card detected or timeout)");
+        shell_print(shell, "  stop                - Stop NFC polling and enter HPD mode");
+        return -EINVAL;
+    }
+
+    if (strcmp(argv[1], "start") == 0)
+    {
+        uint32_t timeout_s = 30; /* 默认30秒 */
+        if (argc >= 3)
+        {
+            timeout_s = atoi(argv[2]);
+            if (timeout_s == 0)
+            {
+                timeout_s = 30; /* 如果输入无效，使用默认值 */
+            }
+        }
+        shell_print(shell, "Starting NFC polling for %d seconds...", timeout_s);
+        my_nfc_start_poll(timeout_s);
+        shell_print(shell, "NFC polling started: %ds timeout, will enter HPD mode when card detected or timeout", timeout_s);
+    }
+    else if (strcmp(argv[1], "stop") == 0)
+    {
+        shell_print(shell, "Stopping NFC polling...");
+        my_nfc_stop_poll();
+        shell_print(shell, "NFC polling stopped, entered HPD mode");
+    }
+    else
+    {
+        shell_error(shell, "Invalid parameter: %s", argv[1]);
+        shell_print(shell, "Usage: app nfc_poll <start|stop> [timeout_sec]");
+        return -EINVAL;
+    }
+
+    return 0;
+}
+
 /* 注册自定义命令到 Shell 子系统 */
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(sysinfo, NULL, "Display system information", cmd_system_info),
@@ -489,6 +540,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(gettime, NULL, "gettime unix seconds", cmd_get_time),
     SHELL_CMD(modeset, NULL, "Configure longlife or smart mode parameters", cmd_modeset),
     SHELL_CMD(AT_TEST, NULL, "Usage:app AT_TEST \"TEST xxxx(AT^GT_CM=xxxx)\"", shell_at_test),
+    SHELL_CMD(nfc_poll, NULL, "NFC polling: app nfc_poll <start|stop>", cmd_nfc_poll),
     SHELL_SUBCMD_SET_END
 );
 /* Zephyr Shell 子系统提供的宏，随 nRF Connect SDK一起提供，用来在 Shell里注册一个“根命令”

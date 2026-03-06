@@ -11,21 +11,23 @@
 
 #include "../inc/fm175xx_driver.h"
 #include "../inc/fm175xx_reg.h"
+#include "../inc/nfc_reader_api.h"
 
-#include <zephyr/kernel.h>
+#include <string.h>
 #include <zephyr/device.h>
-#include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/i2c.h>
+#include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
 LOG_MODULE_REGISTER(fm175xx_driver, LOG_LEVEL_INF);
 
 /* I2C 设备配置 */
-#define NFC_I2C_NODE    DT_ALIAS(nfc_i2c)
+#define NFC_I2C_NODE DT_ALIAS(nfc_i2c)
 static const struct device *nfc_i2c_dev = DEVICE_DT_GET(NFC_I2C_NODE);
 
 /* NPD 复位引脚配置 */
-#define NFC_NPD_NODE    DT_ALIAS(nfc_npd_ctrl)
+#define NFC_NPD_NODE DT_ALIAS(nfc_npd_ctrl)
 static const struct gpio_dt_spec nfc_npd_gpio = GPIO_DT_SPEC_GET(NFC_NPD_NODE, gpios);
 
 /* 轮询状态 */
@@ -37,7 +39,8 @@ static nfc_card_detected_cb_t g_card_cb = NULL;
 static void fm175xx_poll_handler(struct k_work *work);
 
 /* 卡片信息 */
-static struct {
+static struct
+{
     uint8_t uid[16];
     uint8_t uid_len;
     uint8_t sak;
@@ -51,7 +54,7 @@ static struct {
 **函数功能:  执行 NPD 硬件复位
 **返 回 值:  无
 *********************************************************************/
-static void fm175xx_npd_reset(void)
+void fm175xx_npd_reset(void)
 {
     /* NPD 低电平复位 */
     gpio_pin_set_dt(&nfc_npd_gpio, 0);
@@ -60,8 +63,6 @@ static void fm175xx_npd_reset(void)
     /* NPD 高电平释放 */
     gpio_pin_set_dt(&nfc_npd_gpio, 1);
     k_sleep(K_MSEC(2));
-
-    LOG_INF("FM175XX NPD reset completed");
 }
 
 /********************************************************************
@@ -78,7 +79,8 @@ int fm175xx_read_reg(uint8_t reg, uint8_t *data)
     uint8_t tx_buf = reg & 0x3F;
 
     ret = i2c_write(nfc_i2c_dev, &tx_buf, 1, FM175XX_I2C_ADDR);
-    if (ret < 0) {
+    if (ret < 0)
+    {
         return ret;
     }
 
@@ -113,20 +115,23 @@ int fm175xx_driver_init(void)
     uint8_t version;
 
     /* 检查 I2C 设备 */
-    if (!device_is_ready(nfc_i2c_dev)) {
+    if (!device_is_ready(nfc_i2c_dev))
+    {
         LOG_ERR("NFC I2C device not ready");
         return -ENODEV;
     }
 
     /* 检查 NPD GPIO */
-    if (!device_is_ready(nfc_npd_gpio.port)) {
+    if (!device_is_ready(nfc_npd_gpio.port))
+    {
         LOG_ERR("NFC NPD GPIO not ready");
         return -ENODEV;
     }
 
     /* 配置 NPD GPIO 为输出模式，默认高电平 */
     ret = gpio_pin_configure_dt(&nfc_npd_gpio, GPIO_OUTPUT_HIGH);
-    if (ret < 0) {
+    if (ret < 0)
+    {
         LOG_ERR("Failed to configure NPD GPIO: %d", ret);
         return ret;
     }
@@ -136,22 +141,22 @@ int fm175xx_driver_init(void)
 
     /* 读取版本寄存器 */
     ret = fm175xx_read_reg(JREG_VERSION, &version);
-    if (ret < 0) {
+    if (ret < 0)
+    {
         LOG_ERR("Failed to read FM175XX version: %d", ret);
         return ret;
     }
 
     LOG_INF("FM175XX Version: 0x%02X", version);
-
-    /* 软件复位 */
-    fm175xx_write_reg(JREG_COMMAND, CMD_SOFT_RESET);
     k_sleep(K_MSEC(1));
 
-    /* 清空 FIFO */
-    uint8_t reg_val;
-    fm175xx_read_reg(JREG_FIFOLEVEL, &reg_val);
-    reg_val |= 0x80;
-    fm175xx_write_reg(JREG_FIFOLEVEL, reg_val);
+    /* 验证 FIFO 读写功能 */
+    ret = fm175xx_check_fifo();
+    if (ret < 0)
+    {
+        LOG_ERR("FM175XX FIFO check failed: %d", ret);
+        return ret;
+    }
 
     /* 初始化轮询工作项 */
     k_work_init_delayable(&g_poll_work, fm175xx_poll_handler);
@@ -197,8 +202,53 @@ int fm175xx_get_version(uint8_t *version)
 *********************************************************************/
 static void fm175xx_poll_handler(struct k_work *work)
 {
-    /* TODO: 实现卡片检测逻辑 */
-    if (g_poll_running) {
+    uint8_t result;
+    uint8_t uid_len;
+
+    if (!g_poll_running)
+    {
+        return;
+    }
+
+    /* 使用原厂兼容的 Type A 应用流程 */
+    result = Type_A_App();
+    if (result == FM175XX_SUCCESS)
+    {
+        /* 根据 ATQA 计算 UID 长度 */
+        if ((PICC_A.ATQA[0] & 0xC0) == 0x00)
+        {
+            uid_len = 4;
+        }
+        else if ((PICC_A.ATQA[0] & 0xC0) == 0x40)
+        {
+            uid_len = 7;
+        }
+        else
+        {
+            uid_len = 10;
+        }
+
+        LOG_DBG("Card detected, UID: %02X%02X%02X%02X",
+                PICC_A.UID[0], PICC_A.UID[1], PICC_A.UID[2], PICC_A.UID[3]);
+
+        /* 调用回调函数通知上层 */
+        if (g_card_cb != NULL)
+        {
+            g_card_cb(NFC_CARD_TYPE_MIFARE, PICC_A.UID, uid_len, NULL, 0);
+        }
+
+        g_card_info.present = true;
+        memcpy(g_card_info.uid, PICC_A.UID, 16);
+        g_card_info.uid_len = uid_len;
+    }
+    else
+    {
+        LOG_DBG("No card detected (result=%d)", result);
+    }
+
+    /* 重新调度轮询 */
+    if (g_poll_running)
+    {
         k_work_reschedule(&g_poll_work, K_MSEC(500));
     }
 }
@@ -212,7 +262,8 @@ static void fm175xx_poll_handler(struct k_work *work)
 *********************************************************************/
 int fm175xx_poll_start(nfc_card_detected_cb_t cb)
 {
-    if (g_poll_running) {
+    if (g_poll_running)
+    {
         return 0;
     }
 
@@ -221,7 +272,6 @@ int fm175xx_poll_start(nfc_card_detected_cb_t cb)
 
     k_work_schedule(&g_poll_work, K_NO_WAIT);
 
-    LOG_INF("FM175XX polling started");
     return 0;
 }
 
@@ -234,14 +284,18 @@ int fm175xx_poll_start(nfc_card_detected_cb_t cb)
 *********************************************************************/
 int fm175xx_poll_stop(void)
 {
-    if (!g_poll_running) {
+    struct k_work_sync sync;
+
+    if (!g_poll_running)
+    {
         return 0;
     }
 
     g_poll_running = false;
-    k_work_cancel_delayable(&g_poll_work);
 
-    LOG_INF("FM175XX polling stopped");
+    /* 取消并等待当前工作项完成，避免在 HPD 模式下进行 I2C 通信 */
+    k_work_cancel_delayable_sync(&g_poll_work, &sync);
+
     return 0;
 }
 
@@ -259,7 +313,8 @@ int fm175xx_modify_reg(uint8_t reg_addr, uint8_t mask, uint8_t set)
     uint8_t reg_val;
 
     ret = fm175xx_read_reg(reg_addr, &reg_val);
-    if (ret < 0) {
+    if (ret < 0)
+    {
         return ret;
     }
 
@@ -278,14 +333,23 @@ int fm175xx_modify_reg(uint8_t reg_addr, uint8_t mask, uint8_t set)
 int fm175xx_read_fifo(uint8_t length, uint8_t *data_buf)
 {
     int ret;
-    uint8_t i;
+    uint8_t reg_addr;
 
-    for (i = 0; i < length; i++) {
-        ret = fm175xx_read_reg(JREG_FIFODATA, &data_buf[i]);
-        if (ret < 0) {
-            LOG_ERR("Read FIFO byte %d failed: %d", i, ret);
-            return ret;
-        }
+    if (length > 64)
+    {
+        LOG_ERR("FIFO read length %d exceeds maximum 64", length);
+        return -EINVAL;
+    }
+
+    /* I2C 连续读：先写寄存器地址，然后读数据 */
+    reg_addr = JREG_FIFODATA & 0x3F;
+
+    /* 使用 i2c_write_read 实现连续读 */
+    ret = i2c_write_read(nfc_i2c_dev, FM175XX_I2C_ADDR, &reg_addr, 1, data_buf, length);
+    if (ret < 0)
+    {
+        LOG_ERR("FIFO read failed: %d", ret);
+        return ret;
     }
 
     return 0;
@@ -301,14 +365,24 @@ int fm175xx_read_fifo(uint8_t length, uint8_t *data_buf)
 int fm175xx_write_fifo(uint8_t length, uint8_t *data_buf)
 {
     int ret;
-    uint8_t i;
+    uint8_t tx_buf[65]; /* 最大 64 字节数据 + 1 字节寄存器地址 */
 
-    for (i = 0; i < length; i++) {
-        ret = fm175xx_write_reg(JREG_FIFODATA, data_buf[i]);
-        if (ret < 0) {
-            LOG_ERR("Write FIFO byte %d failed: %d", i, ret);
-            return ret;
-        }
+    if (length > 64)
+    {
+        LOG_ERR("FIFO write length %d exceeds maximum 64", length);
+        return -EINVAL;
+    }
+
+    /* 构建 I2C 传输缓冲区：寄存器地址 + 数据 */
+    tx_buf[0] = JREG_FIFODATA & 0x3F;
+    memcpy(&tx_buf[1], data_buf, length);
+
+    /* 单次 I2C 传输写入所有数据 */
+    ret = i2c_write(nfc_i2c_dev, tx_buf, length + 1, FM175XX_I2C_ADDR);
+    if (ret < 0)
+    {
+        LOG_ERR("Write FIFO failed: %d", ret);
+        return ret;
     }
 
     return 0;
@@ -327,25 +401,138 @@ int fm175xx_clear_fifo(void)
 
     /* 设置 FlushBuffer 位 */
     ret = fm175xx_read_reg(JREG_FIFOLEVEL, &reg_val);
-    if (ret < 0) {
+    if (ret < 0)
+    {
         return ret;
     }
 
     reg_val |= 0x80; /* FlushBuffer bit */
     ret = fm175xx_write_reg(JREG_FIFOLEVEL, reg_val);
-    if (ret < 0) {
+    if (ret < 0)
+    {
         return ret;
     }
 
     /* 验证 FIFO 已清空 */
     ret = fm175xx_read_reg(JREG_FIFOLEVEL, &reg_val);
-    if (ret < 0) {
+    if (ret < 0)
+    {
         return ret;
     }
 
-    if ((reg_val & 0x7F) != 0) {
+    if ((reg_val & 0x7F) != 0)
+    {
         LOG_WRN("FIFO not empty after clear: %d bytes", reg_val & 0x7F);
         return -EIO;
+    }
+
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  fm175xx_check_fifo
+**入口参数:  无
+**函数功能:  验证 FIFO 读写功能是否正常
+**返 回 值:  0 表示成功，负值表示失败
+*********************************************************************/
+int fm175xx_check_fifo(void)
+{
+    int ret;
+    uint8_t reg_val;
+    uint8_t test_data[10] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA};
+    uint8_t read_data[10] = {0};
+    uint8_t i;
+
+    /* 读取 CONTROL 寄存器 */
+    ret = fm175xx_read_reg(JREG_CONTROL, &reg_val);
+    if (ret < 0)
+    {
+        LOG_ERR("Failed to read CONTROL register: 0x%02X", reg_val);
+        return ret;
+    }
+
+    LOG_DBG("CONTROL register: 0x%02X", reg_val);
+    k_sleep(K_MSEC(1));
+
+    /* 清空 FIFO */
+    ret = fm175xx_clear_fifo();
+    if (ret < 0)
+    {
+        LOG_ERR("Failed to clear FIFO: %d", ret);
+        return ret;
+    }
+
+    /* 写入测试数据到 FIFO */
+    ret = fm175xx_write_fifo(10, test_data);
+    if (ret < 0)
+    {
+        LOG_ERR("Failed to write FIFO: %d", ret);
+        return ret;
+    }
+
+    /* 从 FIFO 读取数据 */
+    ret = fm175xx_read_fifo(10, read_data);
+    if (ret < 0)
+    {
+        LOG_ERR("Failed to read FIFO: %d", ret);
+        return ret;
+    }
+
+    /* 验证数据 */
+    if (memcmp(test_data, read_data, 10) != 0)
+    {
+        LOG_ERR("FIFO data mismatch");
+        return -EIO;
+    }
+
+    LOG_INF("FIFO check passed");
+
+    /* 清空 FIFO */
+    fm175xx_clear_fifo();
+
+    k_sleep(K_MSEC(1));
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  fm175xx_enter_hpd
+**入口参数:  无
+**出口参数:  无
+**函数功能:  进入 Hard Power Down (HPD) 模式，NPD 拉低
+**返 回 值:  0 表示成功
+*********************************************************************/
+int fm175xx_enter_hpd(void)
+{
+    /* 停止轮询 */
+    fm175xx_poll_stop();
+
+    /* NPD 拉低进入 HPD 模式 */
+    gpio_pin_set_dt(&nfc_npd_gpio, 0);
+
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  fm175xx_exit_hpd
+**入口参数:  无
+**出口参数:  无
+**函数功能:  退出 HPD 模式，重新初始化芯片
+**返 回 值:  0 表示成功，负值表示失败
+*********************************************************************/
+int fm175xx_exit_hpd(void)
+{
+    int ret;
+    uint8_t version;
+
+    /* 执行硬件复位 */
+    fm175xx_npd_reset();
+
+    /* 读取版本寄存器验证芯片已唤醒 */
+    ret = fm175xx_read_reg(JREG_VERSION, &version);
+    if (ret < 0)
+    {
+        LOG_ERR("Failed to read FM175XX version after HPD exit: %d", ret);
+        return ret;
     }
 
     return 0;

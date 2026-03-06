@@ -12,7 +12,24 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260228"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_0303"
+/* 软件版本:        V1.0
+** 完成日期:        2026.02.28
+** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)
+** 修改内容:        1. 完成NFC读卡功能并对NFC功能进行优化 - 修复 fm175xx_driver.c 中 FIFO 连续读时序（使用 i2c_write_read），实现动态轮询时长配置，添加卡片事件上报到主任务并调整日志输出；
+**                 2. 目前支持的卡片类型为 TYPE-A (Mifare Classic 和 NTag) 卡片的UUID读取；
+**                 3. FUN_KEY 按键功能实现 - 在 my_ctrl.c 中实现短按/长按检测（下降沿中断 + 50ms 轮询定时器），短按启动 NFC 轮询，长按发送事件到主任务；
+**                 4. 设备树配置更新 - nrf54l15dk_nrf54l15_cpuapp.overlay 中修改 FUN_KEY 为 gpio-keys 兼容类型，配置内部上拉和下降沿触发；
+**                 5. 部分代码规范化 - 统一所有文件编码风格（大括号换行），为多个函数添加标准格式注释（含功能描述）；
+**                 6. 消息处理扩展 - main.c 中增加按键短按/长按事件处理，短按触发 NFC 轮询启动，长按发送事件到主任务；
+**                 7. 头文件同步更新 - my_ctrl.h、my_nfc.h、nfc_api.h 等头文件补充新接口声明和详细注释；
+**
+**                 注：NFC卡目前只支持TYPEA协议的读（包含Mifare Classic 和 NTag）卡片的UUID读取
+**                 FM17550模块事实上可以支持两种卡的读写的包含TYPEA和TYPEB协议的卡片，但是原厂提供的DEMO目前只支持TYPEA协议的读写
+**                 未来看产品经理的要求再做处理（支持TYPEB协议的读写），我们软件上可以请原厂提供可以兼容TYPEA及TYPEB协议的DEMO后再做优化
+*/
+
+//#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260228"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.02.28
 ** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)

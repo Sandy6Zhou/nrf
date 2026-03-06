@@ -404,7 +404,8 @@ void set_reset_lte_timer(void)
 
     LOG_INF("current_time:%llu,timer_interval:%d", current_time, timer_interval);
 
-    if (timer_interval == -1) return;
+    if (timer_interval == -1)
+        return;
 
     ret = rand_0_to_120_seconds(&timer_interval_random);
     if (ret == PSA_SUCCESS)
@@ -427,7 +428,8 @@ void set_reset_lte_timer(void)
 *********************************************************************/
 void device_config_init(DeviceWorkModeConfig *p_workmode)
 {
-    if (p_workmode == NULL) return;
+    if (p_workmode == NULL)
+        return;
 
     /* 默认设置为智能模式 */ 
     p_workmode->current_mode = MY_MODE_SMART;
@@ -539,6 +541,26 @@ int main(void)
                     LOG_HEXDUMP_INF(msg.pData, msg.DataLen, "BLE RAW");
                     MY_FREE_BUFFER(msg.pData);
                 }
+                break;
+
+            case MY_MSG_NFC_CARD_EVENT:
+                LOG_INF("NFC event received, DataLen=%d, expected=%d", msg.DataLen, sizeof(struct nfc_card_info));
+                if (msg.pData && msg.DataLen == sizeof(struct nfc_card_info))
+                {
+                    struct nfc_card_info *card = (struct nfc_card_info *)msg.pData;
+                    LOG_INF("NFC Card detected, type: %d", card->type);
+                    LOG_INF("NFC Card UID (%d bytes): %02X%02X%02X%02X", card->uid_len, card->uid[0], card->uid[1], card->uid[2], card->uid[3]);
+                }
+                break;
+
+            case MY_MSG_CTRL_KEY_SHORT_PRESS:
+                LOG_INF("KEY EVENT: Short press detected");
+                /* 启动 NFC 轮询 */
+                my_nfc_start_poll(30);
+                break;
+
+            case MY_MSG_CTRL_KEY_LONG_PRESS:
+                LOG_INF("KEY EVENT: Long press detected (2s)");
                 break;
 
             case MY_MSG_WORK_MODE_SWITCH:

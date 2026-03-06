@@ -18,8 +18,10 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <math.h>
 #include <time.h>
 #include <ctype.h>
@@ -119,18 +121,30 @@ typedef enum
     MY_MSG_BLE_DATA_EVENT,
     MY_MSG_CTRL_LED,    /* LED 控制消息 */
     MY_MSG_CTRL_BUZZER, /* 蜂鸣器控制消息 */
-    MY_MSG_GSENSOR_READ,   /* G-Sensor 读取六轴数据 */
     MY_MSG_WORK_MODE_SWITCH,
+
+    /* LTE处理程序消息 */
     MY_MSG_RESET_LTE_TIMER,
     MY_MSG_LTE_PWRON,
     MY_MSG_LTE_PWROFF,
     MY_MSG_LTE_REV,
+
+    /* G-Sensor处理程序消息 */
     MY_MSG_GSENSOR_PWRON,
     MY_MSG_GSENSOR_PWROFF,
     MY_MSG_GSENSOR_GET_MOTION_STATUS,
     MY_MSG_GSENSOR_INIT,
-    MY_MSG_NFC_START_POLL,     /* 启动NFC轮询 */
-    MY_MSG_NFC_STOP_POLL,      /* 停止NFC轮询 */
+    MY_MSG_GSENSOR_READ, /* G-Sensor 读取六轴数据 */
+
+    /* NFC处理程序消息 */
+    MY_MSG_NFC_START_POLL,   /* 启动NFC轮询 */
+    MY_MSG_NFC_STOP_POLL,    /* 停止NFC轮询 */
+    MY_MSG_NFC_CARD_EVENT,   /* NFC卡片事件 */
+    MY_MSG_NFC_POLL_TIMEOUT, /* NFC轮询超时 */
+
+    /* CTRL处理程序消息 */
+    MY_MSG_CTRL_KEY_SHORT_PRESS, /* 按键短按事件 */
+    MY_MSG_CTRL_KEY_LONG_PRESS,  /* 按键长按事件（2秒） */
 
 } MY_MAIN_TASK_MSG;
 
