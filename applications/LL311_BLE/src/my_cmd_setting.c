@@ -98,6 +98,9 @@ DeviceCmdConfig g_device_cmd_config = {
     .ncftrig_nfc_no = {0},           /* 默认空 */
     .ncftrig_command = {0},          /* 默认空 */
 
+    /* NFCAUTH 指令默认配置 */
+    .nfcauth_card_count = 0,         /* 默认0张卡 */
+
 };
 
 static int remalm_cmd_handler(at_cmd_struc* msg);
@@ -119,6 +122,7 @@ static int lockcd_cmd_handler(at_cmd_struc* msg);
 static int led_cmd_handler(at_cmd_struc* msg);
 static int buzzer_cmd_handler(at_cmd_struc* msg);
 static int ncftrig_cmd_handler(at_cmd_struc* msg);
+static int nfcauth_cmd_handler(at_cmd_struc* msg);
 
 static const at_cmd_attr_t at_cmd_attr_table[] =
 {
@@ -141,6 +145,7 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"LED",            led_cmd_handler},
     {"BUZZER",         buzzer_cmd_handler},
     {"NCFTRIG",        ncftrig_cmd_handler},
+    {"NFCAUTH",        nfcauth_cmd_handler},
 };
 
 /*********************************************************************
@@ -1763,6 +1768,428 @@ static int ncftrig_cmd_handler(at_cmd_struc* msg)
 
     return BLE_DATA_TYPE_AT_CMD;
 
+param_invalid:
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    return BLE_DATA_TYPE_AT_CMD;
+}
+
+/********************************************************************
+**函数名称:  nfcauth_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针
+**出口参数:  msg->resp_msg  ---  响应消息
+**           msg->resp_length --- 响应长度
+**函数功能:  处理NFCAUTH指令：NFC卡权限管理
+**指令格式:  NFCAUTH,SET,[NFC NO],[LAT],[LON],[半径],[Start Time],[End Time],[Unlock Times]#
+**           NFCAUTH,PSET,[NFC NO]#
+**           NFCAUTH,DEL,[ALL]#
+**           NFCAUTH,DEL,[NFC NO]#
+**           NFCAUTH,CHECK#
+**           NFCAUTH,CHECK,[NFC NO]#
+**参数说明:  SET - 设置NFC卡权限
+**           PSET - 快速设置管理员卡（等价于SET，任意地点、时间、不限次数）
+**           DEL - 删除已授权卡号
+**           CHECK - 查询已设置卡号
+**           NFC NO - NFC卡号
+**           LAT/LON - 经纬度，均为空字符串表示不限制
+**           半径 - 可操作地址半径，单位米，范围50~999900
+**           Start Time/End Time - 起止时间，格式必须为YYMMDDHHMM，均为空字符串表示不限制
+**           Unlock Times - 可用次数，0表示不限次数，范围0/1~999
+**返 回 值:  BLE数据类型
+*********************************************************************/
+static int nfcauth_cmd_handler(at_cmd_struc* msg)
+{
+    uint16_t remaining;
+    int i;
+    int index;
+    int found;
+    int nfc_no_len;
+    int32_t lat_value;
+    uint8_t lat_valid;
+    int32_t lon_value;
+    uint8_t lon_valid;
+    int32_t radius;
+    uint8_t starttime_valid;
+    uint8_t endtime_valid;
+    int32_t unlock_times;
+    char temp_buf[256];
+    int temp_len;
+
+    remaining = sizeof(msg->resp_msg);
+
+#if 0
+    for(int j = 0; j < msg->parm_count + 1; j++)
+    {
+        LOG_INF("=====>%s", msg->parm[j]);
+    }
+#endif
+
+    /* 参数数量基础校验 */
+    if (msg->parm_count < 1)
+    {
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        goto param_invalid;
+    }
+
+    /* 处理SET指令：设置NFC卡权限 */
+    if (strcmp(msg->parm[1], "SET") == 0)
+    {
+        /* SET指令参数数量校验：需要8个参数 */
+        if (msg->parm_count != 8)
+        {
+            LOG_INF("%s=>SET param count error: %d", __func__, msg->parm_count);
+            goto param_invalid;
+        }
+
+        /* NFC卡号参数校验 */
+        nfc_no_len = strlen(msg->parm[2]);
+        if (nfc_no_len == 0 || nfc_no_len >= sizeof(g_device_cmd_config.nfcauth_cards[0].nfc_no))
+        {
+            LOG_INF("%s=>invalid NFC NO. param: %s", __func__, msg->parm[2]);
+            goto param_invalid;
+        }
+
+        /* 经纬度参数解析和校验 */
+        if (parse_coordinate_value(msg->parm[3], 1, &lat_value, &lat_valid) != 0)
+        {
+            LOG_INF("%s=>invalid LAT param: %s", __func__, msg->parm[3]);
+            goto param_invalid;
+        }
+
+        if (parse_coordinate_value(msg->parm[4], 0, &lon_value, &lon_valid) != 0)
+        {
+            LOG_INF("%s=>invalid LON param: %s", __func__, msg->parm[4]);
+            goto param_invalid;
+        }
+
+        if ((lat_valid == 1 && lon_valid == 0) || (lat_valid == 0 && lon_valid == 1))
+        {
+            LOG_INF("%s=>invalid LAT or LON param", __func__);
+            goto param_invalid;
+        }
+
+        /* 半径参数校验：非空时范围50~999900米，空字符串表示无效 */
+        temp_len = strlen(msg->parm[5]);
+        if (temp_len == 0)
+        {
+            LOG_INF("%s=>invalid radius param", __func__);
+            goto param_invalid;
+        }
+
+        if (!is_integer_array(msg->parm[5], temp_len))
+        {
+            LOG_INF("%s=>invalid radius param: %s (not pure digit)", __func__, msg->parm[5]);
+            goto param_invalid;
+        }
+        else
+        {
+            radius = atoi(msg->parm[5]);
+            if (radius < 50 || radius > 999900)
+            {
+                LOG_INF("%s=>invalid radius param: %s", __func__, msg->parm[5]);
+                goto param_invalid;
+            }
+        }
+
+        /* 起止时间参数格式校验：必须为YYMMDDHHMM或空字符串 */
+        if (validate_time_format(msg->parm[6], &starttime_valid) != 0)
+        {
+            LOG_INF("%s=>invalid start_time param format: %s", __func__, msg->parm[6]);
+            goto param_invalid;
+        }
+
+        if (validate_time_format(msg->parm[7], &endtime_valid) != 0)
+        {
+            LOG_INF("%s=>invalid end_time param format: %s", __func__, msg->parm[7]);
+            goto param_invalid;
+        }
+
+        if ((starttime_valid == 1 && endtime_valid == 0)
+        || (starttime_valid == 0 && endtime_valid == 1))
+        {
+            LOG_INF("%s=>invalid start_time or end_time param", __func__);
+            goto param_invalid;
+        }
+
+        if (starttime_valid == 1 && endtime_valid == 1)
+        {
+            /* 比较开始时间和结束时间，开始时间必须小于结束时间 */
+            if (strcmp(msg->parm[6], msg->parm[7]) >= 0)
+            {
+                LOG_INF("%s=>start_time must be less than end_time: %s >= %s", __func__, msg->parm[6], msg->parm[7]);
+                goto param_invalid;
+            }
+        }
+
+        /* 可用次数参数校验：非空时范围1~999 */
+        temp_len = strlen(msg->parm[8]);
+        if (temp_len != 0)
+        {
+            if (!is_integer_array(msg->parm[8], temp_len))
+            {
+                LOG_INF("%s=>invalid unlock_times param: %s (not pure digit)", __func__, msg->parm[8]);
+                goto param_invalid;
+            }
+            else
+            {
+                unlock_times = atoi(msg->parm[8]);
+                // 仅允许 unlock_times 为 -1 或 1~999
+                if (!(unlock_times == -1 || (unlock_times >= 1 && unlock_times <= 999))) 
+                {
+                    LOG_INF("%s=>invalid unlock_times param: %s", __func__, msg->parm[8]);
+                    goto param_invalid;
+                }
+            }
+        }
+        else
+        {
+            unlock_times = -1;// 空字符串时，标记为-1，表示不限次数
+        }
+
+        /* 查找是否已存在该卡号，存在则更新，不存在则新增 */
+        found = 0;
+        for (i = 0; i < g_device_cmd_config.nfcauth_card_count; i++)
+        {
+            if (strcmp(g_device_cmd_config.nfcauth_cards[i].nfc_no, msg->parm[2]) == 0)
+            {
+                index = i;
+                found = 1;
+                break;
+            }
+        }
+
+        /* 新增卡号时检查是否已达到最大数量限制 */
+        if (!found)
+        {
+            if (g_device_cmd_config.nfcauth_card_count >= 10)
+            {
+                LOG_INF("%s=>card list full", __func__);
+                goto param_invalid;
+            }
+            index = g_device_cmd_config.nfcauth_card_count;
+            g_device_cmd_config.nfcauth_card_count++;
+        }
+
+        /* 保存卡权限信息 */
+        strcpy(g_device_cmd_config.nfcauth_cards[index].nfc_no, msg->parm[2]);
+        g_device_cmd_config.nfcauth_cards[index].lat = lat_value;
+        g_device_cmd_config.nfcauth_cards[index].lon = lon_value;
+        if (lat_valid == 1 && lon_valid == 1)
+        {
+            g_device_cmd_config.nfcauth_cards[index].lat_lon_valid = 1;
+        }
+        else
+        {
+            g_device_cmd_config.nfcauth_cards[index].lat_lon_valid = 0;
+        }
+        g_device_cmd_config.nfcauth_cards[index].radius = radius;
+        strcpy(g_device_cmd_config.nfcauth_cards[index].start_time, msg->parm[6]);
+        strcpy(g_device_cmd_config.nfcauth_cards[index].end_time, msg->parm[7]);
+        if (starttime_valid == 1 && endtime_valid == 1)
+        {
+            g_device_cmd_config.nfcauth_cards[index].time_valid = 1;
+        }
+        else
+        {
+            g_device_cmd_config.nfcauth_cards[index].time_valid = 0;
+        }
+        g_device_cmd_config.nfcauth_cards[index].unlock_times = unlock_times;
+
+        LOG_INF("%s=>SET,%s,%d,%d,%d,%u,%s,%s,%d,%u", __func__,
+                g_device_cmd_config.nfcauth_cards[index].nfc_no,
+                g_device_cmd_config.nfcauth_cards[index].lat,
+                g_device_cmd_config.nfcauth_cards[index].lon,
+                g_device_cmd_config.nfcauth_cards[index].lat_lon_valid,
+                g_device_cmd_config.nfcauth_cards[index].radius,
+                g_device_cmd_config.nfcauth_cards[index].start_time,
+                g_device_cmd_config.nfcauth_cards[index].end_time,
+                g_device_cmd_config.nfcauth_cards[index].time_valid,
+                g_device_cmd_config.nfcauth_cards[index].unlock_times);
+
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+    /* 处理PSET指令：快速设置管理员卡（任意地点、时间、不限次数） */
+    else if (strcmp(msg->parm[1], "PSET") == 0)
+    {
+        /* PSET指令参数数量校验：需要2个参数 */
+        if (msg->parm_count != 2)
+        {
+            LOG_INF("%s=>PSET param count error: %d", __func__, msg->parm_count);
+            goto param_invalid;
+        }
+
+        /* NFC卡号参数校验 */
+        nfc_no_len = strlen(msg->parm[2]);
+        if (nfc_no_len == 0 || nfc_no_len >= sizeof(g_device_cmd_config.nfcauth_cards[0].nfc_no))
+        {
+            LOG_INF("%s=>invalid NFC NO. param: %s", __func__, msg->parm[2]);
+            goto param_invalid;
+        }
+
+        /* 查找是否已存在该卡号，存在则更新，不存在则新增 */
+        found = 0;
+        for (i = 0; i < g_device_cmd_config.nfcauth_card_count; i++)
+        {
+            if (strcmp(g_device_cmd_config.nfcauth_cards[i].nfc_no, msg->parm[2]) == 0)
+            {
+                index = i;
+                found = 1;
+                break;
+            }
+        }
+
+        /* 新增卡号时检查是否已达到最大数量限制 */
+        if (!found)
+        {
+            if (g_device_cmd_config.nfcauth_card_count >= 10)
+            {
+                LOG_INF("%s=>card list full", __func__);
+                goto param_invalid;
+            }
+            index = g_device_cmd_config.nfcauth_card_count;
+            g_device_cmd_config.nfcauth_card_count++;
+        }
+
+        /* 设置管理员卡权限：所有限制项均设为0 */
+        strcpy(g_device_cmd_config.nfcauth_cards[index].nfc_no, msg->parm[2]);
+        g_device_cmd_config.nfcauth_cards[index].lat = 0;
+        g_device_cmd_config.nfcauth_cards[index].lon = 0;
+        g_device_cmd_config.nfcauth_cards[index].lat_lon_valid = 0;
+        g_device_cmd_config.nfcauth_cards[index].radius = 0;
+        strcpy(g_device_cmd_config.nfcauth_cards[index].start_time, "");
+        strcpy(g_device_cmd_config.nfcauth_cards[index].end_time, "");
+        g_device_cmd_config.nfcauth_cards[index].time_valid = 0;
+        g_device_cmd_config.nfcauth_cards[index].unlock_times = 0;
+
+        LOG_INF("%s=>PSET,%s", __func__, g_device_cmd_config.nfcauth_cards[index].nfc_no);
+
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+    /* 处理DEL指令：删除已授权卡号 */
+    else if (strcmp(msg->parm[1], "DEL") == 0)
+    {
+        /* DEL指令参数数量校验：需要2个参数 */
+        if (msg->parm_count != 2)
+        {
+            LOG_INF("%s=>DEL param count error: %d", __func__, msg->parm_count);
+            goto param_invalid;
+        }
+
+        /* 删除所有已授权卡号 */
+        if (strcmp(msg->parm[2], "ALL") == 0)
+        {
+            memset(g_device_cmd_config.nfcauth_cards, 0, sizeof(g_device_cmd_config.nfcauth_cards));
+            g_device_cmd_config.nfcauth_card_count = 0;
+            LOG_INF("%s=>DEL ALL", __func__);
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_NFC Delete ALL Success.");
+            return BLE_DATA_TYPE_AT_CMD;
+        }
+        /* 删除指定卡号 */
+        else
+        {
+            found = 0;
+            for (i = 0; i < g_device_cmd_config.nfcauth_card_count; i++)
+            {
+                if (strcmp(g_device_cmd_config.nfcauth_cards[i].nfc_no, msg->parm[2]) == 0)
+                {
+                    found = 1;
+                    /* 将后面的卡前移，覆盖被删除的卡 */
+                    for (index = i; index < g_device_cmd_config.nfcauth_card_count - 1; index++)
+                    {
+                        memcpy(&g_device_cmd_config.nfcauth_cards[index],
+                               &g_device_cmd_config.nfcauth_cards[index + 1],
+                               sizeof(NfcAuthCard));
+                    }
+                    /* 清空最后一个位置 */
+                    memset(&g_device_cmd_config.nfcauth_cards[g_device_cmd_config.nfcauth_card_count - 1],
+                           0, sizeof(NfcAuthCard));
+                    g_device_cmd_config.nfcauth_card_count--;
+                    break;
+                }
+            }
+
+            if (found)
+            {
+                LOG_INF("%s=>DEL,%s", __func__, msg->parm[2]);
+                msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_NFC %s Delete Success.", msg->parm[2]);
+                return BLE_DATA_TYPE_AT_CMD;
+            }
+            else
+            {
+                LOG_INF("%s=>DEL,%s not found", __func__, msg->parm[2]);
+                goto param_invalid;
+            }
+        }
+    }
+    /* 处理CHECK指令：查询已设置卡号 */
+    else if (strcmp(msg->parm[1], "CHECK") == 0)
+    {
+        /* 查询所有已设置卡号列表 */
+        if (msg->parm_count == 1)
+        {
+            temp_len = snprintf(temp_buf, sizeof(temp_buf), "RETURN_");
+            for (i = 0; i < g_device_cmd_config.nfcauth_card_count; i++)
+            {
+                if (i == g_device_cmd_config.nfcauth_card_count - 1)
+                {
+                    temp_len += snprintf(temp_buf + temp_len, sizeof(temp_buf) - temp_len,
+                                    "%s", g_device_cmd_config.nfcauth_cards[i].nfc_no);
+                }
+                else
+                {
+                    temp_len += snprintf(temp_buf + temp_len, sizeof(temp_buf) - temp_len,
+                                    "%s;", g_device_cmd_config.nfcauth_cards[i].nfc_no);
+                }
+            }
+
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "%s", temp_buf);
+            LOG_INF("%s=>CHECK,COUNT=%d", __func__, g_device_cmd_config.nfcauth_card_count);
+            return BLE_DATA_TYPE_AT_CMD;
+        }
+        /* 查询指定卡号的详细权限信息 */
+        else if (msg->parm_count == 2)
+        {
+            found = 0;
+            for (i = 0; i < g_device_cmd_config.nfcauth_card_count; i++)
+            {
+                if (strcmp(g_device_cmd_config.nfcauth_cards[i].nfc_no, msg->parm[2]) == 0)
+                {
+                    found = 1;
+                    msg->resp_length = snprintf(msg->resp_msg, remaining,
+                        "RETURN_%s,%d,%d,%u,%s,%s,%u",
+                        g_device_cmd_config.nfcauth_cards[i].nfc_no,
+                        g_device_cmd_config.nfcauth_cards[i].lat,
+                        g_device_cmd_config.nfcauth_cards[i].lon,
+                        g_device_cmd_config.nfcauth_cards[i].radius,
+                        g_device_cmd_config.nfcauth_cards[i].start_time,
+                        g_device_cmd_config.nfcauth_cards[i].end_time,
+                        g_device_cmd_config.nfcauth_cards[i].unlock_times);
+                    LOG_INF("%s=>CHECK,%s", __func__, msg->parm[2]);
+                    return BLE_DATA_TYPE_AT_CMD;
+                }
+            }
+
+            if (!found)
+            {
+                LOG_INF("%s=>CHECK,%s not found", __func__, msg->parm[2]);
+                goto param_invalid;
+            }
+        }
+        else
+        {
+            LOG_INF("%s=>CHECK param count error: %d", __func__, msg->parm_count);
+            goto param_invalid;
+        }
+    }
+    /* 无效的操作类型 */
+    else
+    {
+        LOG_INF("%s=>invalid operation: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
+
+/* 参数错误统一处理 */
 param_invalid:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
     return BLE_DATA_TYPE_AT_CMD;

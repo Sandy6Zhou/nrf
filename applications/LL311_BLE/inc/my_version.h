@@ -12,7 +12,14 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260311"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260313"
+/* 软件版本:        V1.0
+** 完成日期:        2026.03.13
+** 作    者:        周森达 (zhousenda@jimiiot.com)
+** 修改内容:        1.实现NFC开关锁与权限设置(包含卡号管理及权限设置相关指令)
+*/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260311"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.03.11
 ** 作    者:        周森达 (zhousenda@jimiiot.com)

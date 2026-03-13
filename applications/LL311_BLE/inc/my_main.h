@@ -84,6 +84,20 @@ typedef struct {
     IntelligentMode intelligent;           // 智能模式
 } DeviceWorkModeConfig;
 
+/* NFC卡权限结构体 */
+typedef struct
+{
+    char     nfc_no[16];           /* NFC卡号 */
+    int32_t  lat;                  /* 纬度，单位：微度 */
+    int32_t  lon;                  /* 经度，单位：微度 */
+    uint8_t  lat_lon_valid;        /* 经纬度有效标志: 0-不限制, 1-有效 */
+    uint32_t radius;               /* 半径，单位米 */
+    char     start_time[12];       /* 开始时间，格式YYMMDDHHMM */
+    char     end_time[12];         /* 结束时间，格式YYMMDDHHMM */
+    uint8_t  time_valid;           /* 起止时间有效标志: 0-不限制, 1-有效 */
+    int16_t  unlock_times;         /* 可用次数，-1表示不限次数 */
+} NfcAuthCard;
+
 /* 设备指令配置结构体 */
 typedef struct
 {
@@ -167,6 +181,10 @@ typedef struct
     /* NCFTRIG 指令配置 */
     char     ncftrig_nfc_no[16];        /* 联动的NFC卡号 */
     char     ncftrig_command[128];      /* 需要执行的完整可执行指令 */
+
+    /* NFCAUTH 指令配置 */
+    NfcAuthCard nfcauth_cards[10];      /* NFC卡权限数组，最多10张卡 */
+    uint8_t     nfcauth_card_count;     /* 已授权卡数量 */
 
 } DeviceCmdConfig;
 
