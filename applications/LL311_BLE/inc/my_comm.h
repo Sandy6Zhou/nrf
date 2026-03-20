@@ -126,6 +126,9 @@ typedef enum
     MY_MSG_CTRL_LED,    /* LED 控制消息 */
     MY_MSG_CTRL_BUZZER, /* 蜂鸣器控制消息 */
     MY_MSG_WORK_MODE_SWITCH,
+    MY_MSG_SHOW_BATTERY, // 用LED灯显示电池状态
+
+
 
     /* LTE处理程序消息 */
     MY_MSG_RESET_LTE_TIMER,

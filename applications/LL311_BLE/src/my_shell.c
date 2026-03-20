@@ -528,6 +528,71 @@ static int cmd_nfc_poll(const struct shell *shell, size_t argc, char **argv)
     return 0;
 }
 
+// 外部电池状态结构体声明, 用于在 shell 命令中修改电池状态, 调试用
+extern Batt_LED_Ctrl_S g_batt_led_ctrl;
+
+/**
+ * @brief Shell 命令：设置电池状态
+ * 
+ * 该函数处理 "app batt_state" 命令，用于手动设置电池状态
+ * 
+ * @param shell  shell 实例指针
+ * @param argc   参数个数
+ * @param argv   参数数组
+ * 
+ * @return 成功返回 0，失败返回 -EINVAL
+ */
+/********************************************************************
+**函数名称:  cmd_batt_stateconst
+**入口参数:  shell   ---        Shell 实例指针
+**           argc    ---        参数数量
+**           argv    ---        参数数组
+**出口参数:  无
+**函数功能:  命令：设置电池状态，调试用
+**返 回 值:  0 表示成功
+*********************************************************************/
+static int cmd_batt_stateconst(struct shell *shell, size_t argc, char **argv)
+{
+    if (strcmp(argv[1], "Empty") == 0)
+    {
+        g_batt_led_ctrl.state = BATT_EMPTY;  // 设置电池状态为空
+        shell_print(shell, "battery state: Empty");  // 输出状态信息
+    }
+    else if (strcmp(argv[1], "Low") == 0)
+    {
+        g_batt_led_ctrl.state = BATT_LOW;  // 设置电池状态为低
+        shell_print(shell, "battery state: Low");  // 输出状态信息
+    }
+    else if (strcmp(argv[1], "Normal") == 0)
+    {
+        g_batt_led_ctrl.state = BATT_NORMAL;  // 设置电池状态为正常
+        shell_print(shell, "battery state: Normal");  // 输出状态信息
+    }
+    else if (strcmp(argv[1], "Fair") == 0)
+    {
+        g_batt_led_ctrl.state = BATT_FAIR;  // 设置电池状态为良好
+        shell_print(shell, "battery state: Fair");  // 输出状态信息
+    }
+    else if (strcmp(argv[1], "High") == 0)
+    {
+        g_batt_led_ctrl.state = BATT_HIGH;  // 设置电池状态为高
+        shell_print(shell, "battery state: High");  // 输出状态信息
+    }
+    else if (strcmp(argv[1], "Full") == 0)
+    {
+        g_batt_led_ctrl.state = BATT_FULL;  // 设置电池状态为满
+        shell_print(shell, "battery state: Full");  // 输出状态信息
+    }
+    else
+    {
+        shell_error(shell, "Invalid parameter: %s", argv[1]);  // 输出错误信息
+        shell_print(shell, "Usage: app batt_state_change <Empty|Low|Normal|Fair|High|Full>");  // 输出使用方法
+        return -EINVAL;  // 返回错误代码
+    }
+
+    return 0;
+}
+
 /********************************************************************
 **函数名称：cmd_shutdown
 **入口参数：shell   ---        Shell 实例指针
@@ -570,6 +635,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(AT_TEST, NULL, "Usage:app AT_TEST \"TEST xxxx(AT^GT_CM=xxxx)\"", shell_at_test),
     SHELL_CMD(nfc_poll, NULL, "NFC polling: app nfc_poll <start|stop>", cmd_nfc_poll),
     SHELL_CMD(shutdown, NULL, "Shutdown system (enter ultra-low power mode)", cmd_shutdown),
+    SHELL_CMD(batt_state_change, NULL, "battery state change", cmd_batt_stateconst),//手动改变电池状态，调试用
     SHELL_SUBCMD_SET_END
 );
 /* Zephyr Shell 子系统提供的宏，随 nRF Connect SDK一起提供，用来在 Shell里注册一个“根命令”

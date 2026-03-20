@@ -16,6 +16,9 @@ LOG_MODULE_REGISTER(my_battery, LOG_LEVEL_INF);
 
 /* zephyr,user 里有两个 io-channels：index 0 = 通道0(电池)，index 1 = 通道1(NTC) */
 #define ZEPHYR_USER_NODE DT_PATH(zephyr_user)
+
+#define BATT_TIMER_MS 100  /**< 电池状态检查定时器的周期（毫秒），用于控制LED亮灭 */
+
 /* 通道 0：电池电压 */
 static const struct adc_dt_spec batt_adc = ADC_DT_SPEC_GET_BY_IDX(ZEPHYR_USER_NODE, 0);
 
@@ -31,6 +34,43 @@ static struct adc_sequence batt_seq = {
     .buffer = &batt_raw,
     .buffer_size = sizeof(batt_raw),
 };
+
+// 电池状态检查定时器
+static struct k_timer g_batt_timer;
+
+// 电池状态检查结构体，包含定时器、状态和计数器
+Batt_LED_Ctrl_S g_batt_led_ctrl =
+{
+    .timer = &g_batt_timer,    // 关联电池定时器
+    .state = BATT_NORMAL,            // 初始电池状态设为正常
+    .time_count = 0,                 // 初始时间计数器为0
+};
+
+// 电源状态，初始值为未连接
+MY_CHG_STATE g_charg_state = NO_CHARGING;
+
+/*********************************************************************
+**函数名称:  batt_timer_handler
+**入口参数:  timer 定时器指针，由系统自动传递
+**出口参数:  无
+**函数功能:  定时器回调函数，向控制模块发送电池状态作LED控制
+*********************************************************************/
+static void batt_timer_handler(struct k_timer *timer)
+{
+    MSG_S msg;  // 消息结构体，用于发送电池状态显示消息
+
+    g_batt_led_ctrl.time_count++;  // 增加电池状态时间计数器
+
+    msg.msgID = MY_MSG_SHOW_BATTERY;  // 设置消息ID为电池状态显示消息
+    msg.DataLen = sizeof(g_batt_led_ctrl);  // 设置消息数据长度
+    msg.pData = (void *)&g_batt_led_ctrl;  // 设置消息数据指针为电池LED控制结构体地址
+
+    /*
+    定时器发送消息到CTRL线程中处理控制LED,如果线程阻塞，会导致LED控制出现异常
+    后续需要考虑是否直接在中断中处理，避免线程阻塞
+    */
+    my_send_msg_data(MOD_CTRL, MOD_CTRL, &msg);  // 发送消息到控制模块
+}
 
 /* 读取电池电压原始值，并转换为 mV（不含分压系数） */
 int batt_read_mv(int32_t *mv)
@@ -143,5 +183,65 @@ int batt_gpio_init(void)
                        BIT(charge_state.pin) | BIT(charge_det.pin));
     gpio_add_callback(charge_state.port, &batt_gpio_cb);
 
+    // 初始化电池状态LED控制定时器
+    k_timer_init(g_batt_led_ctrl.timer, batt_timer_handler, NULL);
+
     return 0;
+}
+
+/*********************************************************************
+**函数名称:  my_battery_updata_state
+**入口参数:  无
+**出口参数:  无
+**函数功能:  检查并更新电池状态
+*********************************************************************/
+void my_battery_updata_state()
+{
+    //TODO 更加ADC值检测电压，根据电压判断电池电量,更新电池状态到g_batt_led_ctrl.state
+
+    switch(g_batt_led_ctrl.state)
+    {
+        case BATT_EMPTY:
+            LOG_INF("battery empty");  // 电池电量为空
+            break;
+        case BATT_LOW:
+            LOG_INF("battery low");    // 电池电量低
+            break;
+        case BATT_NORMAL:
+            LOG_INF("battery normal"); // 电池电量正常
+            break;
+        case BATT_FAIR:
+            LOG_INF("battery fair");   // 电池电量良好
+            break;
+        case BATT_HIGH:
+            LOG_INF("battery high");  // 电池电量高
+            break;
+        case BATT_FULL:
+            LOG_INF("battery full");   // 电池电量满
+            break;
+        default:
+            break;  // 处理未定义的状态
+    }
+}
+
+/*********************************************************************
+**函数名称:  my_battery_show
+**入口参数:  无
+**出口参数:  无
+**函数功能:  启动100ms循环定时器控制LED显示电池状态
+*********************************************************************/
+void my_battery_show()
+{
+    if(g_charg_state != NO_CHARGING)
+    {
+        LOG_INF("be charging");  // 设备正在充电，输出充电状态
+        return;  // 直接返回，不进行后续的电池状态检查
+    }
+
+    my_battery_updata_state();  // 检查并输出当前电池状态
+
+    //当按键重复按下时，重新开始定时器
+    g_batt_led_ctrl.time_count = 0;  // 重置时间计数器
+    // 启动电池状态LED控制定时器，立即执行一次，然后以 100ms 为周期重复执行
+    k_timer_start(g_batt_led_ctrl.timer, K_MSEC(0), K_MSEC(BATT_TIMER_MS));
 }

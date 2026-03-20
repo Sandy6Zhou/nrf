@@ -23,6 +23,21 @@ struct my_buzzer_note
     uint32_t duration_ms; /* 持续时间 (ms) */
 };
 
+typedef enum
+{
+    CLOSE_LED,   /* 关闭 LED */
+    OPEN_LED,    /* 打开 LED */
+    TOGGLE_LED,  /* 切换 LED 状态 */
+} MY_LED_CTRL_CMD;
+
+//定义了电池相关 LED ID，用于标识不同的 LED 指示灯
+typedef enum
+{
+    BATT_LED1,  /**< 电池 LED 1 */
+    BATT_LED2,  /**< 电池 LED 2 */
+    BATT_LED3,  /**< 电池 LED 3 */
+} MY_LED_ID;
+
 /* --- 接口函数 --- */
 
 /********************************************************************

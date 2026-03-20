@@ -588,6 +588,8 @@ int main(void)
                 LOG_INF("KEY EVENT: Short press detected");
                 /* 启动 NFC 轮询 */
                 my_nfc_start_poll(30);
+                /* 短按唤醒后，显示电池状态，LED显示*/
+                my_battery_show();
                 break;
 
             case MY_MSG_CTRL_KEY_LONG_PRESS:
