@@ -86,4 +86,13 @@ int my_ctrl_buzzer_play_sequence(const struct my_buzzer_note *notes, uint32_t nu
 *********************************************************************/
 int batt_led_set_level(uint8_t level);
 
+/********************************************************************
+**函数名称:  handle_nfc_card_event
+**入口参数:  card_id    ---        输入，NFC卡号指针
+            id_len     ---        输入，卡号长度
+**出口参数:  无
+**函数功能:  处理NFC刷卡事件，检查重复刷卡、验证卡片权限并执行相应操作
+**返 回 值:  无
+*********************************************************************/
+void handle_nfc_card_event(uint8_t *card_id, uint8_t id_len);
 #endif /* _MY_CTRL_H_ */

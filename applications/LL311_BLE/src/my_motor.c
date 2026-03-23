@@ -22,7 +22,29 @@ static const struct gpio_dt_spec motor_pwr_en = GPIO_DT_SPEC_GET(DT_ALIAS(motor_
 static const struct gpio_dt_spec motor_pos_a = GPIO_DT_SPEC_GET(DT_ALIAS(motor_posdet_a), gpios);
 static const struct gpio_dt_spec motor_pos_b = GPIO_DT_SPEC_GET(DT_ALIAS(motor_posdet_b), gpios);
 
+#define LOCK_TIMEOUT_MAXTIME 5000   /* 暂定开/关锁最长时间：5000ms,后续根据实际情况调整 */
+#define LOCK_DEBOUNCE_MS    100    /* 消抖时间：100ms */
+
+typedef enum
+{
+    OPEN_LOCK,
+    CLOSE_LOCK,
+} LOCK_STATE;
+
+typedef struct
+{
+    struct k_timer timer;       /* 消抖定时器 */
+    bool state;                 /* 当前开/关锁状态（true=到达限位，false=未到限位） */
+    bool debouncing;            /* 消抖中标志 */
+} lock_posdet;
+
 static struct gpio_callback motor_pos_cb;
+/* 电机超时定时器，用于开锁/关锁操作的超时保护 */
+static struct k_timer motor_timeout_timer;
+/* 开锁位置检测结构，用于检测开锁限位状态 */
+static lock_posdet openlock_posdet;
+/* 关锁位置检测结构，用于检测关锁限位状态 */
+static lock_posdet closelock_posdet;
 
 /* 电源控制：1 = 打开，0 = 关闭 */
 void motor_power_set(bool on)
@@ -31,28 +53,142 @@ void motor_power_set(bool on)
     gpio_pin_set_dt(&motor_pwr_en, on ? 1 : 0);
 }
 
-void motor_forward(void)
+/********************************************************************
+**函数名称:  req_open_lock_action
+**入口参数:  无
+**出口参数:  无
+**函数功能:  请求执行上锁操作
+**返 回 值:  无
+*********************************************************************/
+void req_open_lock_action(void)
 {
-    LOG_INF("%s:run", __func__);
+    k_timer_stop(&motor_timeout_timer);
+
+    MY_LOG_INF("%s:run", __func__);
     /* A 高，B 低 -> 正转（具体取决于你的驱动电路） */
     gpio_pin_set_dt(&motor_a, 1);
     gpio_pin_set_dt(&motor_b, 0);
+    k_timer_start(&motor_timeout_timer, K_MSEC(LOCK_TIMEOUT_MAXTIME), K_NO_WAIT);
 }
 
-void motor_reverse(void)
+/********************************************************************
+**函数名称:  req_close_lock_action
+**入口参数:  无
+**出口参数:  无
+**函数功能:  请求执行关锁操作
+**返 回 值:  无
+*********************************************************************/
+void req_close_lock_action(void)
 {
-    LOG_INF("%s:run", __func__);
+    k_timer_stop(&motor_timeout_timer);
+
+    MY_LOG_INF("%s:run", __func__);
     /* A 低，B 高 -> 反转 */
     gpio_pin_set_dt(&motor_a, 0);
     gpio_pin_set_dt(&motor_b, 1);
+    k_timer_start(&motor_timeout_timer, K_MSEC(LOCK_TIMEOUT_MAXTIME), K_NO_WAIT);
 }
 
-void motor_stop(void)
+/********************************************************************
+**函数名称:  stop_lock_action
+**入口参数:  无
+**出口参数:  无
+**函数功能:  执行停止开/关锁操作
+**返 回 值:  无
+*********************************************************************/
+void stop_lock_action(void)
 {
-    LOG_INF("%s:run", __func__);
+    k_timer_stop(&motor_timeout_timer);
+
+    MY_LOG_INF("%s:run", __func__);
     /* 关掉方向输出 */
     gpio_pin_set_dt(&motor_a, 0);
     gpio_pin_set_dt(&motor_b, 0);
+}
+
+/********************************************************************
+**函数名称:  lock_posdet_edge_handler
+**入口参数:  state  ---        输入，锁状态（OPEN_LOCK/CLOSE_LOCK）
+**出口参数:  无
+**函数功能:  锁位置检测中断处理函数，根据状态执行对应操作
+**返 回 值:  无
+*********************************************************************/
+static void lock_posdet_edge_handler(LOCK_STATE state)
+{
+    if (state == OPEN_LOCK)
+    {
+        if (!openlock_posdet.debouncing)
+        {
+            openlock_posdet.debouncing = true;
+            k_timer_start(&openlock_posdet.timer, K_MSEC(LOCK_DEBOUNCE_MS), K_NO_WAIT);
+        }
+    }
+    else if (state == CLOSE_LOCK)
+    {
+        if (!closelock_posdet.debouncing)
+        {
+            closelock_posdet.debouncing = true;
+            k_timer_start(&closelock_posdet.timer, K_MSEC(LOCK_DEBOUNCE_MS), K_NO_WAIT);
+        }
+    }
+}
+
+/********************************************************************
+**函数名称:  openlock_posdet_timer_handler
+**入口参数:  timer  ---        输入，定时器句柄（未使用）
+**出口参数:  无
+**函数功能:  开锁消抖定时器回调函数，根据开锁状态执行对应操作
+**返 回 值:  无
+*********************************************************************/
+static void openlock_posdet_timer_handler(struct k_timer *timer)
+{
+    ARG_UNUSED(timer);
+
+    int level = gpio_pin_get(motor_pos_a.port, motor_pos_a.pin);
+    bool new_state = (level == 1);/* level==1 表示物理接地（Active Low 激活） */
+
+    if (new_state != openlock_posdet.state)
+    {
+        openlock_posdet.state = new_state;
+        // MY_LOG_INF("openlock det changed: %s", new_state ? "Openlocked" : "Unknown");
+        if (new_state)
+        {
+            /* 电机停止 */
+            my_send_msg(MOD_MAIN, MOD_CTRL, MY_MSG_CTRL_STOPLOCK);
+            // MY_MSG_CTRL_OPENLOCKED:先发送消息通知MAIN线程，再经过LTE线程上报开锁状态成功
+        }
+    }
+
+    openlock_posdet.debouncing = false;
+}
+
+/********************************************************************
+**函数名称:  closelock_posdet_timer_handler
+**入口参数:  timer  ---        输入，定时器句柄（未使用）
+**出口参数:  无
+**函数功能:  关锁消抖定时器回调函数，根据关锁状态执行对应操作
+**返 回 值:  无
+*********************************************************************/
+static void closelock_posdet_timer_handler(struct k_timer *timer)
+{
+    ARG_UNUSED(timer);
+
+    int level = gpio_pin_get(motor_pos_b.port, motor_pos_b.pin);
+    bool new_state = (level == 1);/* level==1 表示物理接地（Active Low 激活） */
+
+    if (new_state != closelock_posdet.state)
+    {
+        closelock_posdet.state = new_state;
+        // MY_LOG_INF("closelock det changed: %s", new_state ? "Closelocked" : "Unknown");
+        if (new_state)
+        {
+            /* 电机停止 */
+            my_send_msg(MOD_MAIN, MOD_CTRL, MY_MSG_CTRL_STOPLOCK);
+            // TODO MY_MSG_CTRL_CLOSELOCKED:发送消息给LTE线程上报关锁状态成功
+        }
+    }
+
+    closelock_posdet.debouncing = false;
 }
 
 static void motor_pos_isr(const struct device *dev,
@@ -62,28 +198,40 @@ static void motor_pos_isr(const struct device *dev,
     ARG_UNUSED(dev);
     ARG_UNUSED(cb);
 
-    int level;
-
     if (pins & BIT(motor_pos_a.pin))
     {
-        level = gpio_pin_get_dt(&motor_pos_a);
-        //TODO 开锁
-        // LOG_INF("open lock:%d", level);
-        //TODO 发消息给ctrl去再次获取该引脚电平状态，以及消抖处理
+        /* 下降沿触发，调用开锁处理函数 */
+        lock_posdet_edge_handler(OPEN_LOCK);
     }
 
     if (pins & BIT(motor_pos_b.pin))
     {
-        level = gpio_pin_get_dt(&motor_pos_b);
-        //TODO 关锁
-        // LOG_INF("close lock:%d", level);
-        //TODO 发消息给ctrl去再次获取该引脚电平状态，以及消抖处理
+        /* 下降沿触发，调用关锁处理函数 */
+        lock_posdet_edge_handler(CLOSE_LOCK);
     }
+}
+
+/********************************************************************
+**函数名称:  motor_timer_timeout_handler
+**入口参数:  timer  ---        输入，定时器句柄（未使用）
+**出口参数:  无
+**函数功能:  电机超时定时器回调函数，当开锁/关锁超时时，通知ctrl模块停止电机
+**返 回 值:  无
+*********************************************************************/
+static void motor_timer_timeout_handler(struct k_timer *timer)
+{
+    ARG_UNUSED(timer);
+
+    // MY_LOG_INF("%s:run", __func__);
+    // TODO 发送锁状态失败通知
+    my_send_msg(MOD_MAIN, MOD_CTRL, MY_MSG_CTRL_STOPLOCK);
 }
 
 int motor_gpio_init(void)
 {
     int ret;
+    int openlockDetInitialLevel;
+    int closelockDetInitialLevel;
 
     /* 检查所有端口是否就绪 */
     if (!device_is_ready(motor_a.port) ||
@@ -120,9 +268,29 @@ int motor_gpio_init(void)
     ret = gpio_pin_interrupt_configure_dt(&motor_pos_b, GPIO_INT_EDGE_FALLING);
     if (ret) return ret;
 
+    /* 初始化开锁检测定时器和状态 */
+    k_timer_init(&openlock_posdet.timer, openlock_posdet_timer_handler, NULL);
+    openlock_posdet.state = false;
+    openlock_posdet.debouncing = false;
+    /* 读取初始状态 */
+    openlockDetInitialLevel = gpio_pin_get(motor_pos_a.port, motor_pos_a.pin);
+    openlock_posdet.state = (openlockDetInitialLevel == 1);
+    MY_LOG_INF("openlock det changed: %s", openlock_posdet.state ? "Openlocked" : "Unknown");
+
+    /* 初始化关锁检测定时器和状态 */
+    k_timer_init(&closelock_posdet.timer, closelock_posdet_timer_handler, NULL);
+    closelock_posdet.state = false;
+    closelock_posdet.debouncing = false;
+    /* 读取初始状态 */
+    closelockDetInitialLevel = gpio_pin_get(motor_pos_b.port, motor_pos_b.pin);
+    closelock_posdet.state = (closelockDetInitialLevel == 1);
+    MY_LOG_INF("closelock det changed: %s", closelock_posdet.state ? "Closelocked" : "Unknown");
+
     /* 注册回调 */
     gpio_init_callback(&motor_pos_cb, motor_pos_isr, BIT(motor_pos_a.pin) | BIT(motor_pos_b.pin));
     gpio_add_callback(motor_pos_a.port, &motor_pos_cb);
+
+    k_timer_init(&motor_timeout_timer, motor_timer_timeout_handler, NULL);
 
     return 0;
 }

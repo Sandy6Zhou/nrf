@@ -15,6 +15,17 @@
 #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260323"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.03.23
+** 作    者:        周森达 (zhousenda@jimiiot.com)
+** 修改内容:        1.增加NFC卡开锁规则判断(卡ID、经纬度、半径、起止时间、可用次数)
+**                 2.增加NFC刷卡记录缓存机制
+**                 3.增加锁销自动上锁检测
+**                 4.增加开/关锁超时失败检测机制
+**                 5.增加shell指令(ble_test)，用于ble的用户指令快速测试验证
+*/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260323"
+/* 软件版本:        V1.0
+** 完成日期:        2026.03.23
 ** 作    者:        曹阳 (caoyang@jimiiot.com)
 ** 修改内容:        增加充电状态电量指示灯根据电量指示灯闪烁功能
 */
@@ -46,12 +57,12 @@
 ** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)
 ** 修改内容:        1. 基于几米蓝牙通信协议 V3.1.6 的 6.4 OTA 文件传输协议实现DFU功能(my_jimi_dfu.c/my_jimi_dfu.h/my_bie_app.c/my_bie_app.h)；
 **                 2. 支持MCUmgr OTA功能，并进行状态监听(my_ble_core.c/my_ble_core.h/main.c)；
-**                 3. 增加BLE SMP配对权限，配对密钥自动使用IMEI号后6位，在在 my_ble_core_start 启动时从参数中提取并设置; 
+**                 3. 增加BLE SMP配对权限，配对密钥自动使用IMEI号后6位，在在 my_ble_core_start 启动时从参数中提取并设置;
 **                 4. 增加关机模式功能（my_main.h/mai.c/my_shell.c）;
 **                 4. 长按键在关机模式下唤醒，自动切换到智能模式;
 **                 5. 添加系统启动时系统信息打印；
-**                 6. OTA效率优化，MTU扩展至498（prj.conf/my_ble_app.h),采用双PDU模式; 
-**                 7. 优化栈变量转为静态全局缓冲区(my_ble_app.c -ble_tx_buf\ble_encrypt_buf\ble_rsp_buf); 
+**                 6. OTA效率优化，MTU扩展至498（prj.conf/my_ble_app.h),采用双PDU模式;
+**                 7. 优化栈变量转为静态全局缓冲区(my_ble_app.c -ble_tx_buf\ble_encrypt_buf\ble_rsp_buf);
 **                 8. 内存管理规范化：malloc/free替换为MY_MALLOC_BUFFER/MY_FREE_BUFFER；
 **                 9. my_ble_app.c日志级别调整，AES密钥、明文、密文的HEX DUMP由LOG_HEXDUMP_INF除为LOG_HEXDUMP_DBG；
 **                 10. my_tool新增CRC校验函数主要用于DFU CRC的验证.
@@ -86,7 +97,7 @@
 ** 修改内容:       1. 在overlay中规范光感与锁销检测引脚定义；
 **                 2. 增加光感检测功能，状态发生变化时发送事件到主任务；
 **                 3. 增加锁销检测功能，状态发生变化时发送事件到主任务；
-**                 4. 删除my_ctrl_push_msg，已有统一的接口my_send_msg/my_send_msg_data; 
+**                 4. 删除my_ctrl_push_msg，已有统一的接口my_send_msg/my_send_msg_data;
 */
 
 // #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260305"
@@ -147,7 +158,7 @@
 ** 完成日期:        2026.02.06
 ** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)
 ** 修改内容:        1. 适配了LSM6DSV16X传感器并启用my_gsensor模块；
-**                 2. 删除了DA215S传感器支持; 
+**                 2. 删除了DA215S传感器支持;
 **                 3. 在my_shell中添加了六轴传感器数据读取功能;
 **                 4. 添加了my_wdt模块，但未启用;
 **                 5. 在prj.conf中启用电源管理功能;

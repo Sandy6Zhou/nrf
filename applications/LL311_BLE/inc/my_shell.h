@@ -29,6 +29,8 @@ typedef struct {
     cmdproc proc;
 }CMD_STRUC;
 
+extern uint8_t shell_test_buff[256];
+
 /********************************************************************
 **函数名称:  my_shell_init
 **入口参数:  无

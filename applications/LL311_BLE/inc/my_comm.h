@@ -166,6 +166,13 @@ typedef enum
     MY_MSG_DFU_START,    /* DFU OTA 开始 */
     MY_MSG_DFU_TIMEOUT,  /* DFU OTA 超时退出 */
     MY_MSG_DFU_COMPLETE, /* DFU OTA 完成 */
+
+    /* 开关锁状态消息 */
+    MY_MSG_CTRL_OPENLOCKING,    /* 开锁中 */
+    MY_MSG_CTRL_CLOSELOCKING,   /* 关锁中 */
+    MY_MSG_CTRL_STOPLOCK,       /* 停止开/关锁 */
+    MY_MSG_CTRL_OPENLOCKED,     /* 已开锁 */
+    MY_MSG_CTRL_CLOSELOCKED,    /* 已关锁 */
 } MY_MAIN_TASK_MSG;
 
 /* ========== 集中引用所有模块头文件 ========== */

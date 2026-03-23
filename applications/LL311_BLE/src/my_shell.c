@@ -17,6 +17,8 @@
 #define LOG_MODULE_NAME my_shell
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 
+uint8_t shell_test_buff[256] = {0};
+
 /********************************************************************
 **函数名称:  cmd_system_info
 **入口参数:  shell   ---        Shell 实例指针
@@ -888,6 +890,39 @@ static int cmd_ble_log_config(const struct shell *shell, size_t argc, char **arg
     return 0;
 }
 
+/********************************************************************
+**函数名称:  cmd_ble_test
+**入口参数:  sh    ---        Shell句柄，用于输出信息
+            argc  ---        参数个数
+            argv  ---        参数数组，argv[1]为测试参数字符串
+**出口参数:  无
+**函数功能:  处理BLE测试命令，接收参数并发送测试消息到BLE模块
+**返 回 值:  0表示成功，-EINVAL表示参数错误
+*********************************************************************/
+static int cmd_ble_test(const struct shell *sh, size_t argc, char **argv)
+{
+    int len;
+
+    if (argc < 2)
+    {
+        shell_error(sh, "Missing parameter");
+        return -EINVAL;
+    }
+
+    memset(shell_test_buff, 0, sizeof(shell_test_buff));
+
+    len = strlen(argv[1]);
+    memcpy(shell_test_buff, argv[1], len);
+    shell_test_buff[len] = 0;
+
+    shell_print(sh, "param: %s, len: %d", argv[1], len);
+
+    my_send_msg(MOD_MAIN, MOD_BLE, MY_MSG_TEST);
+
+    return 0;
+}
+
+
 /* 注册自定义命令到 Shell 子系统 */
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(sysinfo, NULL, "Display system information", cmd_system_info),
@@ -905,6 +940,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(batt_val, NULL, "battery state change", cmd_batt_stateconst),//手动改变电池状态，调试用
     SHELL_CMD(blog, NULL, "Send BLE log test message: app blog <message>", cmd_ble_log_test),
     SHELL_CMD(blogcfg, NULL, "BLE log config: app blogcfg <global|mod|level|show>", cmd_ble_log_config),
+    SHELL_CMD(ble_test, NULL, "test", cmd_ble_test),
     SHELL_SUBCMD_SET_END
 );
 /* Zephyr Shell 子系统提供的宏，随 nRF Connect SDK一起提供，用来在 Shell里注册一个“根命令”

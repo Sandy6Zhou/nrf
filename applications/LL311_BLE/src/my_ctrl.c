@@ -22,11 +22,23 @@
 LOG_MODULE_REGISTER(my_ctrl, LOG_LEVEL_INF);
 
 #define WAKEUP_PIN_PSEL  4   /* P0.4 -> PSEL = 4 */
+/* 循环定时器周期：50ms */
+#define KEY_POLL_PERIOD_MS   50
+/* 长按阈值：1.5秒 = 30个周期 */
+#define KEY_LONG_PRESS_COUNT (1500 / KEY_POLL_PERIOD_MS)
+/* 光感消抖时间：100ms */
+#define LIGHT_DEBOUNCE_MS 100
+/* 锁销消抖时间：100ms */
+#define LOCK_PIN_DEBOUNCE_MS 100
+/* 定义NFC刷卡记录缓存的最大数量（可根据实际需求调整） */
+#define NFC_CACHE_MAX_NUM 10
+/* 重复刷卡判断时间阈值：60秒 */
+#define NFC_REPEAT_INTERVAL 60
 
 #define BATT_LED_TIMER_MS  5000  /**< 电池 LED 显示的总时间（毫秒），超过此时间后关闭所有 LED */
 /* 硬件设备树定义 */
 static const struct gpio_dt_spec fun_key = GPIO_DT_SPEC_GET(DT_ALIAS(fun_key), gpios);
-static const struct pwm_dt_spec buzzer = PWM_DT_SPEC_GET(DT_ALIAS(buzzer_pwm)); 
+static const struct pwm_dt_spec buzzer = PWM_DT_SPEC_GET(DT_ALIAS(buzzer_pwm));
 static const struct gpio_dt_spec light_det = GPIO_DT_SPEC_GET(DT_ALIAS(light_detect), gpios);
 static const struct gpio_dt_spec lock_pin_det = GPIO_DT_SPEC_GET(DT_ALIAS(lock_pin_det), gpios);
 static const struct gpio_dt_spec lock_led = GPIO_DT_SPEC_GET(DT_ALIAS(lock_led0), gpios);
@@ -36,8 +48,6 @@ static const struct gpio_dt_spec batt_leds[] = {
     GPIO_DT_SPEC_GET(DT_ALIAS(battery_led2), gpios),
 };
 
-static struct gpio_callback misc_io_cb;
-
 /* 按键控制结构 */
 static struct
 {
@@ -45,11 +55,6 @@ static struct
     uint32_t press_count; /* 按下计数器 (50ms单位) */
     bool pressed;         /* 按键是否按下 */
 } key_ctrl;
-
-/* 定时器周期：50ms */
-#define KEY_POLL_PERIOD_MS   50
-/* 长按阈值：1.5秒 = 30个周期 */
-#define KEY_LONG_PRESS_COUNT (1500 / KEY_POLL_PERIOD_MS)
 
 /* 光感检测控制结构 */
 static struct
@@ -59,9 +64,6 @@ static struct
     bool debouncing;            /* 消抖中标志 */
 } light_sensor;
 
-/* 光感消抖时间：100ms */
-#define LIGHT_DEBOUNCE_MS 100
-
 /* 锁销检测控制结构 */
 static struct
 {
@@ -70,8 +72,12 @@ static struct
     bool debouncing;            /* 消抖中标志 */
 } lock_pin_ctrl;
 
-/* 锁销消抖时间：100ms */
-#define LOCK_PIN_DEBOUNCE_MS 100
+/* NFC刷卡记录缓存结构体 */
+typedef struct {
+    uint8_t card_id[16];        /* 存储NFC卡号（根据实际卡号长度调整） */
+    uint8_t id_len;             /* 卡号实际长度 */
+    time_t last_swipe_time;     /* 最近一次刷卡时间戳 */
+} NfcCardCache;
 
 /* 定时器回调前向声明 */
 static void key_timer_handler(struct k_timer *timer);
@@ -84,6 +90,266 @@ K_MSGQ_DEFINE(my_ctrl_msgq, sizeof(MSG_S), 10, 4);
 /* 线程数据与栈定义 */
 K_THREAD_STACK_DEFINE(my_ctrl_task_stack, MY_CTRL_TASK_STACK_SIZE);
 static struct k_thread my_ctrl_task_data;
+static struct gpio_callback misc_io_cb;
+
+/* 当前选中的NFC卡在缓存中的索引，-1表示未选中 */
+static int8_t current_card_index = -1;
+/* NFC卡号缓存数组，存储最近刷过的NFC卡信息（最多NFC_CACHE_MAX_NUM张） */
+static NfcCardCache g_nfc_card_cache[NFC_CACHE_MAX_NUM] = {0};
+/* 自动上锁定时器，用于锁销插入后的自动上锁计时 */
+struct k_timer auto_lock_timer;
+
+/********************************************************************
+**函数名称:  find_card_in_cache
+**入口参数:  card_id    ---        输入，待查找的NFC卡号指针
+            id_len     ---        输入，卡号长度
+**出口参数:  无
+**函数功能:  在NFC卡号缓存中查找指定卡号
+**返 回 值:  返回卡号在缓存中的索引，未找到返回-1
+*********************************************************************/
+static int find_card_in_cache(const uint8_t *card_id, uint8_t id_len)
+{
+    for (int i = 0; i < NFC_CACHE_MAX_NUM; i++)
+    {
+        /* 卡号长度一致且内容匹配 */
+        if (g_nfc_card_cache[i].id_len == id_len &&
+            memcmp(g_nfc_card_cache[i].card_id, card_id, id_len) == 0)
+        {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/********************************************************************
+**函数名称:  update_card_cache
+**入口参数:  card_id    ---        输入，待更新或添加的NFC卡号指针
+            id_len     ---        输入，卡号长度
+            swipe_time ---        输入，刷卡时间戳
+**出口参数:  无
+**函数功能:  更新或添加NFC卡号到缓存，若卡号已存在则更新时间，否则添加新记录
+**返 回 值:  无
+*********************************************************************/
+static void update_card_cache(const uint8_t *card_id, uint8_t id_len, time_t swipe_time)
+{
+    int index;
+    int oldest_index;
+    time_t oldest_time;
+    int i;
+
+    index = find_card_in_cache(card_id, id_len);
+
+    if (index >= 0)
+    {
+        /* 已存在，更新刷卡时间 */
+        g_nfc_card_cache[index].last_swipe_time = swipe_time;
+    }
+    else
+    {
+        /* 未找到，找第一个空位置或覆盖最旧记录
+         * 当缓存空间满了之后,再次刷新的卡会把时间最早的卡给覆盖掉
+         */
+        oldest_index = 0;
+        oldest_time = g_nfc_card_cache[0].last_swipe_time;
+
+        for (i = 1; i < NFC_CACHE_MAX_NUM; i++)
+        {
+            /* 优先使用空位置（时间为0） */
+            if (g_nfc_card_cache[i].last_swipe_time == 0)
+            {
+                oldest_index = i;
+                break;
+            }
+            /* 找最旧的记录 */
+            if (g_nfc_card_cache[i].last_swipe_time < oldest_time)
+            {
+                oldest_time = g_nfc_card_cache[i].last_swipe_time;
+                oldest_index = i;
+            }
+        }
+
+        /* 写入新卡号和时间 */
+        memcpy(g_nfc_card_cache[oldest_index].card_id, card_id, id_len);
+        g_nfc_card_cache[oldest_index].id_len = id_len;
+        g_nfc_card_cache[oldest_index].last_swipe_time = swipe_time;
+    }
+}
+
+/********************************************************************
+**函数名称:  is_need_location_upload
+**入口参数:  card_id    ---        输入，待判断的NFC卡号指针
+            id_len     ---        输入，卡号长度
+**出口参数:  无
+**函数功能:  判断是否需要执行定位上传，60秒内重复刷卡返回0，否则返回1
+**返 回 值:  0表示无需定位上传（60秒内重复刷卡），1表示需要定位上传
+*********************************************************************/
+static int is_need_location_upload(const uint8_t *card_id, uint8_t id_len)
+{
+    int index;
+    time_t now;
+    time_t time_diff;
+
+    index = find_card_in_cache(card_id, id_len);
+    now = time(NULL);
+
+    if (index >= 0)
+    {
+        // 计算时间差（秒）
+        time_diff = now - g_nfc_card_cache[index].last_swipe_time;
+        if (time_diff >= 0 && time_diff <= NFC_REPEAT_INTERVAL)
+        {
+            // 60秒内重复刷卡，无需定位上传
+            return 0;
+        }
+    }
+
+    // 首次刷卡或超时，需要定位上传并更新缓存
+    update_card_cache(card_id, id_len, now);
+    return 1;
+}
+
+/********************************************************************
+**函数名称:  nfc_card_detected
+**入口参数:  card_id     ---        输入，NFC卡号指针
+            id_len      ---        输入，卡号长度
+            card_index  ---        输出，匹配的授权卡片索引
+**出口参数:  card_index  ---        输出，存储匹配的授权卡片索引
+**函数功能:  检测NFC卡片是否有效，验证卡片ID、时间范围、解锁次数等条件
+**返 回 值:  -1表示验证失败，1表示需要位置验证，0表示验证通过
+*********************************************************************/
+int nfc_card_detected(uint8_t *card_id, uint8_t id_len, uint8_t *card_index)
+{
+    uint8_t i;
+    int time_check_result;
+    time_t current_time;
+    NfcAuthCard *current_card;
+
+    /* 初始化当前卡片索引为无效值 */
+    current_card_index = -1;
+
+    /* 检查输入参数有效性 */
+    if (card_id == NULL || id_len == 0)
+    {
+        return -1;
+    }
+
+    /* 遍历所有授权卡片 */
+    for (i = 0; i < g_device_cmd_config.nfcauth_card_count; i++)
+    {
+        if (strncmp(card_id, g_device_cmd_config.nfcauth_cards[i].nfc_no, id_len) == 0)
+        {
+            /* 记录匹配的卡片索引 */
+            current_card_index = i;
+            break;
+        }
+    }
+
+    /* 检查是否找到匹配的卡片 */
+    if (current_card_index == -1)
+    {
+        /* 未找到匹配卡片，返回失败 */
+        MY_LOG_INF("No matching card was found.");
+        return -1;
+    }
+
+    current_card = &g_device_cmd_config.nfcauth_cards[current_card_index];  /* 获取当前卡片指针 */
+
+    /* 检查是否需要时间验证 */
+    if (current_card->time_valid == 1)
+    {
+        current_time = my_get_system_time_sec();
+        if (current_time == (time_t)-1)
+        {
+            /* 时间获取失败，返回失败 */
+            MY_LOG_INF("get time fail");
+            return -1;
+        }
+
+        /* 检查当前时间是否在允许范围内 */
+        time_check_result = is_time_in_range(current_card->start_time, current_card->end_time, current_time);
+        if (time_check_result != 1)
+        {
+            /* 时间不在允许范围内，返回失败 */
+            MY_LOG_INF("Time is not within the scope.");
+            return -1;
+        }
+    }
+
+    /* 检查剩余解锁次数 */
+    if (current_card->unlock_times == 0)
+    {
+        /* 解锁次数为0，返回失败 */
+        MY_LOG_INF("unlock_times is 0.");
+        return -1;
+    }
+
+    /* 检查是否需要位置验证 */
+    if (current_card->lat_lon_valid == 1)
+    {
+        /* 需要位置验证，返回1 */
+        MY_LOG_INF("need location verification");
+        return 1;
+    }
+
+    /* 若卡的次数有限,需要消耗次数(-1为无限次数) */
+    if (current_card->unlock_times > 0)
+    {
+        current_card->unlock_times--;
+    }
+
+    MY_LOG_INF("current_card->unlock_times:%d", current_card->unlock_times);
+
+    *card_index = current_card_index;
+    /* 验证通过，返回0 */
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  handle_nfc_card_event
+**入口参数:  card_id    ---        输入，NFC卡号指针
+            id_len     ---        输入，卡号长度
+**出口参数:  无
+**函数功能:  处理NFC刷卡事件，检查重复刷卡、验证卡片权限并执行相应操作
+**返 回 值:  无
+*********************************************************************/
+void handle_nfc_card_event(uint8_t *card_id, uint8_t id_len)
+{
+    int ret;
+    uint8_t card_index = 0;
+
+    /* 重复刷卡缓存记录检查 */
+    ret = is_need_location_upload(card_id, id_len);
+    if (ret == 0)
+    {
+        MY_LOG_INF("repeated swiping of the card id:%s", card_id);
+        return ;
+    }
+
+    // TODO 4G就绪后发送NFC刷卡事件：BLE+ALARM=<告警类型>(NFC),< 时间戳 >,< 附加信息 >(NFC卡号)
+    my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);
+
+    ret = nfc_card_detected(card_id, id_len, &card_index);
+    /* 符合开锁规则 */
+    if (ret == 0)
+    {
+        // TODO 发消息控制成功提示音
+        /* 启动开锁操作 */
+        my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_OPENLOCKING);
+        MY_LOG_INF("start to openlock");
+    }
+    /* 需要位置验证 */
+    else if (ret == 1)
+    {
+        // TODO 后续通过发消息通知4G需要获取经纬度信息
+        // ?设置一个标记位，待拿到经纬度信息后，再判断开锁规则
+    }
+    /* 权限不足 */
+    else if (ret == -1)
+    {
+        // TODO 发消息控制异常提示音
+        MY_LOG_INF("card no permission");
+    }
+}
 
 /* --- 休眠唤醒功能实现 --- */
 
@@ -282,6 +548,7 @@ static void lock_pin_timer_handler(struct k_timer *timer)
 {
     ARG_UNUSED(timer);
 
+    uint32_t msgID;
     int level = gpio_pin_get(lock_pin_det.port, lock_pin_det.pin);
     bool new_state = (level == 1);
 
@@ -291,11 +558,11 @@ static void lock_pin_timer_handler(struct k_timer *timer)
         // MY_LOG_INF("Lock pin state changed: %s", new_state ? "INSERTED" : "DISCONNECTED");
 
         /* 发送锁销状态变化消息到主任务 */
-        MSG_S msg;
-        msg.msgID = new_state ? MY_MSG_CTRL_LOCK_PIN_INSERTED : MY_MSG_CTRL_LOCK_PIN_DISCONNECTED;
-        msg.pData = NULL;
-        msg.DataLen = 0;
-        my_send_msg_data(MOD_CTRL, MOD_MAIN, &msg);
+        msgID = new_state ? MY_MSG_CTRL_LOCK_PIN_INSERTED : MY_MSG_CTRL_LOCK_PIN_DISCONNECTED;
+        if (new_state)
+        {
+            my_send_msg(MOD_CTRL, MOD_CTRL, msgID);
+        }
     }
 
     lock_pin_ctrl.debouncing = false;
@@ -338,6 +605,39 @@ static void key_falling_edge_handler(void)
         /* 启动循环定时器，每 50ms 检查一次按键状态 */
         k_timer_start(&key_ctrl.timer, K_MSEC(KEY_POLL_PERIOD_MS), K_MSEC(KEY_POLL_PERIOD_MS));
     }
+}
+
+/********************************************************************
+**函数名称:  auto_lock_detection
+**入口参数:  无
+**出口参数:  无
+**函数功能:  启动自动上锁定时器，根据配置的倒计时时间执行自动上锁
+**返 回 值:  无
+*********************************************************************/
+static void auto_lock_detection(void)
+{
+    MY_LOG_INF("%s:run", __func__);
+    if (g_device_cmd_config.lockcd_countdown == 0)
+    {
+        return ;
+    }
+
+    // 自动上锁定时器
+    k_timer_start(&auto_lock_timer, K_MSEC(g_device_cmd_config.lockcd_countdown * 1000), K_NO_WAIT);
+}
+
+/********************************************************************
+**函数名称:  auto_lock_handler
+**入口参数:  timer  ---        输入，定时器句柄（未使用）
+**出口参数:  无
+**函数功能:  自动上锁定时器回调函数，发送关锁消息到控制模块
+**返 回 值:  无
+*********************************************************************/
+static void auto_lock_handler(struct k_timer *timer)
+{
+    ARG_UNUSED(timer);
+
+    my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_CLOSELOCKING);
 }
 
 /********************************************************************
@@ -471,6 +771,9 @@ static int misc_io_init(void)
 
     /* 初始化按键定时器 */
     key_timer_init();
+
+    /* 初始化自动上锁定时器 */
+    k_timer_init(&auto_lock_timer, auto_lock_handler, NULL);
 
     /* 一个回调处理三个引脚 */
     gpio_init_callback(&misc_io_cb, misc_io_isr,
@@ -802,6 +1105,26 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
 
             case MY_MSG_SHOW_CHARG:
                 my_battery_show_chgled();//显示充电状态LED
+                break;
+
+            case MY_MSG_CTRL_OPENLOCKING:
+                req_open_lock_action();
+                break;
+
+            case MY_MSG_CTRL_CLOSELOCKING:
+                req_close_lock_action();
+                break;
+
+            case MY_MSG_CTRL_STOPLOCK:
+                stop_lock_action();
+                break;
+
+            case MY_MSG_CTRL_LOCK_PIN_INSERTED:
+                auto_lock_detection();
+                break;
+
+            case MY_MSG_CTRL_LOCK_PIN_DISCONNECTED:
+                MY_LOG_INF("Lock pin detected: DISCONNECTED");
                 break;
 
             default:

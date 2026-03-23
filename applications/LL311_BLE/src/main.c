@@ -585,6 +585,8 @@ int main(void)
                     struct nfc_card_info *card = (struct nfc_card_info *)msg.pData;
                     MY_LOG_INF("NFC Card detected, type: %d", card->type);
                     MY_LOG_INF("NFC Card UID (%d bytes): %02X%02X%02X%02X", card->uid_len, card->uid[0], card->uid[1], card->uid[2], card->uid[3]);
+                    /* 刷卡检测流程 */
+                    handle_nfc_card_event(card->uid, card->uid_len);
                 }
                 break;
 
@@ -617,14 +619,6 @@ int main(void)
 
             case MY_MSG_CTRL_LIGHT_SENSOR_BRIGHT:
                 MY_LOG_INF("Light sensor detected: BRIGHT");
-                break;
-
-            case MY_MSG_CTRL_LOCK_PIN_INSERTED:
-                MY_LOG_INF("Lock pin detected: INSERTED");
-                break;
-
-            case MY_MSG_CTRL_LOCK_PIN_DISCONNECTED:
-                MY_LOG_INF("Lock pin detected: DISCONNECTED");
                 break;
 
             case MY_MSG_CTRL_SHUTDOWN_REQUEST:

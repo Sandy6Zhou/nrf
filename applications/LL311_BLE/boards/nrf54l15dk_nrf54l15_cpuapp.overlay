@@ -126,14 +126,14 @@
 	/* P0.2: 位置检测 A，默认上拉 */
 	motor_pos_a: motor-pos-a {
 		compatible = "nordic,gpio-pins";
-		gpios = <&gpio0 2 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
+		gpios = <&gpio0 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
 		status = "okay";
 	};
 
 	/* P0.3: 位置检测 B，默认上拉 */
 	motor_pos_b: motor-pos-b {
 		compatible = "nordic,gpio-pins";
-		gpios = <&gpio0 3 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
+		gpios = <&gpio0 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
 		status = "okay";
 	};
 

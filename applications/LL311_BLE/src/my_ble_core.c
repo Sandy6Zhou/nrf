@@ -1166,6 +1166,10 @@ static void my_ble_task(void *p1, void *p2, void *p3)
             case MY_MSG_BLE_RX:
                 ble_rx_proc_handle();
                 break;
+            /* 暂时保留测试消息,后续测试验证会频繁使用到 */
+            case MY_MSG_TEST:
+                ble_comu_at_cmd_handle(shell_test_buff, strlen(shell_test_buff));
+                break;
 
             default:
                 break;

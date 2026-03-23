@@ -798,7 +798,7 @@ void ble_log_send(uint8_t *data, uint8_t len)
 **返回值:    无
 **注意事项:  根据AT命令处理结果决定是否发送响应数据
 *********************************************************************/
-static void ble_comu_at_cmd_handle(const uint8_t *data, uint16_t len)
+void ble_comu_at_cmd_handle(const uint8_t *data, uint16_t len)
 {
     at_cmd_struc ble_at_msg = {0};
     uint16_t cmd_type = 0;

@@ -886,3 +886,80 @@ uint16_t my_crc16_calc(const uint8_t *data, uint16_t len, uint16_t polynomial)
     }
     return crc;
 }
+
+/********************************************************************
+**函数名称:  time_str_to_timestamp
+**入口参数:  time_str    ---   时间字符串，格式为"YYMMDDHHMM"(年月日时分)
+**出口参数:  无
+**函数功能:  将时间字符串转换为Unix时间戳(从1970-01-01 00:00:00起的秒数)
+**返 回 值:  成功返回转换后的时间戳，失败返回-1
+**功能描述:  1. 解析时间字符串中的年、月、日、时、分
+**           2. 年份处理：YY+2000
+**           3. 调用mktime函数转换为时间戳
+*********************************************************************/
+time_t time_str_to_timestamp(const char *time_str)
+{
+    struct tm tm_time;
+    int year, month, day, hour, min;
+    int ret;
+
+    if (time_str == NULL)
+    {
+        return (time_t)-1;
+    }
+
+    ret = sscanf(time_str, "%2d%2d%2d%2d%2d", &year, &month, &day, &hour, &min);
+    if (ret != 5)
+    {
+        return (time_t)-1;
+    }
+
+    tm_time.tm_year = year + 100;
+    tm_time.tm_mon = month - 1;
+    tm_time.tm_mday = day;
+    tm_time.tm_hour = hour;
+    tm_time.tm_min = min;
+    tm_time.tm_sec = 0;
+    tm_time.tm_isdst = -1;
+
+    return mktime(&tm_time);
+}
+
+/********************************************************************
+**函数名称:  is_time_in_range
+**入口参数:  start_time  ---   开始时间字符串，格式为"YYMMDDHHMM"
+**           end_time    ---   结束时间字符串，格式为"YYMMDDHHMM"
+**           current_ts  ---   当前时间戳(从1970-01-01 00:00:00起的秒数)
+**出口参数:  无
+**函数功能:  判断当前时间是否在起止时间范围内
+**返 回 值:  1-在范围内，0-不在范围内，-1-参数错误
+**功能描述:  1. 将起止时间字符串转换为时间戳
+**           2. 比较当前时间戳是否在起止时间戳之间
+*********************************************************************/
+int is_time_in_range(const char *start_time, const char *end_time, time_t current_ts)
+{
+    time_t start_ts;
+    time_t end_ts;
+
+    if (start_time == NULL || end_time == NULL)
+    {
+        return -1;
+    }
+
+    start_ts = time_str_to_timestamp(start_time);
+    end_ts = time_str_to_timestamp(end_time);
+
+    if (start_ts == (time_t)-1 || end_ts == (time_t)-1)
+    {
+        return -1;
+    }
+
+    if (current_ts >= start_ts && current_ts <= end_ts)
+    {
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
+}
