@@ -12,7 +12,14 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260320"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260323"
+/* 软件版本:        V1.0
+** 完成日期:        2026.03.23
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:        增加充电状态电量指示灯根据电量指示灯闪烁功能
+*/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260320"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.03.20
 ** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)

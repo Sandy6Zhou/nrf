@@ -127,6 +127,7 @@ typedef enum
     MY_MSG_CTRL_BUZZER, /* 蜂鸣器控制消息 */
     MY_MSG_WORK_MODE_SWITCH,
     MY_MSG_SHOW_BATTERY, // 用LED灯显示电池状态
+    MY_MSG_SHOW_CHARG, // 充电状态显示LED消息
 
 
 

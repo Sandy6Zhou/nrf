@@ -72,4 +72,18 @@ int my_ctrl_buzzer_play_tone(uint32_t freq_hz, uint32_t duration_ms);
 *********************************************************************/
 int my_ctrl_buzzer_play_sequence(const struct my_buzzer_note *notes, uint32_t num_notes);
 
+/********************************************************************
+**函数名称:  batt_led_set_level
+**入口参数:  level    ---   电量等级 (0~3)
+**出口参数:  无
+**函数功能:  设置电量指示灯等级
+**返 回 值:  0 表示成功，负值表示失败
+**功能描述:  根据 level 值点亮对应数量的电量 LED
+**           0 -> 全灭
+**           1 -> 只亮 batt_led0
+**           2 -> 亮 batt_led0, batt_led1
+**           3 -> 亮 batt_led0, batt_led1, batt_led2
+*********************************************************************/
+int batt_led_set_level(uint8_t level);
+
 #endif /* _MY_CTRL_H_ */

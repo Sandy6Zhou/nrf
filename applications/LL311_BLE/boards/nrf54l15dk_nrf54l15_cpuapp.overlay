@@ -137,10 +137,10 @@
 		status = "okay";
 	};
 
-	/* P2.3: 电池使能，高电平使能 */
+	/* P2.3: 电池使能，低电平使能 */
 	batt_pwr_en: batt-pwr-en {
 		compatible = "nordic,gpio-pins";
-		gpios = <&gpio2 3 GPIO_ACTIVE_HIGH>;
+		gpios = <&gpio2 3 GPIO_ACTIVE_LOW>;
 		status = "okay";
 	};
 

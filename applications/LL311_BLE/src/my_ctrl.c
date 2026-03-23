@@ -643,7 +643,7 @@ void my_ctrl_led_process(MY_LED_ID led_id, MY_LED_CTRL_CMD led_cmd)
 **           2 -> 亮 batt_led0, batt_led1
 **           3 -> 亮 batt_led0, batt_led1, batt_led2
 *********************************************************************/
-static int batt_led_set_level(uint8_t level)
+int batt_led_set_level(uint8_t level)
 {
     int ret;
     int on;
@@ -684,12 +684,12 @@ static void lock_led_set(bool on)
 }
 
 /*********************************************************************
-**函数名称:  my_show_battery_led
+**函数名称:  my_battery_show_led
 **入口参数:  led_ctrl    --  指向电池状态检查结构体的指针
 **出口参数:  无
 **函数功能:  根据电池状态检查结构体中的状态和时间计数器，控制不同 LED 的亮灭状态，以直观显示电池电量。
 *********************************************************************/
-void my_show_battery_led(Batt_LED_Ctrl_S* led_ctrl)
+void my_battery_show_led(Batt_LED_Ctrl_S* led_ctrl)
 {
     // 参数有效性检查
     if (led_ctrl == NULL)
@@ -797,7 +797,11 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
         switch (msg.msgID)
         {
             case MY_MSG_SHOW_BATTERY:
-                my_show_battery_led((Batt_LED_Ctrl_S*)msg.pData);//显示电池状态LED
+                my_battery_show_led((Batt_LED_Ctrl_S*)msg.pData);//显示电池状态LED
+                break;
+
+            case MY_MSG_SHOW_CHARG:
+                my_battery_show_chgled();//显示充电状态LED
                 break;
 
             default:
