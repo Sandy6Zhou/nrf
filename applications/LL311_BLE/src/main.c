@@ -402,7 +402,7 @@ void set_reset_lte_timer(void)
 
     current_time = my_get_system_time_sec();
 
-    /* timer_interval不可能为0 */ 
+    /* timer_interval不可能为0 */
     timer_interval = calculate_remaining_seconds(g_workmode_config.long_battery.start_time,
                         g_workmode_config.long_battery.reporting_interval_min, current_time);
 
@@ -435,14 +435,14 @@ void device_config_init(DeviceWorkModeConfig *p_workmode)
     if (p_workmode == NULL)
         return;
 
-    /* 默认设置为智能模式 */ 
+    /* 默认设置为智能模式 */
     p_workmode->current_mode = MY_MODE_SMART;
 
-    /* 长电池模式配置：设置上传时间间隔和起始时间 */ 
+    /* 长电池模式配置：设置上传时间间隔和起始时间 */
     p_workmode->long_battery.reporting_interval_min = DEFAULT_LONG_LIFE_INTERVAL;   // 上传间隔（分钟）
     strcpy(p_workmode->long_battery.start_time, DEFAULT_START_TIME);                // 每日上传起始时间
 
-    /* 智能模式配置：设置不同状态下的上传时间间隔 */ 
+    /* 智能模式配置：设置不同状态下的上传时间间隔 */
     p_workmode->intelligent.stop_status_interval_sec = STATIC_INTERVAL;             // 静止状态上传间隔（秒）
     p_workmode->intelligent.land_status_interval_sec = LAND_TRANSPORT_INTERVAL;     // 陆运状态上传间隔（秒）
     p_workmode->intelligent.sea_status_interval_sec = SEA_TRANSPORT_INTERVAL;       // 海运状态上传间隔（秒）

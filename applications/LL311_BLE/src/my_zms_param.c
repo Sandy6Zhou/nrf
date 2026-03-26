@@ -17,20 +17,20 @@ const AdvValidValue_t gDefaultAdvValidValue =
     .GoogleValid = 0,
 };
 
-const GsmImei_t gDefaultImeiValue = 
+const GsmImei_t gDefaultImeiValue =
 {
     .flag = 0,
     .hex = {'1','2','3','4','5','6','7','8','9','0','1','2','3','4','5'}
 };
 
-const GsmImei_t gDefaultMacAddr = 
+const GsmImei_t gDefaultMacAddr =
 {
     .flag = 0,
     .hex = {0x66, 0x55, 0x44, 0x33, 0x22, 0x11}
 };
 
 /* 蓝牙默认_TX_POWER配置 */
-const BleTxPower_t gDefaultBleTxPower = 
+const BleTxPower_t gDefaultBleTxPower =
 {
     .flag = FLAG_VALID,
     .tx_power = 0  /* 默认 0 dBm ，范围：-8dbm ~ +8dbm */
@@ -44,7 +44,7 @@ const BleTxPower_t gDefaultBleTxPower =
  * - CMD 模块 (bit10): 蓝牙指令处理模块，指令响应已通过 BLE 通道返回
  * 以上模块即使开启开关，也应保持 mod_level 为 LOG_LEVEL_NONE
  */
-const BleLogConfig_t gDefaultBleLogConfig = 
+const BleLogConfig_t gDefaultBleLogConfig =
 {
     .flag = FLAG_VALID,
     .global_en = 0,                         /* 默认关闭总开关 */
@@ -227,8 +227,8 @@ void my_param_load_config(void)
     if (ret != length)
     {
         memcpy(&gConfigParam.adv_valid_value, &gDefaultAdvValidValue, length);
-        MY_LOG_INF("Adv valid value not found. Use default:AppleValid(%d),GoogleValid(%d)", 
-                gConfigParam.adv_valid_value.AppleValid, 
+        MY_LOG_INF("Adv valid value not found. Use default:AppleValid(%d),GoogleValid(%d)",
+                gConfigParam.adv_valid_value.AppleValid,
                 gConfigParam.adv_valid_value.GoogleValid);
     }
 
@@ -261,7 +261,7 @@ void my_param_load_config(void)
     {
         memcpy(&gConfigParam.my_macaddr, &gDefaultMacAddr, length);
         memcpy(data_buff, gConfigParam.my_macaddr.hex, sizeof(gConfigParam.my_macaddr.hex));
-        MY_LOG_INF("mac addr not set. Use default:mac addr(%02x:%02x:%02x:%02x:%02x:%02x)", 
+        MY_LOG_INF("mac addr not set. Use default:mac addr(%02x:%02x:%02x:%02x:%02x:%02x)",
             data_buff[5], data_buff[4], data_buff[3], data_buff[2], data_buff[1], data_buff[0]);
     }
 
@@ -284,7 +284,7 @@ void my_param_load_config(void)
     if (ret != length)
     {
         memcpy(&gConfigParam.ble_log_config, &gDefaultBleLogConfig, length);
-        MY_LOG_INF("BLE log config not set. Use default: global_en=%d", 
+        MY_LOG_INF("BLE log config not set. Use default: global_en=%d",
                 gConfigParam.ble_log_config.global_en);
     }
     else
@@ -423,7 +423,7 @@ int my_param_set_jatag_or_jgtag(char *cmd, char *param)
         {
             set_adv_valid_status(APPLE_ADV_TYPE, 1);
             gConfigParam.adv_valid_value.AppleValid = 1;
-            
+
             ret = my_user_data_write(ZMS_ID_ADV_VALID, &gConfigParam.adv_valid_value, valid_len);
             if (ret != valid_len)
             {
@@ -441,7 +441,7 @@ int my_param_set_jatag_or_jgtag(char *cmd, char *param)
             {
                 set_adv_valid_status(APPLE_ADV_TYPE, 0);
                 gConfigParam.adv_valid_value.AppleValid = 0;
-                
+
                 ret = my_user_data_write(ZMS_ID_ADV_VALID, &gConfigParam.adv_valid_value, valid_len);
                 if (ret != valid_len)
                 {
@@ -469,7 +469,7 @@ int my_param_set_jatag_or_jgtag(char *cmd, char *param)
         {
             set_adv_valid_status(GOOGLE_ADV_TYPE, 1);
             gConfigParam.adv_valid_value.GoogleValid = 1;
-            
+
             ret = my_user_data_write(ZMS_ID_ADV_VALID, &gConfigParam.adv_valid_value, valid_len);
             if (ret != valid_len)
             {
@@ -487,7 +487,7 @@ int my_param_set_jatag_or_jgtag(char *cmd, char *param)
             {
                 set_adv_valid_status(GOOGLE_ADV_TYPE, 0);
                 gConfigParam.adv_valid_value.GoogleValid = 0;
-                
+
                 ret = my_user_data_write(ZMS_ID_ADV_VALID, &gConfigParam.adv_valid_value, valid_len);
                 if (ret != valid_len)
                 {

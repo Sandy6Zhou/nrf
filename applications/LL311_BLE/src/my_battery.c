@@ -304,7 +304,7 @@ void batt_chg_det_handle(struct k_timer *timer)
 
 /* 共用 ISR：根据 pins 掩码区分是 P1.7 还是 P1.8 触发 */
 static void batt_gpio_isr(const struct device *dev,
-                        struct gpio_callback *cb, 
+                        struct gpio_callback *cb,
                         uint32_t pins)
 {
     ARG_UNUSED(dev);
@@ -498,7 +498,7 @@ int8_t my_battery_read_percent()
     // 查找电压值所在的映射区间，-1是防止数组越界
     for (i = 0; i < s_batt_map_entries - 1; i++)
     {
-        if (read_mv >= s_batt_volt_map[i].mv && 
+        if (read_mv >= s_batt_volt_map[i].mv &&
             read_mv <= s_batt_volt_map[i+1].mv)
         {
             break;  // 找到电压值所在的区间，退出循环

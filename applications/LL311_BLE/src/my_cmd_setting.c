@@ -2403,4 +2403,3 @@ invalid_key:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "Key update failed. Invalid key.");
     return BLE_DATA_TYPE_AT_CMD;
 }
-

@@ -66,4 +66,3 @@ uint32_t my_rb_get_used_size(ring_buffer_t *rb);
 uint32_t my_rb_get_free_size(ring_buffer_t *rb);
 
 #endif
-

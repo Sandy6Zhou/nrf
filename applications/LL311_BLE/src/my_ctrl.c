@@ -73,7 +73,7 @@ static struct
 
 /**
  * @brief 锁 LED 控制结构体
- * 
+ *
  * 用于控制锁 LED 的闪烁模式，包含定时器和闪烁参数
  */
 static struct

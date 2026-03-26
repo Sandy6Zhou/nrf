@@ -134,4 +134,3 @@ uint32_t my_rb_get_free_size(ring_buffer_t *rb)
     // 预留1字节，所以可用空间是 size-1 - 已用空间
     return (rb->size - 1) - my_rb_get_used_size(rb);
 }
-

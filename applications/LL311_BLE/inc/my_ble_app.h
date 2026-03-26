@@ -73,7 +73,7 @@
 
 #define BLE_PKEY_RX_CMD                         0x8900C200      // 公钥接收命令
 #define BLE_PKEY_RSP_DATA1                      0x00            // 公钥接收响应数据1
-#define BLE_PKEY_RSP_DATA3                      0x00 
+#define BLE_PKEY_RSP_DATA3                      0x00
 
 /* APP下行控制指令    */
 #define BLE_APP_CMD_APP_LINK                    0x00
@@ -210,4 +210,3 @@ void ble_log_connect_init(void);
 *********************************************************************/
 void ble_comu_at_cmd_handle(const uint8_t *data, uint16_t len);
 #endif
-

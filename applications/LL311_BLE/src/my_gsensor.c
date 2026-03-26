@@ -185,11 +185,11 @@ static int analyze_gsensor_state(const struct gsensor_data *data)
     if (var < STATIC_VAR_THRESHOLD)
     {
         g_current_gsensor_state = STATE_STATIC;
-    } 
+    }
     else if (var < LAND_VAR_THRESHOLD)
     {
         g_current_gsensor_state = STATE_LAND_TRANSPORT;
-    } 
+    }
     else
     {
         g_current_gsensor_state = STATE_SEA_TRANSPORT;
@@ -268,14 +268,14 @@ LOOP:
     {
         my_stop_timer(MY_TIMER_LTE_POWER);
         return ;
-    } 
+    }
     else if (p_workmode->intelligent.sleep_switch == 2)
     {
         /* 当设置的定时间隔>600时,4G是会整个断电的,所以需要启动定时器，使用动态确定的间隔 */
         if (timer_interval > 600)
         {
             my_start_timer(MY_TIMER_LTE_POWER, timer_interval * 1000, true, awaken_lte_timer_callback);
-        } 
+        }
         else
         {
             my_stop_timer(MY_TIMER_LTE_POWER);
@@ -306,7 +306,7 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
     for (;;)
     {
         my_recv_msg(&my_gsensor_msgq, (void *)&msg, sizeof(MSG_S), K_FOREVER);
-        
+
         switch (msg.msgID)
         {
             case MY_MSG_GSENSOR_READ:
@@ -315,7 +315,7 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
                 if (sensor_ready)
                 {
                     int16_t acc_raw[3], gyro_raw[3];
-                    
+
                     /* 读取加速度计数据 */
                     if (lsm6dsv16x_acceleration_raw_get(&lsm_ctx, acc_raw) == 0)
                     {
@@ -325,7 +325,7 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
                     {
                         MY_LOG_ERR("Failed to read accelerometer");
                     }
-                    
+
                     /* 读取陀螺仪数据 */
                     if (lsm6dsv16x_angular_rate_raw_get(&lsm_ctx, gyro_raw) == 0)
                     {
@@ -421,7 +421,7 @@ int my_gsensor_pwr_on(bool on)
 int my_gsensor_read_data(struct gsensor_data *data)
 {
     int16_t data_raw[3];
-    
+
     if (!sensor_ready)
     {
         return -ENODEV;
@@ -434,7 +434,7 @@ int my_gsensor_read_data(struct gsensor_data *data)
         data->z = data_raw[2];
         return 0;
     }
-    
+
     return -EIO;
 }
 
@@ -469,11 +469,11 @@ int my_lsm6dsv16x_init(void)
         lsm6dsv16x_reset_set(&lsm_ctx, LSM6DSV16X_GLOBAL_RST);
         k_sleep(K_MSEC(30));
         lsm6dsv16x_block_data_update_set(&lsm_ctx, PROPERTY_ENABLE);
-        
+
         /* 配置加速度计：120Hz, 2g */
         lsm6dsv16x_xl_data_rate_set(&lsm_ctx, LSM6DSV16X_ODR_AT_120Hz);
         lsm6dsv16x_xl_full_scale_set(&lsm_ctx, LSM6DSV16X_2g);
-        
+
         /* 配置陀螺仪：120Hz, 250dps */
         lsm6dsv16x_gy_data_rate_set(&lsm_ctx, LSM6DSV16X_ODR_AT_120Hz);
         lsm6dsv16x_gy_full_scale_set(&lsm_ctx, LSM6DSV16X_250dps);
@@ -512,7 +512,7 @@ int my_gsensor_init(k_tid_t *tid)
         MY_LOG_ERR("Failed to configure GSENSOR Power GPIO (err %d)", err);
         return err;
     }
-    
+
     /* 2.1. 配置中断引脚 */
     err = gpio_pin_configure_dt(&gsen_int, GPIO_INPUT);
     if (err)

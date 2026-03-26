@@ -69,7 +69,7 @@ void ble_log_disconnect_cleanup(void)
 
     /* 注意：不清空缓冲区索引和数据，让持有锁的任务自行处理
      * 原因：如果任务A持有锁时清空索引，会导致任务A操作缓冲区时数据不一致
-     * 缓冲区会在 ble_log_send 检测到断开标志后，由持有者安全清空 
+     * 缓冲区会在 ble_log_send 检测到断开标志后，由持有者安全清空
      * 这里的日志输出要用 LOG_DBG 而不是 MY_LOG_DBG 防止递归调用 */
 
     LOG_DBG("BLE log disconnect pending flag set");
@@ -133,7 +133,7 @@ uint32_t pkcs7_unpad(uint8_t *buf, uint32_t len)
     uint8_t pad_byte;
     uint32_t i;
 
-    if (buf == NULL || len == 0) 
+    if (buf == NULL || len == 0)
     {
         return 0;
     }
@@ -428,7 +428,7 @@ static void ble_comu_send_packet(uint16_t type, uint8_t *data, uint16_t len)
         /* AES-128-ECB 加密 */
         ret = aes_ecb_encrypt(aes_base_key, 128, data, len,
                              ble_encrypt_buf, sizeof(ble_encrypt_buf));
-        if (ret != 0) 
+        if (ret != 0)
         {
             LOG_INF("aes_ecb_encrypt! ret=%d", ret);
             return;
@@ -436,10 +436,10 @@ static void ble_comu_send_packet(uint16_t type, uint8_t *data, uint16_t len)
     }
 
     memcpy(&ble_tx_buf[4], ble_encrypt_buf, len);
-    
+
     /* 日志输出：发送数据打印加密前的原始数据 */
     LOG_HEXDUMP_DBG(ble_tx_buf, len + 4, "BLE TX (before encrypt):");
-    
+
     BLE_DataTransOverBle(ble_tx_buf, len + 4);
 }
 
@@ -853,7 +853,7 @@ static void ble_comu_app_handle(uint32_t type, const uint8_t *data, uint16_t len
             ret = aes_ecb_decrypt(aes_base_key, 128,
                                 data, len,
                                 ble_decrypt_buffer, sizeof(ble_decrypt_buffer));
-            if (ret != 0) 
+            if (ret != 0)
             {
                 LOG_INF("aes_ecb_decrypt error!");
                 return;

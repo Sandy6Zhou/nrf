@@ -45,22 +45,22 @@ static volatile uint32_t thread_alive_flags = 0;
 static void wdt_feed_timer_callback(void *p1)
 {
     ARG_UNUSED(p1);
-    
+
     /* 检查关键线程是否都活跃: Main, BLE, Ctrl, LTE, NFC, GSensor */
-    uint32_t expected_flags = (1 << MOD_MAIN) | (1 << MOD_BLE) | (1 << MOD_CTRL) | 
+    uint32_t expected_flags = (1 << MOD_MAIN) | (1 << MOD_BLE) | (1 << MOD_CTRL) |
                               (1 << MOD_LTE) | (1 << MOD_NFC) | (1 << MOD_GSENSOR);
-    
+
     if ((thread_alive_flags & expected_flags) == expected_flags)
     {
         /* 所有关键线程正常，喂狗 */
         wdt_feed(wdt_dev, wdt_channel_id);
-        
+
         /* 清除标志位，准备下一轮检查 */
         thread_alive_flags = 0;
     }
     else
     {
-        MY_LOG_ERR("Thread watchdog check failed! alive_flags=0x%x, expected=0x%x", 
+        MY_LOG_ERR("Thread watchdog check failed! alive_flags=0x%x, expected=0x%x",
                 thread_alive_flags, expected_flags);
         /* 不喂狗，让看门狗复位系统 */
     }
@@ -91,14 +91,14 @@ void my_wdt_feed(module_type mod_type)
 int my_wdt_init(void)
 {
     int err;
-    
+
     /* 检查看门狗设备是否就绪 */
     if (!device_is_ready(wdt_dev))
     {
         MY_LOG_ERR("Watchdog device not ready");
         return -ENODEV;
     }
-    
+
     /* 配置看门狗选项 */
     struct wdt_timeout_cfg wdt_config = {
         .flags = WDT_FLAG_RESET_SOC,  /* 超时后复位整个系统 */
@@ -106,7 +106,7 @@ int my_wdt_init(void)
         .window.max = WDT_TIMEOUT_MS, /* 最大超时时间 */
         .callback = NULL,             /* 不使用回调，直接复位 */
     };
-    
+
     /* 安装看门狗 */
     wdt_channel_id = wdt_install_timeout(wdt_dev, &wdt_config);
     if (wdt_channel_id < 0)
@@ -114,7 +114,7 @@ int my_wdt_init(void)
         MY_LOG_ERR("Failed to install watchdog timeout (err %d)", wdt_channel_id);
         return wdt_channel_id;
     }
-    
+
     /* 启动看门狗 */
     err = wdt_setup(wdt_dev, WDT_OPT_PAUSE_HALTED_BY_DBG);
     if (err)
@@ -122,15 +122,15 @@ int my_wdt_init(void)
         MY_LOG_ERR("Failed to setup watchdog (err %d)", err);
         return err;
     }
-    
+
     /* 初始喂狗 */
     wdt_feed(wdt_dev, wdt_channel_id);
-    
+
     /* 启动定时喂狗定时器（周期性） */
     my_start_timer(MY_TIMER_WDT_FEED, WDT_FEED_INTERVAL_MS, true, wdt_feed_timer_callback);
-    
-    MY_LOG_INF("Watchdog initialized (timeout=%dms, feed_interval=%dms)", 
+
+    MY_LOG_INF("Watchdog initialized (timeout=%dms, feed_interval=%dms)",
             WDT_TIMEOUT_MS, WDT_FEED_INTERVAL_MS);
-    
+
     return 0;
 }
