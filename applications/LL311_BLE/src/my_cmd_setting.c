@@ -145,6 +145,8 @@ static int ncftrig_cmd_handler(at_cmd_struc* msg);
 static int nfcauth_cmd_handler(at_cmd_struc* msg);
 static int btlog_cmd_handler(at_cmd_struc* msg);
 static int bkey_cmd_handler(at_cmd_struc* msg);
+static int bunlock_cmd_handler(at_cmd_struc* msg);
+static int block_cmd_handler(at_cmd_struc* msg);
 
 static const at_cmd_attr_t at_cmd_attr_table[] =
 {
@@ -171,6 +173,8 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"BTLOG",          btlog_cmd_handler},
     {"BKEY_SET",       bkey_cmd_handler},
     {"BKEY_RESET",     bkey_cmd_handler},
+    {"BUNLOCK",        bunlock_cmd_handler},
+    {"BLOCK",          block_cmd_handler},
 };
 
 /*********************************************************************
@@ -2311,7 +2315,6 @@ param_invalid:
 static int bkey_cmd_handler(at_cmd_struc* msg)
 {
     uint16_t remaining;
-    uint8_t i;
     uint8_t digit_len;
     const char *default_key = "000000";
 
@@ -2403,3 +2406,162 @@ invalid_key:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "Key update failed. Invalid key.");
     return BLE_DATA_TYPE_AT_CMD;
 }
+
+/*********************************************************************
+**函数名称:  bunlock_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针
+**出口参数:  msg->resp_msg  ---  响应消息
+**           msg->resp_length --- 响应长度
+**函数功能:  处理BUNLOCK指令：蓝牙解锁
+**指令格式:  BUNLOCK,[key]#
+**参数说明:  [key] - 解锁固定密钥，由6位数字组成
+**返 回 值:  BLE数据类型
+*********************************************************************/
+static int bunlock_cmd_handler(at_cmd_struc* msg)
+{
+    uint16_t remaining;
+    bool already_unlocked;
+    uint8_t digit_len;
+
+    remaining = sizeof(msg->resp_msg);
+
+    /* 检查参数数量 */
+    if (msg->parm_count != 1)
+    {
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Unlock failed. Invalid param.");
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+
+    /* 验证密钥长度是否为6位数字 */
+    if (strlen(msg->parm[1]) != 6)
+    {
+        LOG_INF("%s=>key length error: %s", __func__, msg->parm[1]);
+        goto key_error;
+    }
+
+    digit_len = string_check_is_number(0, msg->parm[1]);
+    if (digit_len != 6)
+    {
+        LOG_INF("%s=>old key format error: %s", __func__, msg->parm[1]);
+        goto key_error;
+    }
+
+    /* 验证密钥是否正确 */
+    if (strcmp(g_device_cmd_config.bt_key, msg->parm[1]) != 0)
+    {
+        LOG_INF("%s=>key mismatch", __func__);
+        goto key_error;
+    }
+
+    /* 检查当前锁状态：通过开锁限位判断是否已解锁 */
+    already_unlocked = get_openlock_state();
+    if (already_unlocked)
+    {
+        LOG_INF("%s=>already in unlock state", __func__);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Unlock failed. Device already in unlock state.");
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+
+    /* 执行开锁动作，开锁模块会在完成或超时后通过ble_comu_response_or_expansion_cmd回复结果 */
+    LOG_INF("%s=>executing unlock action", __func__);
+
+    /* 标记当前是处于蓝牙解锁 */
+    g_bBleLockState = BLE_UNLOCKING;
+    my_send_msg(MOD_MAIN, MOD_CTRL, MY_MSG_CTRL_OPENLOCKING);
+
+    /* 不返回响应消息，由ble模块异步回复 */
+    msg->resp_length = 0;
+    return BLE_DATA_TYPE_AT_CMD;
+
+key_error:
+    // TODO Buzzer 未授权提示
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Unlock failed. Unlock key error");
+    return BLE_DATA_TYPE_AT_CMD;
+}
+
+/*********************************************************************
+**函数名称:  block_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针
+**出口参数:  msg->resp_msg  ---  响应消息
+**           msg->resp_length --- 响应长度
+**函数功能:  处理BLOCK指令：蓝牙上锁
+**指令格式:  BLOCK,[key]#
+**参数说明:  [key] - 上锁固定密钥，由6位数字组成
+**返 回 值:  BLE数据类型
+*********************************************************************/
+static int block_cmd_handler(at_cmd_struc* msg)
+{
+    uint16_t remaining;
+    bool already_locked;
+    bool pin_inserted;
+    uint8_t digit_len;
+
+    remaining = sizeof(msg->resp_msg);
+
+    /* 检查参数数量 */
+    if (msg->parm_count != 1)
+    {
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Lock failed. Invalid param.");
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+
+    /* 验证密钥长度是否为6位数字 */
+    if (strlen(msg->parm[1]) != 6)
+    {
+        LOG_INF("%s=>key length error: %s", __func__, msg->parm[1]);
+        goto key_error;
+    }
+
+    digit_len = string_check_is_number(0, msg->parm[1]);
+    if (digit_len != 6)
+    {
+        LOG_INF("%s=>key format error: %s", __func__, msg->parm[1]);
+        goto key_error;
+    }
+
+    /* 验证密钥是否正确 */
+    if (strcmp(g_device_cmd_config.bt_key, msg->parm[1]) != 0)
+    {
+        LOG_INF("%s=>key mismatch", __func__);
+        goto key_error;
+    }
+
+    /* 检查锁销是否插入 */
+    pin_inserted = get_lockpin_insert_state();
+    if (!pin_inserted)
+    {
+        LOG_INF("%s=>lock pin not detected", __func__);
+        // TODO Buzzer 上锁失败提示
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Lock failed. Lock pin not detected.");
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+
+    /* 检查当前锁状态：通过关锁限位判断是否已上锁 */
+    already_locked = get_closelock_state();
+    if (already_locked)
+    {
+        LOG_INF("%s=>already in lock state", __func__);
+        // TODO Buzzer 上锁失败提示
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Lock failed. Device already in lock state.");
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+
+    /* 执行上锁动作，上锁模块会在完成或超时后通过ble_comu_response_or_expansion_cmd回复结果 */
+    LOG_INF("%s=>executing lock action", __func__);
+
+    /* 标记当前是处于蓝牙上锁 */
+    g_bBleLockState = BLE_LOCKING;
+    my_send_msg(MOD_MAIN, MOD_CTRL, MY_MSG_CTRL_CLOSELOCKING);
+
+    /* 不返回响应消息，由ble模块异步回复 */
+    msg->resp_length = 0;
+    return BLE_DATA_TYPE_AT_CMD;
+
+key_error:
+    // TODO Buzzer 未授权提示
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Lock failed. key error");
+    return BLE_DATA_TYPE_AT_CMD;
+}
+

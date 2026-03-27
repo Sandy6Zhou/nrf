@@ -209,4 +209,16 @@ void ble_log_connect_init(void);
 **注意事项:  根据AT命令处理结果决定是否发送响应数据
 *********************************************************************/
 void ble_comu_at_cmd_handle(const uint8_t *data, uint16_t len);
+
+/********************************************************************
+**函数名称:  ble_comu_response_or_expansion_cmd
+**入口参数:  type          ---        命令类型
+**         :  str_data      ---        输入数据指针
+**         :  len           ---        数据长度
+**出口参数:  无
+**函数功能:  发送BLE通信响应或扩展命令数据
+**返回值:    无
+**注意事项:  数据长度会被扩展到16字节的倍数进行发送
+*********************************************************************/
+void ble_comu_response_or_expansion_cmd(uint16_t type, uint8_t *str_data, uint8_t len);
 #endif

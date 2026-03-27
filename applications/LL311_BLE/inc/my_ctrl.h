@@ -147,4 +147,14 @@ void my_lock_led_set_mode(MY_LOCK_LED_MODE mode);
 *********************************************************************/
 void my_lock_led_msg_send(MY_LOCK_LED_MODE mode);
 
+/********************************************************************
+**函数名称:  get_lockpin_insert_state
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取锁销插入状态
+**返 回 值:  true  ---        锁销已插入
+            false ---        锁销未插入
+*********************************************************************/
+bool get_lockpin_insert_state(void);
+
 #endif /* _MY_CTRL_H_ */

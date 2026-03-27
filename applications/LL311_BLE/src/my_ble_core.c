@@ -1171,6 +1171,11 @@ static void my_ble_task(void *p1, void *p2, void *p3)
                 ble_comu_at_cmd_handle(shell_test_buff, strlen(shell_test_buff));
                 break;
 
+            /* 蓝牙开/关锁结果通知 */
+            case MY_MSG_BLE_LOCK_RESULT:
+                ble_comu_response_or_expansion_cmd(BLE_DATA_TYPE_AT_CMD, msg.pData, msg.DataLen);
+                break;
+
             default:
                 break;
         }

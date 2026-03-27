@@ -10,7 +10,16 @@
 #ifndef _MY_MOTOR_H_
 #define _MY_MOTOR_H_
 
+typedef enum {
+    BLE_UNLOCKING,  // 正在开锁
+    BLE_LOCKING,    // 正在关锁
+    BLE_LOCK_STOP,  // 停止锁操作
+} BLE_LOCK_STATE_T;
+
+extern BLE_LOCK_STATE_T g_bBleLockState;
+
 void motor_power_set(bool on);
+
 /********************************************************************
 **函数名称:  req_open_lock_action
 **入口参数:  无
@@ -19,6 +28,7 @@ void motor_power_set(bool on);
 **返 回 值:  无
 *********************************************************************/
 void req_open_lock_action(void);
+
 /********************************************************************
 **函数名称:  req_close_lock_action
 **入口参数:  无
@@ -27,6 +37,7 @@ void req_open_lock_action(void);
 **返 回 值:  无
 *********************************************************************/
 void req_close_lock_action(void);
+
 /********************************************************************
 **函数名称:  stop_lock_action
 **入口参数:  无
@@ -35,7 +46,9 @@ void req_close_lock_action(void);
 **返 回 值:  无
 *********************************************************************/
 void stop_lock_action(void);
+
 int motor_gpio_init(void);
+
 /********************************************************************
 **函数名称:  get_closelock_state
 **入口参数:  无
@@ -45,4 +58,15 @@ int motor_gpio_init(void);
             false ---        未关锁到位
 *********************************************************************/
 bool get_closelock_state(void);
+
+/********************************************************************
+**函数名称:  get_openlock_state
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取开锁限位状态
+**返 回 值:  true  ---        开锁到位（限位检测到）
+            false ---        未开锁到位
+*********************************************************************/
+bool get_openlock_state(void);
+
 #endif

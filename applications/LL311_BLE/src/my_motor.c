@@ -48,6 +48,13 @@ static lock_posdet closelock_posdet;
 /* 开锁状态标志，true表示正在开锁 */
 static bool s_bOpenLockingState = false;
 
+/* 蓝牙操作锁状态：默认停止锁操作 */
+BLE_LOCK_STATE_T g_bBleLockState = BLE_LOCK_STOP;
+
+const char unlock_success[] = "Unlock success";
+const char unlock_fail[] = "Unlock failed. No unlock state detected.";
+const char lock_success[] = "Lock success";
+const char lock_fail[] = "Lock failed. No lock state detected.";
 /* 电源控制：1 = 打开，0 = 关闭 */
 void motor_power_set(bool on)
 {
@@ -112,6 +119,15 @@ void stop_lock_action(void)
     gpio_pin_set_dt(&motor_b, 0);
 }
 
+void send_lock_result_event(const char *lock_msg_data)
+{
+    MSG_S msg;
+    msg.msgID = MY_MSG_BLE_LOCK_RESULT;
+    msg.pData = lock_msg_data;
+    msg.DataLen = strlen(lock_msg_data);
+    my_send_msg_data(MOD_MAIN, MOD_BLE, &msg);
+}
+
 /********************************************************************
 **函数名称:  lock_posdet_edge_handler
 **入口参数:  state  ---        输入，锁状态（OPEN_LOCK/CLOSE_LOCK）
@@ -163,6 +179,15 @@ static void openlock_posdet_timer_handler(struct k_timer *timer)
             my_send_msg(MOD_MAIN, MOD_CTRL, MY_MSG_CTRL_STOPLOCK);
             /* 开锁后闪烁LED 18秒 */
             my_lock_led_msg_send(LOCK_LED_UNLOCK);
+
+            /* 如果是蓝牙开锁触发，通知蓝牙线程开锁成功 */
+            if (g_bBleLockState == BLE_UNLOCKING)
+            {
+                g_bBleLockState = BLE_LOCK_STOP;
+
+                send_lock_result_event(unlock_success);
+                // TODO buzzer进行解锁成功提示
+            }
             // MY_MSG_CTRL_OPENLOCKED:先发送消息通知MAIN线程，再经过LTE线程上报开锁状态成功
         }
     }
@@ -194,6 +219,14 @@ static void closelock_posdet_timer_handler(struct k_timer *timer)
             my_send_msg(MOD_MAIN, MOD_CTRL, MY_MSG_CTRL_STOPLOCK);
             /* 关锁后关闭LED */
             my_lock_led_msg_send(LOCK_LED_CLOSE);
+
+            /* 如果是蓝牙关锁触发，通知蓝牙线程关锁成功 */
+            if (g_bBleLockState == BLE_LOCKING)
+            {
+                g_bBleLockState = BLE_LOCK_STOP;
+                send_lock_result_event(lock_success);
+                // TODO buzzer进行关锁成功提示
+            }
             // TODO MY_MSG_CTRL_CLOSELOCKED:发送消息给LTE线程上报关锁状态成功
         }
         else
@@ -235,6 +268,19 @@ bool get_closelock_state(void)
     return closelock_posdet.state;
 }
 
+/********************************************************************
+**函数名称:  get_openlock_state
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取开锁限位状态
+**返 回 值:  true  ---        开锁到位（限位检测到）
+            false ---        未开锁到位
+*********************************************************************/
+bool get_openlock_state(void)
+{
+    return openlock_posdet.state;
+}
+
 static void motor_pos_isr(const struct device *dev,
                         struct gpio_callback *cb,
                         uint32_t pins)
@@ -267,7 +313,24 @@ static void motor_timer_timeout_handler(struct k_timer *timer)
     ARG_UNUSED(timer);
 
     // MY_LOG_INF("%s:run", __func__);
-    // TODO 发送锁状态失败通知
+    /* 如果是蓝牙开锁触发，通知蓝牙线程开锁失败 */
+    if (g_bBleLockState == BLE_UNLOCKING)
+    {
+        g_bBleLockState = BLE_LOCK_STOP;
+
+        send_lock_result_event(unlock_fail);
+        // TODO buzzer进行解锁失败提示
+    }
+    /* 如果是蓝牙关锁触发，通知蓝牙线程关锁失败 */
+    else if (g_bBleLockState == BLE_LOCKING)
+    {
+        g_bBleLockState = BLE_LOCK_STOP;
+
+        send_lock_result_event(lock_fail);
+        // TODO buzzer进行关锁失败提示
+    }
+
+    /* 发送停止锁操作消息 */
     my_send_msg(MOD_MAIN, MOD_CTRL, MY_MSG_CTRL_STOPLOCK);
 }
 

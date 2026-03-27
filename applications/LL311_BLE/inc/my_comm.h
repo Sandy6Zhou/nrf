@@ -179,6 +179,7 @@ typedef enum
     MY_MSG_CTRL_STOPLOCK,       /* 停止开/关锁 */
     MY_MSG_CTRL_OPENLOCKED,     /* 已开锁 */
     MY_MSG_CTRL_CLOSELOCKED,    /* 已关锁 */
+    MY_MSG_BLE_LOCK_RESULT,     /* 蓝牙开/关锁结果通知消息 */
 } MY_MAIN_TASK_MSG;
 
 /* ========== 集中引用所有模块头文件 ========== */
