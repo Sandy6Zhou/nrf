@@ -595,10 +595,28 @@ static void lock_pin_timer_handler(struct k_timer *timer)
         msgID = new_state ? MY_MSG_CTRL_LOCK_PIN_INSERTED : MY_MSG_CTRL_LOCK_PIN_DISCONNECTED;
         if (new_state)
         {
+            if (g_device_cmd_config.pinstat_report)
+            {
+                if (g_device_cmd_config.pinstat_trigger == 1 || g_device_cmd_config.pinstat_trigger == 3)
+                {
+                    
+                    my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);
+                    // TODO 直接发消息给LTE线程,由4G判断是否要上报
+                }
+            }
             my_send_msg(MOD_CTRL, MOD_CTRL, msgID);
         }
         else
         {
+            if (g_device_cmd_config.pinstat_report)
+            {
+                if (g_device_cmd_config.pinstat_trigger == 2 || g_device_cmd_config.pinstat_trigger == 3)
+                {
+
+                    my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);
+                    // TODO 直接发消息给LTE线程,由4G判断是否要上报
+                }
+            }
             /* 锁销被拔出时,检测到锁是关闭状态 */
             if (get_closelock_state())
             {
@@ -1360,6 +1378,23 @@ static void buzzer_timer_handler(struct k_timer *timer)
 
 }
 
+/*********************************************************************
+**函数名称:  my_ctrl_report_tamper_alarm
+**入口参数:  无
+**出口参数:  无
+**函数功能:  上报拆防检测
+*********************************************************************/
+void my_ctrl_report_tamper_alarm(void)
+{
+    if (g_device_cmd_config.remalm_sw)
+    {
+        //开启4G电源
+        my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);
+        // TODO 直接发消息给LTE线程,由4G判断是否要上报
+
+    }
+}
+
 /********************************************************************
 **函数名称:  my_ctrl_task
 **入口参数:  p1, p2, p3   ---   线程参数（未使用）
@@ -1447,6 +1482,16 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
 
             case MY_MSG_CTRL_BUZZER_OFF:
                 my_ctrl_stop_buzzer();
+                break;
+
+            case MY_MSG_CTRL_LIGHT_SENSOR_BRIGHT:
+                MY_LOG_INF("Light sensor detected: BRIGHT");
+                //上报拆除检测告警
+                my_ctrl_report_tamper_alarm();
+                break;
+
+            case MY_MSG_CTRL_LIGHT_SENSOR_DARK:
+                MY_LOG_INF("Light sensor detected: DARK");
                 break;
 
             default:

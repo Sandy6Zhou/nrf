@@ -47,8 +47,8 @@ DeviceCmdConfig g_device_cmd_config = {
     .lockerr_buzzer = 1,               /* 默认报警30s */
 
     /* PINSTAT 指令默认配置 */
-    .pinstat_report = 0,               /* 默认不上报 */
-    .pinstat_trigger = 0,              /* 默认都不触发 */
+    .pinstat_report = 1,               /* 默认GPRS */
+    .pinstat_trigger = 3,              /* 默认都触发 */
 
     /* LOCKSTAT 指令默认配置 */
     .lockstat_report = 0,              /* 默认GPRS */

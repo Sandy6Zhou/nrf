@@ -618,14 +618,6 @@ int main(void)
                 }
                 break;
 
-            case MY_MSG_CTRL_LIGHT_SENSOR_DARK:
-                MY_LOG_INF("Light sensor detected: DARK");
-                break;
-
-            case MY_MSG_CTRL_LIGHT_SENSOR_BRIGHT:
-                MY_LOG_INF("Light sensor detected: BRIGHT");
-                break;
-
             case MY_MSG_CTRL_SHUTDOWN_REQUEST:
                 MY_LOG_INF("Shutdown request received, entering SHUTDOWN mode");
                 /* 切换到关机模式 */
