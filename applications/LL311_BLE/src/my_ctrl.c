@@ -351,7 +351,8 @@ void handle_nfc_card_event(uint8_t *card_id, uint8_t id_len)
     /* 符合开锁规则 */
     if (ret == 0)
     {
-        // TODO 发消息控制成功提示音
+        //发消息控制刷卡成功提示音
+        my_set_buzzer_mode(BUZZER_EVENT_NFC_SUCCESS);
         /* 启动开锁操作 */
         my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_OPENLOCKING);
         MY_LOG_INF("start to openlock");
@@ -365,7 +366,8 @@ void handle_nfc_card_event(uint8_t *card_id, uint8_t id_len)
     /* 权限不足 */
     else if (ret == -1)
     {
-        // TODO 发消息控制异常提示音
+        //发消息控制异常提示音
+        my_set_buzzer_mode(BUZZER_ERROR_TONE);
         MY_LOG_INF("card no permission");
     }
 }
@@ -606,11 +608,13 @@ static void lock_pin_timer_handler(struct k_timer *timer)
                 /* 蜂鸣器报警 */
                 if (g_device_cmd_config.lockpincyt_buzzer == 1)
                 {
-                    // TODO 发消息到ctrl线程,报警30s
+                    //发消息到ctrl线程,报警30s
+                    my_set_buzzer_mode(BUZZER_GENERAL_ALARM);
                 }
                 else if (g_device_cmd_config.lockpincyt_buzzer == 2)
                 {
-                    // TODO 发消息到ctrl线程,持续报警直到收到关闭蜂鸣器报警指令
+                    //发消息到ctrl线程,持续报警直到收到关闭蜂鸣器报警指令
+                    my_set_buzzer_mode(BUZZER_CONTINUOUS_ALARM);
                 }
             }
         }
@@ -1181,6 +1185,24 @@ void my_lock_led_msg_send(MY_LOCK_LED_MODE mode)
 
 /**
 ********************************************************************
+**函数名称：  my_set_buzzer_mode
+**入口参数：  buzzer_mode - 蜂鸣器模式枚举值 (MY_BUZZER_MODE)
+**                        例如: BUZZER_STOP, BUZZER_EVENT_NFC_SUCCESS 等
+**出口参数：  无
+**函数功能：  设置蜂鸣器工作模式并触发控制任务处理
+**返 回 值：  无
+**功能描述：  1. 将传入的模式值更新到全局变量 g_buzzer_mode，确立当前工作状态；
+**           2. 向控制模块 (MOD_CTRL) 发送消息 (MY_MSG_CTRL_BUZZER_MODE)
+********************************************************************
+*/
+void my_set_buzzer_mode(int buzzer_mode)
+{
+    g_buzzer_mode = buzzer_mode;
+    my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_BUZZER_MODE);
+}
+
+/**
+********************************************************************
 **函数名称：  g_buzzer_ctrl_config
 **入口参数：  on_time   - 蜂鸣器单次“响”的持续时间 (单位: 100ms tick数)
 **           off_time  - 蜂鸣器单次“停”的持续时间 (单位: 100ms tick数)
@@ -1263,11 +1285,6 @@ void my_buzzer_play(int buzzer_mode)
         case BUZZER_EVENT_LOCK_FAIL:
             //上锁/解锁失败：响1000ms, 停500ms, 重复3次
             g_buzzer_ctrl_config(10, 5, 3);
-            break;
-
-        case BUZZER_EVENT_UNAUTHORIZED:
-            // 未授权提示：响100ms, 停100ms, 重复5次
-            g_buzzer_ctrl_config(1, 1, 5);
             break;
 
         case BUZZER_EVENT_NFC_ACTIVATE:

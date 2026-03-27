@@ -599,6 +599,8 @@ int main(void)
                 my_nfc_start_poll(30);
                 /* 短按唤醒后，显示电池状态，LED显示*/
                 my_battery_show();
+                //短按唤醒读卡器，蜂鸣器提示100ms
+                my_set_buzzer_mode(BUZZER_EVENT_NFC_ACTIVATE);
                 break;
 
             case MY_MSG_CTRL_KEY_LONG_PRESS:

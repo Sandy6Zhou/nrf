@@ -2402,7 +2402,8 @@ static int bkey_cmd_handler(at_cmd_struc* msg)
     return BLE_DATA_TYPE_AT_CMD;
 
 invalid_key:
-    /* TODO: 蜂鸣器未授权提示音 */
+    /* 蜂鸣器未授权提示音 (异常提示音)*/
+    my_set_buzzer_mode(BUZZER_ERROR_TONE);
     msg->resp_length = snprintf(msg->resp_msg, remaining, "Key update failed. Invalid key.");
     return BLE_DATA_TYPE_AT_CMD;
 }
@@ -2475,7 +2476,8 @@ static int bunlock_cmd_handler(at_cmd_struc* msg)
     return BLE_DATA_TYPE_AT_CMD;
 
 key_error:
-    // TODO Buzzer 未授权提示
+    // Buzzer 未授权提示
+    my_set_buzzer_mode(BUZZER_ERROR_TONE);
     msg->resp_length = snprintf(msg->resp_msg, remaining, "Unlock failed. Unlock key error");
     return BLE_DATA_TYPE_AT_CMD;
 }
@@ -2533,7 +2535,8 @@ static int block_cmd_handler(at_cmd_struc* msg)
     if (!pin_inserted)
     {
         LOG_INF("%s=>lock pin not detected", __func__);
-        // TODO Buzzer 上锁失败提示
+        // Buzzer 上锁失败提示
+        my_set_buzzer_mode(BUZZER_EVENT_LOCK_FAIL);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "Lock failed. Lock pin not detected.");
         return BLE_DATA_TYPE_AT_CMD;
     }
@@ -2543,7 +2546,8 @@ static int block_cmd_handler(at_cmd_struc* msg)
     if (already_locked)
     {
         LOG_INF("%s=>already in lock state", __func__);
-        // TODO Buzzer 上锁失败提示
+        //Buzzer 上锁失败提示
+        my_set_buzzer_mode(BUZZER_EVENT_LOCK_FAIL);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "Lock failed. Device already in lock state.");
         return BLE_DATA_TYPE_AT_CMD;
     }
@@ -2560,7 +2564,8 @@ static int block_cmd_handler(at_cmd_struc* msg)
     return BLE_DATA_TYPE_AT_CMD;
 
 key_error:
-    // TODO Buzzer 未授权提示
+    //Buzzer 未授权提示
+    my_set_buzzer_mode(BUZZER_ERROR_TONE);
     msg->resp_length = snprintf(msg->resp_msg, remaining, "Lock failed. key error");
     return BLE_DATA_TYPE_AT_CMD;
 }

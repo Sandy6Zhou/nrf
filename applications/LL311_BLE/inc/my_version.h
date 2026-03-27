@@ -15,6 +15,12 @@
 #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260326"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.03.26
+** 作    者:        吴楚庆 (wuchuqing@jimiiot.com)
+** 修改内容:        1.适配蜂鸣器逻辑，再相关处增加提示音
+
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260326"
+/* 软件版本:        V1.0
+** 完成日期:        2026.03.26
 ** 作    者:        周森达 (zhousenda@jimiiot.com)
 ** 修改内容:        1.增加蓝牙指令上锁/解锁相关功能
 

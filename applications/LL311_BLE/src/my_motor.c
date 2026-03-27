@@ -186,9 +186,13 @@ static void openlock_posdet_timer_handler(struct k_timer *timer)
                 g_bBleLockState = BLE_LOCK_STOP;
 
                 send_lock_result_event(unlock_success);
-                // TODO buzzer进行解锁成功提示
+                // buzzer进行解锁成功提示
+                my_set_buzzer_mode(BUZZER_UNLOCK_SUCCESS);
             }
             // MY_MSG_CTRL_OPENLOCKED:先发送消息通知MAIN线程，再经过LTE线程上报开锁状态成功
+
+            //解锁成功提示音
+            my_set_buzzer_mode(BUZZER_UNLOCK_SUCCESS);
         }
     }
 
@@ -225,9 +229,13 @@ static void closelock_posdet_timer_handler(struct k_timer *timer)
             {
                 g_bBleLockState = BLE_LOCK_STOP;
                 send_lock_result_event(lock_success);
-                // TODO buzzer进行关锁成功提示
+                //buzzer进行关锁成功提示
+                my_set_buzzer_mode(BUZZER_EVENT_LOCK_SUCCESS);
             }
             // TODO MY_MSG_CTRL_CLOSELOCKED:发送消息给LTE线程上报关锁状态成功
+
+            //上锁成功提示
+            my_set_buzzer_mode(BUZZER_EVENT_LOCK_SUCCESS);
         }
         else
         {
@@ -239,11 +247,13 @@ static void closelock_posdet_timer_handler(struct k_timer *timer)
                 /* 蜂鸣器报警方式 */
                 if (g_device_cmd_config.lockerr_buzzer == 1)
                 {
-                    // TODO 发消息到ctrl线程,报警30s
+                    //发消息到ctrl线程,报警30s
+                    my_set_buzzer_mode(BUZZER_GENERAL_ALARM);
                 }
                 else if (g_device_cmd_config.lockerr_buzzer == 2)
                 {
-                    // TODO 发消息到ctrl线程,持续报警直到收到关闭蜂鸣器报警指令
+                    //发消息到ctrl线程,持续报警直到收到关闭蜂鸣器报警指令
+                    my_set_buzzer_mode(BUZZER_CONTINUOUS_ALARM);
                 }
             }
 
@@ -319,7 +329,8 @@ static void motor_timer_timeout_handler(struct k_timer *timer)
         g_bBleLockState = BLE_LOCK_STOP;
 
         send_lock_result_event(unlock_fail);
-        // TODO buzzer进行解锁失败提示
+        //buzzer进行解锁失败提示
+        my_set_buzzer_mode(BUZZER_EVENT_LOCK_FAIL);
     }
     /* 如果是蓝牙关锁触发，通知蓝牙线程关锁失败 */
     else if (g_bBleLockState == BLE_LOCKING)
@@ -327,11 +338,14 @@ static void motor_timer_timeout_handler(struct k_timer *timer)
         g_bBleLockState = BLE_LOCK_STOP;
 
         send_lock_result_event(lock_fail);
-        // TODO buzzer进行关锁失败提示
+        //buzzer进行关锁失败提示
+        my_set_buzzer_mode(BUZZER_EVENT_LOCK_FAIL);
     }
 
     /* 发送停止锁操作消息 */
     my_send_msg(MOD_MAIN, MOD_CTRL, MY_MSG_CTRL_STOPLOCK);
+    //上锁/解锁失败提示
+    my_set_buzzer_mode(BUZZER_EVENT_LOCK_FAIL);
 }
 
 int motor_gpio_init(void)

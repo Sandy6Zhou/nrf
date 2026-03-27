@@ -30,13 +30,14 @@ typedef enum
     BUZZER_CONTINUOUS_ALARM,     // 1: 持续报警 (200ms ON, 500ms OFF, 不停止)
     BUZZER_UNLOCK_SUCCESS,       // 2: 成功提示音 (500ms ON)/解锁成功提示: 长鸣 500ms
     BUZZER_FAIL_TONE,            // 3: 失败提示音 (200ms ON, 200ms OFF, 响3声)
-    BUZZER_ERROR_TONE,           // 4: 异常提示音 (100ms ON, 100ms OFF, 持续1s)
+    BUZZER_ERROR_TONE,           // 4: 异常提示音/未授权提示音:(NFC/蓝牙上锁/解锁未授权), 5次短鸣, 每次100ms, 间隔100ms
     BUZZER_GENERAL_ALARM,        // 5: 一般报警音 (200ms ON, 300ms OFF, 持续30s)
 
     BUZZER_EVENT_LOCK_SUCCESS = 6,          // 上锁成功提示: 短鸣2次, 每次100ms, 间隔300ms
     BUZZER_EVENT_LOCK_FAIL,             // 上锁/解锁失败提示(滑块异常): 3次长鸣, 每次1000ms, 间隔500ms
-    BUZZER_EVENT_UNAUTHORIZED,          // 未授权提示: NFC/蓝牙上锁/解锁未授权, 5次短鸣, 每次100ms, 间隔100ms
     BUZZER_EVENT_NFC_ACTIVATE,          // NFC激活提示: 蜂鸣器提示 100ms
+
+    BUZZER_EVENT_NFC_SUCCESS        // 10: NFC 刷卡成功 200ms
 } MY_BUZZER_MODE;
 
 extern int g_buzzer_mode;
@@ -156,5 +157,7 @@ void my_lock_led_msg_send(MY_LOCK_LED_MODE mode);
             false ---        锁销未插入
 *********************************************************************/
 bool get_lockpin_insert_state(void);
+void my_set_buzzer_mode(int buzzer_mode);
+
 
 #endif /* _MY_CTRL_H_ */
