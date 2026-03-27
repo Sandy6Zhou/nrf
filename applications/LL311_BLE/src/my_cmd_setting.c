@@ -147,6 +147,7 @@ static int btlog_cmd_handler(at_cmd_struc* msg);
 static int bkey_cmd_handler(at_cmd_struc* msg);
 static int bunlock_cmd_handler(at_cmd_struc* msg);
 static int block_cmd_handler(at_cmd_struc* msg);
+static int version_cmd_handler(at_cmd_struc* msg);
 
 static const at_cmd_attr_t at_cmd_attr_table[] =
 {
@@ -175,6 +176,7 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"BKEY_RESET",     bkey_cmd_handler},
     {"BUNLOCK",        bunlock_cmd_handler},
     {"BLOCK",          block_cmd_handler},
+    {"VERSION",        version_cmd_handler},
 };
 
 /*********************************************************************
@@ -1305,7 +1307,8 @@ param_invalid:
 static int cbmt_cmd_handler(at_cmd_struc* msg)
 {
     uint16_t remaining;
-
+    uint16_t battery_voltage_mv;
+    const char* charge_status;
     int ret;
 
     remaining = sizeof(msg->resp_msg);
@@ -1315,19 +1318,19 @@ static int cbmt_cmd_handler(at_cmd_struc* msg)
     {
         LOG_INF("%s=>%s", __func__, msg->parm[0]);
 
-#if 1
-        uint16_t battery_voltage_mv;
-        int battery_temp_c;
-        const char* charge_status;
+        my_battery_read_mv(&battery_voltage_mv);
+        if(g_charg_state == NO_CHARGING)
+        {
+            charge_status = "CHARGE_OUT";
+        }
+        else
+        {
+            charge_status = "CHARGE_IN";
+        }
 
-        /* TODO 测试数据,后续需要更改为实际数据 */
-        battery_voltage_mv = 3000;      /* 示例：3000mV */
-        battery_temp_c = 37;            /* 示例：37℃ */
-        charge_status = "CHARGE_IN";    /* 示例：正在充电 */
-#endif
-        /* 生成响应消息，格式：RETURN CBMT:CHARGNIG=XXX,VBAT=XXXX,VBATTEMP=XX.XX */
-        ret = snprintf(msg->resp_msg, remaining, "RETURN_CBMT:CHARGNIG=%s,VBAT=%u,VBATTEMP=%d",
-                      charge_status, battery_voltage_mv, battery_temp_c);
+        /* 生成响应消息，格式：RETURN CBMT:CHARGNIG=XXX,VBAT=XXXX*/
+        ret = snprintf(msg->resp_msg, remaining, "RETURN_CBMT:CHARGNIG=%s,VBAT=%u",
+                      charge_status, battery_voltage_mv);
 
         if (ret > 0 && ret < remaining)
         {
@@ -2570,5 +2573,50 @@ key_error:
     my_set_buzzer_mode(BUZZER_ERROR_TONE);
     msg->resp_length = snprintf(msg->resp_msg, remaining, "Lock failed. key error");
     return BLE_DATA_TYPE_AT_CMD;
+}
+
+/********************************************************************
+**函数名称:  version_cmd_handler
+**入口参数:  msg   ---   AT 命令消息结构体
+**出口参数:  msg   ---   填充响应消息
+**函数功能:  处理VERSION指令：查询版本号
+**指令格式:  VERSION#
+**返回值说明: [VERSION] [版本号]
+**返 回 值:  BLE数据类型
+*********************************************************************/
+static int version_cmd_handler(at_cmd_struc* msg)
+{
+    uint16_t remaining;  // 响应消息缓冲区的剩余空间
+    int ret;             // snprintf 函数的返回值
+
+    remaining = sizeof(msg->resp_msg);  // 计算响应消息缓冲区的大小
+
+    /* 检查参数数量：应为0 */
+    if (msg->parm_count == 0)  // 检查命令是否有参数
+    {
+        LOG_INF("%s=>%s", __func__, msg->parm[0]);  // 输出函数名和命令名
+
+        /* 生成响应消息，格式：[VERSION]%s*/
+        ret = snprintf(msg->resp_msg, remaining, "[VERSION]%s", SOFTWARE_VERSION);  // 生成包含版本号的响应消息
+
+        if (ret > 0 && ret < remaining)  // 检查响应消息是否生成成功
+        {
+            msg->resp_length = ret;  // 设置响应消息的长度
+            LOG_INF("VERSION: %s", msg->resp_msg);  // 输出版本号信息
+        }
+        else  // 响应消息生成失败
+        {
+            // 生成失败响应消息
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+        }
+    }
+    else  // 参数数量错误
+    {
+        // 输出参数数量错误信息
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        // 生成失败响应消息
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    }
+    return BLE_DATA_TYPE_AT_CMD;  // 返回 BLE 数据类型
 }
 

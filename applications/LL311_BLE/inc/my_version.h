@@ -15,9 +15,16 @@
 #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260327"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.03.27
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:        增加CBMT#和VERSION#查询命令
+
+//#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260327"
+/* 软件版本:        V1.0
+** 完成日期:        2026.03.27
 ** 作    者:        吴楚庆 (wuchuqing@jimiiot.com)
 ** 修改内容:        1.补充509版本日志信息：完善拆壳检测、剪线检测的处理逻辑，待上报接口实现，按接口形式处理如何上报
 **                 2.增加命令触发方式，上报方式等枚举
+
 //#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260327"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.03.27

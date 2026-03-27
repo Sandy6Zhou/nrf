@@ -66,6 +66,9 @@ extern Batt_LED_Ctrl_S g_batt_led_ctrl;
 // 充电状态LED控制结构体，包含定时器、充电电池状态和计数器
 extern CHG_LED_Ctrl_S g_chg_led_ctrl;
 
+// 电源状态，初始值为未连接
+extern MY_CHG_STATE g_charg_state;
+
 int batt_read_mv(int32_t *mv);
 int ntc_read_raw(int16_t *raw);
 int batt_adc_init(void);
@@ -97,5 +100,14 @@ void my_battery_update_state(void);
 ** 如果检测到充电，则启动充电LED控制定时器；如果未检测到充电，则关闭所有电池LED。
 *********************************************************************/
 void my_battery_show_chgled();
+
+/*********************************************************************
+**函数名称:  my_battery_read_mv
+**入口参数:  *mv  --  指向存储电池电压值的指针，单位为毫伏
+**出口参数:  err  --  错误码，0 表示成功，非 0 表示失败
+**函数功能:  读取电池电压值（毫伏）,函数采用多次采样并去除极值的方法提高测量准确性,
+**           最终结果会乘以 2，是因为硬件电路中的分压系数
+*********************************************************************/
+int my_battery_read_mv(int32_t *mv);
 
 #endif
