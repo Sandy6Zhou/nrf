@@ -36,52 +36,52 @@ LOG_MODULE_REGISTER(my_cmd_setting, LOG_LEVEL_INF);
 DeviceCmdConfig g_device_cmd_config = {
     /* REMALM 指令默认配置 */
     .remalm_sw = 0,                    /* 默认关闭 */
-    .remalm_mode = 0,                  /* 默认GPRS */
+    .remalm_mode = REPORT_MODE_GPRS,                  /* 默认GPRS */
 
     /* LOCKPINCYT 指令默认配置 */
-    .lockpincyt_report = 1,             /* 默认GPRS */
-    .lockpincyt_buzzer = 1,             /* 默认报警30s */
+    .lockpincyt_report = REPORT_MODE_GPRS,             /* 默认GPRS */
+    .lockpincyt_buzzer = ALARM_TEMPORARY,             /* 默认报警30s */
 
     /* LOCKERR 指令默认配置 */
-    .lockerr_report = 1,               /* 默认GPRS */
-    .lockerr_buzzer = 1,               /* 默认报警30s */
+    .lockerr_report = REPORT_MODE_GPRS,               /* 默认GPRS */
+    .lockerr_buzzer = ALARM_TEMPORARY,               /* 默认报警30s */
 
     /* PINSTAT 指令默认配置 */
-    .pinstat_report = 1,               /* 默认GPRS */
-    .pinstat_trigger = 3,              /* 默认都触发 */
+    .pinstat_report = REPORT_MODE_GPRS,               /* 默认GPRS */
+    .pinstat_trigger = PINSTAT_TRIGGER_MODE_BOTH,              /* 默认都触发 */
 
     /* LOCKSTAT 指令默认配置 */
-    .lockstat_report = 0,              /* 默认GPRS */
-    .lockstat_trigger = 0,             /* 默认都不触发 */
+    .lockstat_report = REPORT_MODE_GPRS,              /* 默认GPRS */
+    .lockstat_trigger = LOCK_TRIGGER_NONE,             /* 默认都不触发 */
 
     /* MOTDET 指令默认配置 */
     .motdet_static_g = 10,             /* 默认10 mg */
     .motdet_land_g = 2000,             /* 默认2000 mg */
     .motdet_static_land_length = 50,   /* 默认50 s */
     .motdet_sea_transport_time = 10,   /* 默认10 s */
-    .motdet_report_type = 0,           /* 默认GPRS */
+    .motdet_report_type = REPORT_MODE_GPRS,           /* 默认GPRS */
 
     /* BATLEVEL 指令默认配置 */
-    .batlevel_empty_trg = 2,           /* 默认状态变化触发 */
-    .batlevel_empty_rpt = 0,           /* 默认GPRS */
-    .batlevel_low_trg = 2,             /* 默认状态变化触发 */
-    .batlevel_low_rpt = 0,             /* 默认GPRS */
-    .batlevel_normal_trg = 1,          /* 默认在线触发 */
-    .batlevel_normal_rpt = 0,          /* 默认GPRS */
-    .batlevel_fair_trg = 1,            /* 默认在线触发 */
-    .batlevel_fair_rpt = 0,            /* 默认GPRS */
-    .batlevel_high_trg = 1,            /* 默认在线触发 */
-    .batlevel_high_rpt = 0,            /* 默认GPRS */
-    .batlevel_full_trg = 2,            /* 默认状态变化触发 */
-    .batlevel_full_rpt = 0,            /* 默认GPRS */
+    .batlevel_empty_trg = EMPTY_TRIGGER_CHANGE,           /* 默认状态变化触发 */
+    .batlevel_empty_rpt = REPORT_MODE_GPRS,           /* 默认GPRS */
+    .batlevel_low_trg = EMPTY_TRIGGER_CHANGE,             /* 默认状态变化触发 */
+    .batlevel_low_rpt = REPORT_MODE_GPRS,             /* 默认GPRS */
+    .batlevel_normal_trg = EMPTY_TRIGGER_ONLINE,          /* 默认在线触发 */
+    .batlevel_normal_rpt = REPORT_MODE_GPRS,          /* 默认GPRS */
+    .batlevel_fair_trg = EMPTY_TRIGGER_ONLINE,            /* 默认在线触发 */
+    .batlevel_fair_rpt = REPORT_MODE_GPRS,            /* 默认GPRS */
+    .batlevel_high_trg = EMPTY_TRIGGER_ONLINE,            /* 默认在线触发 */
+    .batlevel_high_rpt = REPORT_MODE_GPRS,            /* 默认GPRS */
+    .batlevel_full_trg = EMPTY_TRIGGER_CHANGE,            /* 默认状态变化触发 */
+    .batlevel_full_rpt = REPORT_MODE_GPRS,            /* 默认GPRS */
 
     /* CHARGESTA 指令默认配置 */
-    .chargesta_report = 0,             /* 默认GPRS */
+    .chargesta_report = REPORT_MODE_GPRS,             /* 默认GPRS */
 
     /* SHOCKALARM 指令默认配置 */
     .shockalarm_sw = 0,                /* 默认关闭 */
     .shockalarm_level = 3,             /* 默认中等敏感度 */
-    .shockalarm_type = 0,              /* 默认GPRS */
+    .shockalarm_type = REPORT_MODE_GPRS,              /* 默认GPRS */
 
     /* STARTR 指令默认配置 */
     .startr_sw = 0,                    /* 默认关闭 */

@@ -99,6 +99,49 @@ typedef struct
     int16_t  unlock_times;         /* 可用次数，-1表示不限次数 */
 } NfcAuthCard;
 
+/* 上报方式枚举定义 */
+typedef enum
+{
+    REPORT_MODE_NONE = 0,       /* 0-不上报 */
+    REPORT_MODE_GPRS,           /* 1-GPRS */
+    REPORT_MODE_GPRS_SMS,       /* 2-GPRS+SMS */
+    REPORT_MODE_GPRS_SMS_CALL,  /* 3-GPRS+SMS+CALL */
+} REPORT_MODE_T;
+
+/* 报警模式枚举定义 */
+typedef enum
+{
+    ALARM_NONE = 0,         /* 0-不报警 */
+    ALARM_TEMPORARY,    /* 1-报警30s */
+    ALARM_CONTINUOUS,   /* 2-持续报警 */
+} ALARM_MODE_T;
+
+/* 锁销状态触发方式枚举定义 */
+typedef enum
+{
+    PINSTAT_TRIGGER_MODE_NONE,          /* 0-都不触发 */
+    PINSTAT_TRIGGER_MODE_INSERT,        /* 1-插入触发 */
+    PINSTAT_TRIGGER_MODE_REMOVE,        /* 2-拔出触发 */
+    PINSTAT_TRIGGER_MODE_BOTH,          /* 3-插入拔出均触发 */
+} PINSTAT_TRIGGER_MODE_T;
+
+/* 锁状态触发方式枚举定义 */
+typedef enum
+{
+    LOCK_TRIGGER_NONE = 0,          /* 0-都不触发 */
+    LOCK_TRIGGER_LOCK,          /* 1-上锁触发 */
+    LOCK_TRIGGER_UNLOCK,        /* 2-解锁触发 */
+    LOCK_TRIGGER_BOTH,          /* 3-上锁解锁均触发 */
+} LOCK_TRIGGER_MODE_T;
+
+/* Empty状态触发方式枚举定义 */
+typedef enum
+{
+    EMPTY_TRIGGER_NONE = 0,         /* 0-不触发 */
+    EMPTY_TRIGGER_ONLINE,           /* 1-在线触发 */
+    EMPTY_TRIGGER_CHANGE,           /* 2-状态变化触发 */
+} EMPTY_TRIGGER_MODE_T;
+
 /* 设备指令配置结构体 */
 typedef struct
 {
@@ -119,7 +162,7 @@ typedef struct
     uint8_t pinstat_trigger;    /* 锁销状态触发方式: 0-都不触发, 1-插入触发, 2-拔出触发, 3-插入拔出均触发 */
 
     /* LOCKSTAT 指令配置 */
-    uint8_t lockstat_report;    /* 锁状态上报方式: 0-GPRS, 1-GPRS+SMS, 2-GPRS+SMS+CALL */
+    uint8_t lockstat_report;    /* 锁状态上报方式: 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL */
     uint8_t lockstat_trigger;   /* 锁状态触发方式: 0-都不触发, 1-上锁触发, 2-解锁触发, 3-上锁解锁均触发 */
 
     /* MOTDET 指令配置 */
@@ -127,11 +170,11 @@ typedef struct
     uint16_t motdet_land_g;             /* 陆运G值方差阈值 (1-3000 mg) */
     uint16_t motdet_static_land_length; /* 静止进入陆运投票时长 (30-600 s) */
     uint16_t motdet_sea_transport_time; /* 进入海运投票时长 (10-600 s) */
-    uint8_t  motdet_report_type;        /* 模式切换上报方式: 0-GPRS, 1-GPRS+SMS, 2-GPRS+SMS+CALL */
+    uint8_t  motdet_report_type;        /* 模式切换上报方式: 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL */
 
     /* BATLEVEL 指令配置 */
     uint8_t batlevel_empty_trg;         /* Empty状态触发方式: 0-不触发, 1-在线触发, 2-状态变化触发 */
-    uint8_t batlevel_empty_rpt;         /* Empty状态上报方式: 0-GPRS, 1-GPRS+SMS, 2-GPRS+SMS+CALL */
+    uint8_t batlevel_empty_rpt;         /* Empty状态上报方式: 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL */
     uint8_t batlevel_low_trg;           /* Low状态触发方式 */
     uint8_t batlevel_low_rpt;           /* Low状态上报方式 */
     uint8_t batlevel_normal_trg;        /* Normal状态触发方式 */
@@ -144,12 +187,12 @@ typedef struct
     uint8_t batlevel_full_rpt;          /* Full状态上报方式 */
 
     /* CHARGESTA 指令配置 */
-    uint8_t chargesta_report;           /* 充电状态上报方式: 0-GPRS, 1-GPRS+SMS, 2-GPRS+SMS+CALL */
+    uint8_t chargesta_report;           /* 充电状态上报方式: 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL */
 
     /* SHOCKALARM 指令配置 */
     uint8_t shockalarm_sw;              /* 撞击报警开关: 0-OFF, 1-ON */
     uint8_t shockalarm_level;           /* 撞击力度阈值: 1-5 (1最不敏感,5最敏感) */
-    uint8_t shockalarm_type;            /* 告警上报方式: 0-GPRS, 1-GPRS+SMS, 2-GPRS+SMS+CALL */
+    uint8_t shockalarm_type;            /* 告警上报方式: 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL */
 
     /* STARTR 指令配置 */
     uint8_t startr_sw;                  /* 数据记录功能开关: 0-OFF, 1-ON */

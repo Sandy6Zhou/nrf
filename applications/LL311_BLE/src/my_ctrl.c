@@ -597,7 +597,7 @@ static void lock_pin_timer_handler(struct k_timer *timer)
         {
             if (g_device_cmd_config.pinstat_report)
             {
-                if (g_device_cmd_config.pinstat_trigger == 1 || g_device_cmd_config.pinstat_trigger == 3)
+                if (g_device_cmd_config.pinstat_trigger == PINSTAT_TRIGGER_MODE_INSERT || g_device_cmd_config.pinstat_trigger == PINSTAT_TRIGGER_MODE_BOTH)
                 {
                     
                     my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);
@@ -610,7 +610,7 @@ static void lock_pin_timer_handler(struct k_timer *timer)
         {
             if (g_device_cmd_config.pinstat_report)
             {
-                if (g_device_cmd_config.pinstat_trigger == 2 || g_device_cmd_config.pinstat_trigger == 3)
+                if (g_device_cmd_config.pinstat_trigger == PINSTAT_TRIGGER_MODE_REMOVE || g_device_cmd_config.pinstat_trigger == PINSTAT_TRIGGER_MODE_BOTH)
                 {
 
                     my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);
@@ -624,12 +624,12 @@ static void lock_pin_timer_handler(struct k_timer *timer)
                 // TODO 锁销非法拔出上报,直接发消息给LTE线程,由4G判断是否要上报
 
                 /* 蜂鸣器报警 */
-                if (g_device_cmd_config.lockpincyt_buzzer == 1)
+                if (g_device_cmd_config.lockpincyt_buzzer == ALARM_TEMPORARY)
                 {
                     //发消息到ctrl线程,报警30s
                     my_set_buzzer_mode(BUZZER_GENERAL_ALARM);
                 }
-                else if (g_device_cmd_config.lockpincyt_buzzer == 2)
+                else if (g_device_cmd_config.lockpincyt_buzzer == ALARM_CONTINUOUS)
                 {
                     //发消息到ctrl线程,持续报警直到收到关闭蜂鸣器报警指令
                     my_set_buzzer_mode(BUZZER_CONTINUOUS_ALARM);
