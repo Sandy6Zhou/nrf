@@ -300,8 +300,37 @@ DeviceWorkModeConfig* get_workmode_config_ptr(void)
 *********************************************************************/
 void switch_work_mode(MY_WORK_MODE mode)
 {
+    lte_boot_reason_t boot_reason;
+
+    // 当前模式与目标模式相同，无需切换
+    if (g_workmode_config.current_mode == mode)
+    {
+        return;
+    }
+
     /* 切换工作模式 */
     g_workmode_config.current_mode = mode;
+
+    // 根据工作模式设置对应的开机原因
+    switch (mode)
+    {
+        case MY_MODE_CONTINUOUS:
+            boot_reason = LTE_BOOT_REASON_CONTINUOUS;
+            break;
+
+        case MY_MODE_LONG_LIFE:
+            boot_reason = LTE_BOOT_REASON_LONG_LIFE;
+            break;
+
+        case MY_MODE_SMART:
+            boot_reason = LTE_BOOT_REASON_SMART;
+            break;
+
+        default:
+            boot_reason = LTE_BOOT_REASON_RESERVED;
+            break;
+    }
+    set_lte_boot_reason(boot_reason);
 
     my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_WORK_MODE_SWITCH);
 
@@ -435,8 +464,8 @@ void device_config_init(DeviceWorkModeConfig *p_workmode)
     if (p_workmode == NULL)
         return;
 
-    /* 默认设置为智能模式 */
-    p_workmode->current_mode = MY_MODE_SMART;
+    /* 默认设置为关机模式 */
+    p_workmode->current_mode = MY_MODE_SHUTDOWN;
 
     /* 长电池模式配置：设置上传时间间隔和起始时间 */
     p_workmode->long_battery.reporting_interval_min = DEFAULT_LONG_LIFE_INTERVAL;   // 上传间隔（分钟）

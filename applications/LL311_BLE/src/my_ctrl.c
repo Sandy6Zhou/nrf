@@ -132,6 +132,9 @@ void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_i
     char alarm_msg[64] = {0};
     uint8_t rpt = 0;
 
+    // 每次发送告警消息前设置开机原因
+    set_lte_boot_reason(LTE_BOOT_REASON_ALARM);
+
     // 根据告警类型映射字符串，设置上报方式和告警类型字符串
     switch(alarm_type)
     {
@@ -457,7 +460,7 @@ void handle_nfc_card_event(uint8_t *card_id, uint8_t id_len)
 {
     int ret;
     uint8_t card_index = 0;
-    char card_id_str[33] = {0}; 
+    char card_id_str[33] = {0};
 
     /* 重复刷卡缓存记录检查 */
     ret = is_need_location_upload(card_id, id_len);

@@ -122,11 +122,9 @@ static int cmd_gsensor_read(const struct shell *shell, size_t argc, char **argv)
 static int cmd_switch_mode(const struct shell *sh, size_t argc, char **argv)
 {
     gsensor_state_t gsensor_state;
-    DeviceWorkModeConfig* p_workmode;
+    MY_WORK_MODE current_workmode;
     const char *mode_str;
     const char *state_str;
-
-    p_workmode = get_workmode_config_ptr();
 
     if (argc < 2)
     {
@@ -143,12 +141,12 @@ static int cmd_switch_mode(const struct shell *sh, size_t argc, char **argv)
     /* 解析工作模式 */
     if (strcmp(mode_str, "longlife") == 0)
     {
-        p_workmode->current_mode = MY_MODE_LONG_LIFE;
+        current_workmode = MY_MODE_LONG_LIFE;
         gsensor_state = STATE_UNKNOWN;
     }
     else if (strcmp(mode_str, "smart") == 0)
     {
-        p_workmode->current_mode = MY_MODE_SMART;
+        current_workmode = MY_MODE_SMART;
 
         /* 智能模式下需要 state 参数 */
         if (state_str == NULL)
@@ -179,7 +177,7 @@ static int cmd_switch_mode(const struct shell *sh, size_t argc, char **argv)
     }
     else if (strcmp(mode_str, "continuous") == 0)
     {
-        p_workmode->current_mode = MY_MODE_CONTINUOUS;
+        current_workmode = MY_MODE_CONTINUOUS;
         gsensor_state = STATE_UNKNOWN;
     }
     else
@@ -198,11 +196,11 @@ static int cmd_switch_mode(const struct shell *sh, size_t argc, char **argv)
     k_mutex_unlock(&gsensor_mutex);
 
     /* 调用实际的业务函数去切换模式/状态 */
-    switch_work_mode(p_workmode->current_mode);
+    switch_work_mode(current_workmode);
 
     shell_print(sh, "Switch mode OK:");
     shell_print(sh, "  mode  = %s", mode_str);
-    if (p_workmode->current_mode == MY_MODE_SMART)
+    if (current_workmode == MY_MODE_SMART)
     {
         shell_print(sh, "  state = %s", state_str);
     }

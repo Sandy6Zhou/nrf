@@ -119,6 +119,29 @@ typedef enum
     ALARM_OTHER,            // 其他类型告警
 } alarm_type_t;
 
+/* ========== 4G开机/唤醒协议相关枚举 ========== */
+typedef enum
+{
+    LTE_PWR_STATE_NORMAL = 0,   // 正常上电
+    LTE_PWR_STATE_ABNORMAL = 1, // 异常重启
+} lte_power_state_t;
+
+typedef enum
+{
+    LTE_PWRON_REASON_BT = 0,    // 蓝牙上电
+    LTE_PWRON_REASON_USB = 1,   // USB上电
+    LTE_PWRON_REASON_OTHER = 2, // 其他(预留)
+} lte_poweron_reason_t;
+
+typedef enum
+{
+    LTE_BOOT_REASON_CONTINUOUS = 0, // 连续追踪模式间隔定位上报
+    LTE_BOOT_REASON_LONG_LIFE = 1,  // 长续航模式间隔定位上报
+    LTE_BOOT_REASON_SMART = 2,      // 智能模式间隔定位上报
+    LTE_BOOT_REASON_ALARM = 3,      // 告警事件唤醒
+    LTE_BOOT_REASON_RESERVED = 255, // 预留(未知原因)
+} lte_boot_reason_t;
+
 /* ========== 定时器相关定义 ========== */
 typedef enum
 {

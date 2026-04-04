@@ -87,4 +87,23 @@ void my_lte_handle_recv(uint8_t *pData, uint32_t iLen);
 int my_at_test(int argc, char *argv[]);
 
 int my_lte_parse_cmd(char *cmd, int cmd_len);
+
+/********************************************************************
+**函数名称:  set_lte_boot_reason
+**入口参数:  reason   ---        要设置的开机原因枚举值
+**出口参数:  无
+**函数功能:  设置 LTE 开机原因，用于 4G 开机完成握手时回复
+**返 回 值:  无
+*********************************************************************/
+void set_lte_boot_reason(lte_boot_reason_t reason);
+
+/********************************************************************
+**函数名称:  get_lte_boot_reason
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取当前记录的 LTE 开机原因
+**返 回 值:  当前开机原因枚举值
+*********************************************************************/
+lte_boot_reason_t get_lte_boot_reason(void);
+
 #endif /* _MY_LTE_H_ */

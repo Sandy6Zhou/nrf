@@ -16,6 +16,8 @@
 
 #include "my_comm.h"
 
+#define UART_TX_BUFFER_SIZE    1024
+
 // 串口协议报文头定义清单
 char LTE_PWRON[] = "LTE+PWRON=";
 char LTE_BTSET[] = "LTE+BTSET=";
@@ -52,6 +54,13 @@ char g_lte_cmd_resp_buf[LTE_CMD_RESPBUF_SIZE] = {0};
 static struct k_sem s_TxDoneSem;
 /* LTE缓存消息队列 */
 static lte_msg_queue_t g_lte_msg_queue = {0};
+
+// 4G上电状态，0：蓝牙正常唤醒4G，1：异常重启
+lte_power_state_t g_4GPoweronStatus = 0;
+// 4G版本号缓存
+char g_lte4GVersion[32] = {0};
+// LTE开机原因
+lte_boot_reason_t g_lteBootReason = LTE_BOOT_REASON_RESERVED;
 
 /* UART驱动层使用的接收双缓冲 */
 static uint8_t lte_rx_buf_1[LTE_UART_BUF_SIZE];
@@ -240,6 +249,30 @@ static int my_lte_send_msg(const char *msg_content, uint16_t msg_len)
 }
 
 /********************************************************************
+**函数名称:  set_lte_boot_reason
+**入口参数:  reason   ---        要设置的开机原因枚举值
+**出口参数:  无
+**函数功能:  设置 LTE 开机原因，用于 4G 开机完成握手时回复
+**返 回 值:  无
+*********************************************************************/
+void set_lte_boot_reason(lte_boot_reason_t reason)
+{
+    g_lteBootReason = reason;
+}
+
+/********************************************************************
+**函数名称:  get_lte_boot_reason
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取当前记录的 LTE 开机原因
+**返 回 值:  当前开机原因枚举值
+*********************************************************************/
+lte_boot_reason_t get_lte_boot_reason(void)
+{
+    return g_lteBootReason;
+}
+
+/********************************************************************
 **函数名称:  my_lte_task
 **入口参数:  无
 **出口参数:  无
@@ -377,11 +410,13 @@ static void lte_uart_cb(const struct device *dev, struct uart_event *evt, void *
 **入口参数:  data      ---        发送数据
 **            len       ---        发送长度
 **出口参数:  无
-**函数功能:  LTE 模块发送数据函数
-**返 回 值:  无
+**函数功能:  LTE 模块发送数据函数，带唤醒前导字节
+**返 回 值:  0表示成功，其他表示失败
 *********************************************************************/
 int my_lte_uart_send(const uint8_t *data, uint16_t len)
 {
+    static uint8_t wake_byte[3] = {0xAA, 0x0D, 0x0A};  // 唤醒字节
+    static uint8_t s_sendDataBuf[UART_TX_BUFFER_SIZE] = {0};
 #if 0
     if (len == 0 || data == NULL)
     {
@@ -391,10 +426,28 @@ int my_lte_uart_send(const uint8_t *data, uint16_t len)
 
     if (!g_bLteReady) return -1;
 
-    // 等待上一次传输完成,等待时间基本忽略不计
+    if (len > UART_TX_BUFFER_SIZE)
+    {
+        MY_LOG_INF("uart data is too large:%d", len);
+        return -1;
+    }
+
+    // 等待上一次传输完成
     k_sem_take(&s_TxDoneSem, K_FOREVER);
 
-    return uart_tx(lte_uart_dev, data, len, SYS_FOREVER_MS);
+    // 发送唤醒字节：如果4G在休眠状态，这个字节会将其唤醒
+    uart_tx(lte_uart_dev, wake_byte, 3, SYS_FOREVER_MS);
+
+    // 等待上一次传输完成
+    k_sem_take(&s_TxDoneSem, K_FOREVER);
+
+    // TODO 唤醒时间仅需几百微秒，几乎不影响后续数据传输，待实际测试验证，暂定等待1ms
+    k_sleep(K_MSEC(1));
+    // ! uart_tx发送是异步处理,传进去的data需要是静态的才能保证数据不丢失或者执行完uart_tx延时一会确保数据传输完.
+    memcpy(s_sendDataBuf, data, len);
+
+    // 发送实际数据，此时4G模块已经处于唤醒状态，可以正常接收数据
+    return uart_tx(lte_uart_dev, s_sendDataBuf, len, SYS_FOREVER_MS);
 }
 
 /********************************************************************
@@ -841,18 +894,53 @@ static int my_at_factory_cmd(char *pfactorycmd)
     return 0;
 }
 
-/*
- * 4G模块上电后发送的第一条指令
- * BLE收到此条报文后才能给4G模块发送指令
- *
- * LTE+PWRON=<上电原因>,<固件版本号>
- */
+/********************************************************************
+**函数名称:  my_lte_handle_power_on
+**入口参数:  data     ---        去掉协议头后的参数字符串(输入)
+**出口参数:  无
+**函数功能:  处理4G模块开机完成指令，解析参数并回复应答报文
+**返 回 值:  0 表示成功
+**注意事项:  4G异常重启时，开机原因固定返回255
+*********************************************************************/
 static int my_lte_handle_power_on(char *data)
 {
+    char power_state_str[4] = {0};
+    char power_reason_str[4] = {0};
+    lte_boot_reason_t boot_reason;
+    char resp_buf[128] = {0};
+    int nRespLen;
+    time_t utc_sec;
+
+    // 解析4G发来的参数: <上电状态>,<上电原因>,<4G版本号>
+    my_get_str_at_pos(data, 0, ',', power_state_str, sizeof(power_state_str));
+    my_get_str_at_pos(data, 1, ',', power_reason_str, sizeof(power_reason_str));
+    my_get_str_at_pos(data, 2, ',', g_lte4GVersion, sizeof(g_lte4GVersion));
+
+    g_4GPoweronStatus = atoi(power_state_str);
+
+    MY_LOG_INF("LTE PWRON state=%s reason=%s ver=%s", power_state_str, power_reason_str, g_lte4GVersion);
+
+    // 4G模块已就绪，允许后续数据收发
     g_bLteReady = 1;
 
-    // TODO 4G完成开机逻辑处理
-    // 处理任何排队的消息
+    // 构造应答报文: LTE+PWRON=OK,<开机原因>,<蓝牙版本号>,<UTC>
+    if (g_4GPoweronStatus == LTE_PWR_STATE_ABNORMAL)
+    {
+        // 异常重启时，开机原因默认填255
+        boot_reason = LTE_BOOT_REASON_RESERVED;
+    }
+    else
+    {
+        boot_reason = get_lte_boot_reason();
+    }
+
+    utc_sec = my_get_system_time_sec();
+    nRespLen = snprintf(resp_buf, sizeof(resp_buf), "%sOK,%d,%s,%lld\r\n",
+                        LTE_PWRON, (int)boot_reason, SOFTWARE_VERSION, (long long)utc_sec);
+
+    my_lte_send_msg(resp_buf, (uint16_t)nRespLen);
+
+    // 处理排队的消息
     my_lte_process_queued_msgs();
 
     return 0;
