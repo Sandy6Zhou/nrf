@@ -20,13 +20,11 @@
 /* 注册 NFC 模块日志 */
 LOG_MODULE_REGISTER(my_nfc, LOG_LEVEL_INF);
 
-/* NFC 电源控制 */
-#define NFC_PWR_NODE DT_ALIAS(nfc_pwr_ctrl)
-static const struct gpio_dt_spec nfc_pwr_gpio = GPIO_DT_SPEC_GET(NFC_PWR_NODE, gpios);
-
-/* I2C22 引脚定义 (P1.05 SCL, P1.06 SDA) */
-#define NFC_I2C_SCL_PIN 5
-#define NFC_I2C_SDA_PIN 6
+/* NFC NPD 控制（低功耗模式控制引脚，P2.04）
+ * 硬件设计：NFC 常供电，通过 NPD 引脚控制芯片低功耗模式（600nA）
+ */
+#define NFC_NPD_NODE DT_ALIAS(nfc_npd_ctrl)
+static const struct gpio_dt_spec nfc_npd_gpio = GPIO_DT_SPEC_GET(NFC_NPD_NODE, gpios);
 
 /* 内部状态管理 */
 struct my_nfc_context
@@ -55,6 +53,18 @@ static struct k_thread my_nfc_task_data;
 /* 卡片信息缓冲区 */
 static struct nfc_card_info card_info_buffer;
 
+/* 电源管理回调函数前置声明 */
+static int nfc_pm_init(void);
+static int nfc_pm_suspend(void);
+static int nfc_pm_resume(void);
+
+/* NFC 电源管理操作回调结构体 */
+static const struct PM_DEVICE_OPS nfc_pm_ops = {
+    .init = nfc_pm_init,
+    .suspend = nfc_pm_suspend,
+    .resume = nfc_pm_resume,
+};
+
 /********************************************************************
 **函数名称:  my_nfc_poll_timeout_handler
 **入口参数:  timer    ---        定时器指针
@@ -68,8 +78,6 @@ static void my_nfc_poll_timeout_handler(struct k_timer *timer)
 
     /* 发送超时消息到 NFC 线程，避免在中断中执行睡眠操作 */
     my_send_msg(MOD_NFC, MOD_NFC, MY_MSG_NFC_POLL_TIMEOUT);
-    /* 轮询超时后关闭LED */
-    my_lock_led_msg_send(LOCK_LED_CLOSE);
 }
 
 /********************************************************************
@@ -108,91 +116,10 @@ static void my_nfc_card_detected_cb(nfc_card_type_t type,
     msg.DataLen = sizeof(struct nfc_card_info);
     my_send_msg_data(MOD_NFC, MOD_MAIN, &msg);
 
-    /* 停止轮询并进入 HPD模式 */
-    msg.msgID = MY_MSG_NFC_STOP_POLL;
-    msg.pData = NULL;
-    msg.DataLen = 0;
-    my_send_msg_data(MOD_NFC, MOD_NFC, &msg);
-}
-
-/********************************************************************
-**函数名称:  my_nfc_i2c_set_high_impedance
-**入口参数:  无
-**出口参数:  无
-**函数功能:  将 I2C 引脚设为高阻态（输入，无上下拉），用于 HPD 模式省电
-**返 回 值:  无
-*********************************************************************/
-static void my_nfc_i2c_set_high_impedance(void)
-{
-    const struct device *gpio_dev = device_get_binding("gpio1");
-    if (gpio_dev)
-    {
-        /* 设为输入模式，无上下拉，高阻态 */
-        gpio_pin_configure(gpio_dev, NFC_I2C_SCL_PIN, GPIO_INPUT);
-        gpio_pin_configure(gpio_dev, NFC_I2C_SDA_PIN, GPIO_INPUT);
-        MY_LOG_DBG("I2C pins set to high impedance");
-    }
-}
-
-/********************************************************************
-**函数名称:  my_nfc_enter_hpd
-**入口参数:  无
-**出口参数:  无
-**函数功能:  停止轮询并进入 HPD 模式，I2C 引脚设为高阻态以节省功耗
-**返 回 值:  无
-*********************************************************************/
-static void my_nfc_enter_hpd(void)
-{
-    if (!nfc_ctx.in_hpd_mode)
-    {
-        nfc_api_poll_stop();
-
-        /* 将 I2C 引脚设为高阻态，让外部上拉决定电平 */
-        my_nfc_i2c_set_high_impedance();
-
-        nfc_api_enter_hpd();
-        nfc_ctx.in_hpd_mode = true;
-        nfc_ctx.is_working = false;
-        MY_LOG_INF("NFC entered HPD mode (I2C high impedance)");
-    }
-}
-
-/********************************************************************
-**函数名称:  my_nfc_i2c_restore
-**入口参数:  无
-**出口参数:  无
-**函数功能:  恢复 I2C 总线功能，将引脚重新交给 TWIM 外设控制
-**返 回 值:  无
-*********************************************************************/
-static void my_nfc_i2c_restore(void)
-{
-    const struct device *i2c_dev = device_get_binding("i2c22");
-    if (i2c_dev)
-    {
-        /* 重新初始化 I2C 设备，恢复引脚控制 */
-        /* Zephyr 会自动将引脚重新配置为 TWIM 功能 */
-        MY_LOG_DBG("I2C bus restored");
-    }
-}
-
-/********************************************************************
-**函数名称:  my_nfc_exit_hpd
-**入口参数:  无
-**出口参数:  无
-**函数功能:  退出 HPD 模式，恢复 I2C 总线
-**返 回 值:  无
-*********************************************************************/
-static void my_nfc_exit_hpd(void)
-{
-    if (nfc_ctx.in_hpd_mode)
-    {
-        /* 先恢复 I2C 总线，再退出 HPD */
-        my_nfc_i2c_restore();
-
-        nfc_api_exit_hpd();
-        nfc_ctx.in_hpd_mode = false;
-        MY_LOG_INF("NFC exited HPD mode (I2C restored)");
-    }
+    /* 发送消息到 NFC 线程自身，由线程上下文执行 stop 和 suspend
+     * 避免在中断/回调上下文中直接操作总线，防止与蓝牙冲突
+     */
+    my_send_msg(MOD_NFC, MOD_NFC, MY_MSG_NFC_STOP_POLL);
 }
 
 /********************************************************************
@@ -209,32 +136,32 @@ static void my_nfc_task(void *p1, void *p2, void *p3)
     ARG_UNUSED(p3);
 
     MSG_S msg;
-    nfc_result_t result;
     uint32_t timeout_ms;
+    int ret;
 
     MY_LOG_INF("NFC thread started");
-
-    /* 初始化 NFC API */
-    result = nfc_api_init(my_nfc_card_detected_cb);
-    if (result != NFC_SUCCESS)
-    {
-        MY_LOG_ERR("Failed to initialize NFC API: %d", result);
-        return;
-    }
 
     /* 初始化定时器 */
     k_timer_init(&nfc_poll_timer, my_nfc_poll_timeout_handler, NULL);
 
-    MY_LOG_INF("NFC API initialized successfully");
+    MY_LOG_INF("NFC timer initialized");
 
-    /* 初始化状态：启动轮询（默认超时，读到卡或超时后进入 HPD） */
+    /* 初始化状态, 默认不工作 */
     nfc_ctx.is_working = false;
     nfc_ctx.card_present = false;
     nfc_ctx.in_hpd_mode = false;
 
-    /* 进入 HPD 模式 */
-    my_nfc_enter_hpd();
-    k_sleep(K_MSEC(1));
+    /* 注册 NFC 到电源管理模块 */
+    ret = my_pm_device_register(MY_PM_DEV_NFC, &nfc_pm_ops);
+    if (ret < 0)
+    {
+        MY_LOG_ERR("NFC PM registration failed");
+        /* 注册失败，线程继续运行但无法使用 PM 功能 */
+    }
+    else
+    {
+        MY_LOG_INF("NFC PM registered successfully");
+    }
 
     for (;;)
     {
@@ -248,6 +175,17 @@ static void my_nfc_task(void *p1, void *p2, void *p3)
                     MY_LOG_INF("NFC polling already running");
                     break;
                 }
+
+                /* 通过电源管理模块恢复 NFC 设备（会自动恢复 I2C22 总线），会调用 nfc_pm_resume
+                 * 在线程上下文中执行，避免与蓝牙冲突
+                 */
+                ret = my_pm_device_resume(MY_PM_DEV_NFC);
+                if (ret < 0)
+                {
+                    MY_LOG_ERR("Failed to resume NFC device: %d", ret);
+                    break;
+                }
+
                 /* 从消息中获取超时时间（秒） */
                 if (msg.DataLen >= sizeof(uint32_t))
                 {
@@ -261,27 +199,31 @@ static void my_nfc_task(void *p1, void *p2, void *p3)
                 MY_LOG_INF("Starting NFC polling for %d s", nfc_ctx.poll_timeout_s);
                 nfc_ctx.is_working = true;
                 nfc_ctx.card_present = false;
-                my_nfc_exit_hpd();
                 nfc_api_poll_start();
+				k_timer_start(&nfc_poll_timer, K_MSEC(timeout_ms), K_NO_WAIT);
+
                 /* 开始轮询后闪烁LED*/
                 my_lock_led_msg_send(LOCK_LED_NFC_START);
-                k_timer_start(&nfc_poll_timer, K_MSEC(timeout_ms), K_NO_WAIT);
                 break;
 
             case MY_MSG_NFC_STOP_POLL:
+            case MY_MSG_NFC_POLL_TIMEOUT:
                 if (!nfc_ctx.is_working)
                 {
-                    break;
+                    MY_LOG_INF("NFC polling already stopped");
+                    return;
                 }
-                MY_LOG_INF("Stopping NFC polling");
-                k_timer_stop(&nfc_poll_timer);
-                my_lock_led_msg_send(LOCK_LED_CLOSE);
-                my_nfc_enter_hpd();
-                break;
 
-            case MY_MSG_NFC_POLL_TIMEOUT:
-                MY_LOG_INF("NFC polling timeout, entering HPD mode");
-                my_nfc_enter_hpd();
+                /* 停止轮询定时器 */
+                k_timer_stop(&nfc_poll_timer);
+
+                /* 关闭 NFC 指示灯 */
+                my_lock_led_msg_send(LOCK_LED_CLOSE);
+
+                /* 通过电源管理模块挂起 NFC 设备（会自动挂起 I2C22 总线），会调用 nfc_pm_suspend */
+                my_pm_device_suspend(MY_PM_DEV_NFC);
+
+                MY_LOG_INF("NFC stopped and suspended");
                 break;
 
             case MY_MSG_NFC_LED_SHOW:
@@ -299,16 +241,116 @@ static void my_nfc_task(void *p1, void *p2, void *p3)
 }
 
 /********************************************************************
-**函数名称:  my_nfc_pwr_on
-**入口参数:  on       ---        是否开启
+**函数名称:  nfc_pm_resume
+**入口参数:  无
 **出口参数:  无
-**函数功能:  NFC 模块电源控制函数
-**返 回 值:  0 表示成功
+**函数功能:  NFC 电源管理恢复回调
+**           1. NPD 拉高，唤醒芯片
+**           2. 延时等待芯片稳定
+**           3. 重新初始化 FM175XX
+**返 回 值:  0 表示成功，负值表示错误码
 *********************************************************************/
-int my_nfc_pwr_on(bool on)
+static int nfc_pm_resume(void)
 {
-    MY_LOG_INF("NFC Power: %s", on ? "ON" : "OFF");
-    return gpio_pin_set_dt(&nfc_pwr_gpio, on ? 1 : 0);
+    nfc_result_t result;
+    int retry_count = 0;
+
+    /* NPD 拉高，唤醒芯片 */
+    gpio_pin_set_dt(&nfc_npd_gpio, 1);
+    nfc_ctx.in_hpd_mode = false;
+
+    /* 等待芯片稳定（datasheet 要求至少 5ms） */
+    k_msleep(5);
+
+    /* 尝试重新初始化 FM175XX 寄存器（带重试） */
+    do
+    {
+        result = nfc_api_init(my_nfc_card_detected_cb);
+        if (result == NFC_SUCCESS)
+        {
+            break;
+        }
+
+        retry_count++;
+        MY_LOG_WRN("NFC init attempt %d failed: %d", retry_count, result);
+        k_msleep(10); /* 等待 I2C 总线稳定 */
+    } while (retry_count < 3);
+
+    if (result != NFC_SUCCESS)
+    {
+        MY_LOG_ERR("Failed to reinitialize NFC API after %d attempts: %d", retry_count, result);
+        /* 恢复失败，重新进入低功耗 */
+        gpio_pin_set_dt(&nfc_npd_gpio, 0);
+        nfc_ctx.in_hpd_mode = true;
+        return -EIO;
+    }
+
+    MY_LOG_INF("NFC resumed (NPD high, FM175XX reinitialized, retries: %d)", retry_count);
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  nfc_pm_suspend
+**入口参数:  无
+**出口参数:  无
+**函数功能:  NFC 电源管理挂起回调
+**           1. 停止 POLL
+**           2. NPD 拉低，芯片进入 600nA 模式
+**返 回 值:  0 表示成功，负值表示错误码
+*********************************************************************/
+static int nfc_pm_suspend(void)
+{
+    /* 停止轮询 */
+    if (nfc_ctx.is_working)
+    {
+        k_timer_stop(&nfc_poll_timer);
+        nfc_api_poll_stop();
+        nfc_ctx.is_working = false;
+    }
+
+    /* NPD 拉低，芯片进入 600nA 低功耗模式 */
+    gpio_pin_set_dt(&nfc_npd_gpio, 0);
+    nfc_ctx.in_hpd_mode = true;
+
+    MY_LOG_INF("NFC suspended (NPD low, ~600nA)");
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  nfc_pm_init
+**入口参数:  无
+**出口参数:  无
+**函数功能:  NFC 电源管理初始化回调（首次启动时调用）
+**           配置 NPD 引脚，默认进入低功耗模式
+**返 回 值:  0 表示成功，负值表示错误码
+*********************************************************************/
+static int nfc_pm_init(void)
+{
+    int err;
+
+    /* 检查 NPD GPIO 就绪状态 */
+    if (!gpio_is_ready_dt(&nfc_npd_gpio))
+    {
+        MY_LOG_ERR("NPD GPIO not ready");
+        return -ENODEV;
+    }
+
+    /* 延时100ms等待硬件稳定 */
+    k_msleep(100);
+
+    /* 配置 NPD 引脚，默认拉低（进入 600nA 低功耗模式） */
+    err = gpio_pin_configure_dt(&nfc_npd_gpio, GPIO_OUTPUT_INACTIVE);
+    if (err)
+    {
+        MY_LOG_ERR("Failed to configure NPD GPIO: %d", err);
+        return err;
+    }
+
+    /* 标记为已进入低功耗模式 */
+    nfc_ctx.in_hpd_mode = true;
+
+    MY_LOG_INF("NFC initialized in low power mode (600nA)");
+    return 0;
 }
 
 /********************************************************************
@@ -323,16 +365,18 @@ int my_nfc_start_poll(uint32_t timeout_s)
     MSG_S msg;
     static uint32_t timeout_storage; /* 静态存储，确保消息处理时有效 */
 
-    msg.msgID = MY_MSG_NFC_START_POLL;
-
     if (timeout_s == 0)
     {
         timeout_s = NFC_DEFAULT_POLL_TIMEOUT_S;
     }
     timeout_storage = timeout_s;
+    msg.msgID = MY_MSG_NFC_START_POLL;
     msg.pData = &timeout_storage;
     msg.DataLen = sizeof(uint32_t);
 
+    /* 只发送消息，由线程上下文执行 resume 和启动轮询
+     * 避免在中断/回调上下文中直接操作总线，防止与蓝牙冲突
+     */
     my_send_msg_data(MOD_NFC, MOD_NFC, &msg);
 
     return 0;
@@ -347,12 +391,8 @@ int my_nfc_start_poll(uint32_t timeout_s)
 *********************************************************************/
 int my_nfc_stop_poll(void)
 {
-    MSG_S msg;
-    msg.msgID = MY_MSG_NFC_STOP_POLL;
-    msg.pData = NULL;
-    msg.DataLen = 0;
+    my_send_msg(MOD_NFC, MOD_NFC, MY_MSG_NFC_STOP_POLL);
 
-    my_send_msg_data(MOD_NFC, MOD_NFC, &msg);
     return 0;
 }
 
@@ -365,23 +405,6 @@ int my_nfc_stop_poll(void)
 *********************************************************************/
 int my_nfc_init(k_tid_t *tid)
 {
-    int err;
-
-    /* 检查电源 GPIO */
-    if (!gpio_is_ready_dt(&nfc_pwr_gpio))
-    {
-        MY_LOG_ERR("NFC Power GPIO not ready");
-        return -ENODEV;
-    }
-
-    /* 配置电源引脚，保持高电平（NFC直连3.3V供电） */
-    err = gpio_pin_configure_dt(&nfc_pwr_gpio, GPIO_OUTPUT_ACTIVE);
-    if (err)
-    {
-        MY_LOG_ERR("Failed to configure NFC Power GPIO: %d", err);
-        return err;
-    }
-
     /* 初始化状态 */
     nfc_ctx.is_working = false;
     nfc_ctx.card_present = false;

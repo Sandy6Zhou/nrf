@@ -50,8 +50,9 @@
 #include <zephyr/storage/flash_map.h>
 #include <zephyr/fs/zms.h>
 
-/* Zephyr 设备管理 */
+/* Zephyr 设备及电源管理 */
 #include <zephyr/pm/device.h>
+#include <zephyr/pm/device_runtime.h>
 
 /* Zephyr shell */
 #include <zephyr/shell/shell.h>

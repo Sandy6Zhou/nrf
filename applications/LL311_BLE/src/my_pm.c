@@ -6,11 +6,24 @@
 **作    者:        Harrison Wu (wuyujiao@jimiiot.com)
 **完成日期:        2026.03.19
 *********************************************************************
-** 功能描述:        1. 实现全模块统一的电源管理接口
-**                 2. 使用 pm_device_action_run 管理 I2C21/I2C22/UART 总线
-**                 3. 支持独立总线的引用计数管理
-**                 4. 提供统一的设备状态机管理
-**                 5. I2C21: G-Sensor, I2C22: NFC, UART: LTE
+** 功能描述:  全模块统一电源管理框架
+**
+** 核心功能:
+**   1. 设备生命周期管理：注册 → SUSPENDED(低功耗) ↔ RESUME(工作)
+**   2. 总线电源管理：通过 pm_device_runtime_get/put 控制 I2C/UART 状态
+**
+** 总线分配:
+**   - I2C22: NFC 模块
+**   - I2C21: G-Sensor 模块
+**   - UART : LTE 模块
+**
+** 设计特点:
+**   - 单设备独占总线，无需引用计数
+**   - 注册后默认进入 SUSPENDED 状态（低功耗就绪）
+**   - 各模块在线程内完成注册和初始化
+**
+** 扩展提示:
+**   如未来需多设备共享总线，需引入引用计数机制
 *********************************************************************/
 
 /* 必须在包含 my_comm.h 之前定义 BLE_LOG_MODULE_ID，避免与 my_ble_log.h 中的默认定义冲突 */
@@ -33,10 +46,6 @@ LOG_MODULE_REGISTER(my_pm, LOG_LEVEL_INF);
 /* ========== 设备上下文数组 ========== */
 static struct PM_DEVICE_CTX l_st_pm_devices[MY_PM_DEV_MAX];
 
-/* ========== 总线引用计数（仅 I2C 总线需要，UART 为点对点通信无需计数） ========== */
-static uint8_t l_u8_i2c22_ref_count = 0;
-static uint8_t l_u8_i2c21_ref_count = 0;
-
 /********************************************************************
 **函数名称:  my_pm_get_i2c22_device
 **入口参数:  无
@@ -54,8 +63,8 @@ static const struct device *my_pm_get_i2c22_device(void)
 **函数名称:  my_pm_i2c22_resume
 **入口参数:  无
 **出口参数:  无
-**函数功能:  恢复 I2C22 总线（引用计数管理）
-**           只有第一个引用者才实际调用 pm_device_action_run
+**函数功能:  恢复 I2C22 总线（使用 Runtime PM API）
+**           与 CONFIG_PM_DEVICE_RUNTIME=y 兼容
 **返 回 值:  0 表示成功，负值表示错误码
 *********************************************************************/
 static int my_pm_i2c22_resume(void)
@@ -69,26 +78,15 @@ static int my_pm_i2c22_resume(void)
         return -ENODEV;
     }
 
-    /* 引用计数增加 */
-    l_u8_i2c22_ref_count++;
-
-    /* 只有第一个引用者才实际 resume 总线 */
-    if (l_u8_i2c22_ref_count == 1)
+    /* 使用 Runtime PM API，引用计数+1，首次调用时自动 resume */
+    ret = pm_device_runtime_get(dev);
+    if (ret < 0)
     {
-        ret = pm_device_action_run(dev, PM_DEVICE_ACTION_RESUME);
-        if (ret < 0 && ret != -EALREADY)
-        {
-            MY_LOG_ERR("I2C22 resume failed: %d", ret);
-            l_u8_i2c22_ref_count--; /* 恢复失败，回退引用计数 */
-            return ret;
-        }
-        MY_LOG_DBG("I2C22 resumed (ref_count=%d)", l_u8_i2c22_ref_count);
-    }
-    else
-    {
-        MY_LOG_DBG("I2C22 already resumed (ref_count=%d)", l_u8_i2c22_ref_count);
+        MY_LOG_ERR("I2C22 runtime get failed: %d", ret);
+        return ret;
     }
 
+    MY_LOG_DBG("I2C22 runtime get OK");
     return 0;
 }
 
@@ -96,8 +94,8 @@ static int my_pm_i2c22_resume(void)
 **函数名称:  my_pm_i2c22_suspend
 **入口参数:  无
 **出口参数:  无
-**函数功能:  挂起 I2C22 总线（引用计数管理）
-**           只有最后一个释放者才实际调用 pm_device_action_run
+**函数功能:  挂起 I2C22 总线（使用 Runtime PM API）
+**           与 CONFIG_PM_DEVICE_RUNTIME=y 兼容
 **返 回 值:  0 表示成功，负值表示错误码
 *********************************************************************/
 static int my_pm_i2c22_suspend(void)
@@ -111,33 +109,15 @@ static int my_pm_i2c22_suspend(void)
         return -ENODEV;
     }
 
-    /* 检查引用计数 */
-    if (l_u8_i2c22_ref_count == 0)
+    /* 使用 Runtime PM API，引用计数-1，为0时自动 suspend */
+    ret = pm_device_runtime_put(dev);
+    if (ret < 0)
     {
-        MY_LOG_WRN("I2C22 suspend called with ref_count=0");
-        return -EINVAL;
+        MY_LOG_ERR("I2C22 runtime put failed: %d", ret);
+        return ret;
     }
 
-    /* 引用计数减少 */
-    l_u8_i2c22_ref_count--;
-
-    /* 只有最后一个释放者才实际 suspend 总线 */
-    if (l_u8_i2c22_ref_count == 0)
-    {
-        ret = pm_device_action_run(dev, PM_DEVICE_ACTION_SUSPEND);
-        if (ret < 0 && ret != -EALREADY)
-        {
-            MY_LOG_ERR("I2C22 suspend failed: %d", ret);
-            l_u8_i2c22_ref_count++; /* 恢复失败，回退引用计数 */
-            return ret;
-        }
-        MY_LOG_DBG("I2C22 suspended (ref_count=0)");
-    }
-    else
-    {
-        MY_LOG_DBG("I2C22 keep resumed (ref_count=%d)", l_u8_i2c22_ref_count);
-    }
-
+    MY_LOG_DBG("I2C22 runtime put OK");
     return 0;
 }
 
@@ -158,8 +138,8 @@ static const struct device *my_pm_get_i2c21_device(void)
 **函数名称:  my_pm_i2c21_resume
 **入口参数:  无
 **出口参数:  无
-**函数功能:  恢复 I2C21 总线（引用计数管理）
-**           只有第一个引用者才实际调用 pm_device_action_run
+**函数功能:  恢复 I2C21 总线（使用 Runtime PM API）
+**           与 CONFIG_PM_DEVICE_RUNTIME=y 兼容
 **返 回 值:  0 表示成功，负值表示错误码
 *********************************************************************/
 static int my_pm_i2c21_resume(void)
@@ -173,26 +153,14 @@ static int my_pm_i2c21_resume(void)
         return -ENODEV;
     }
 
-    /* 引用计数增加 */
-    l_u8_i2c21_ref_count++;
-
-    /* 只有第一个引用者才实际 resume 总线 */
-    if (l_u8_i2c21_ref_count == 1)
+    ret = pm_device_runtime_get(dev);
+    if (ret < 0)
     {
-        ret = pm_device_action_run(dev, PM_DEVICE_ACTION_RESUME);
-        if (ret < 0 && ret != -EALREADY)
-        {
-            MY_LOG_ERR("I2C21 resume failed: %d", ret);
-            l_u8_i2c21_ref_count--; /* 恢复失败，回退引用计数 */
-            return ret;
-        }
-        MY_LOG_DBG("I2C21 resumed (ref_count=%d)", l_u8_i2c21_ref_count);
-    }
-    else
-    {
-        MY_LOG_DBG("I2C21 already resumed (ref_count=%d)", l_u8_i2c21_ref_count);
+        MY_LOG_ERR("I2C21 runtime get failed: %d", ret);
+        return ret;
     }
 
+    MY_LOG_DBG("I2C21 runtime get OK");
     return 0;
 }
 
@@ -200,8 +168,8 @@ static int my_pm_i2c21_resume(void)
 **函数名称:  my_pm_i2c21_suspend
 **入口参数:  无
 **出口参数:  无
-**函数功能:  挂起 I2C21 总线（引用计数管理）
-**           只有最后一个释放者才实际调用 pm_device_action_run
+**函数功能:  挂起 I2C21 总线（使用 Runtime PM API）
+**           与 CONFIG_PM_DEVICE_RUNTIME=y 兼容
 **返 回 值:  0 表示成功，负值表示错误码
 *********************************************************************/
 static int my_pm_i2c21_suspend(void)
@@ -215,33 +183,14 @@ static int my_pm_i2c21_suspend(void)
         return -ENODEV;
     }
 
-    /* 检查引用计数 */
-    if (l_u8_i2c21_ref_count == 0)
+    ret = pm_device_runtime_put(dev);
+    if (ret < 0)
     {
-        MY_LOG_WRN("I2C21 suspend called with ref_count=0");
-        return -EINVAL;
+        MY_LOG_ERR("I2C21 runtime put failed: %d", ret);
+        return ret;
     }
 
-    /* 引用计数减少 */
-    l_u8_i2c21_ref_count--;
-
-    /* 只有最后一个释放者才实际 suspend 总线 */
-    if (l_u8_i2c21_ref_count == 0)
-    {
-        ret = pm_device_action_run(dev, PM_DEVICE_ACTION_SUSPEND);
-        if (ret < 0 && ret != -EALREADY)
-        {
-            MY_LOG_ERR("I2C21 suspend failed: %d", ret);
-            l_u8_i2c21_ref_count++; /* 恢复失败，回退引用计数 */
-            return ret;
-        }
-        MY_LOG_DBG("I2C21 suspended (ref_count=0)");
-    }
-    else
-    {
-        MY_LOG_DBG("I2C21 keep resumed (ref_count=%d)", l_u8_i2c21_ref_count);
-    }
-
+    MY_LOG_DBG("I2C21 runtime put OK");
     return 0;
 }
 
@@ -262,7 +211,7 @@ static const struct device *my_pm_get_lte_uart_device(void)
 **函数名称:  my_pm_lte_uart_resume
 **入口参数:  无
 **出口参数:  无
-**函数功能:  恢复 LTE UART 总线（点对点通信，直接操作）
+**函数功能:  恢复 LTE UART 总线（使用 Runtime PM API）
 **返 回 值:  0 表示成功，负值表示错误码
 *********************************************************************/
 static int my_pm_lte_uart_resume(void)
@@ -276,14 +225,14 @@ static int my_pm_lte_uart_resume(void)
         return -ENODEV;
     }
 
-    ret = pm_device_action_run(dev, PM_DEVICE_ACTION_RESUME);
-    if (ret < 0 && ret != -EALREADY)
+    ret = pm_device_runtime_get(dev);
+    if (ret < 0)
     {
-        MY_LOG_ERR("LTE UART resume failed: %d", ret);
+        MY_LOG_ERR("LTE UART runtime get failed: %d", ret);
         return ret;
     }
-    MY_LOG_DBG("LTE UART resumed");
-
+	
+    MY_LOG_DBG("LTE UART runtime get OK");
     return 0;
 }
 
@@ -291,7 +240,7 @@ static int my_pm_lte_uart_resume(void)
 **函数名称:  my_pm_lte_uart_suspend
 **入口参数:  无
 **出口参数:  无
-**函数功能:  挂起 LTE UART 总线（点对点通信，直接操作）
+**函数功能:  挂起 LTE UART 总线（使用 Runtime PM API）
 **返 回 值:  0 表示成功，负值表示错误码
 *********************************************************************/
 static int my_pm_lte_uart_suspend(void)
@@ -305,14 +254,14 @@ static int my_pm_lte_uart_suspend(void)
         return -ENODEV;
     }
 
-    ret = pm_device_action_run(dev, PM_DEVICE_ACTION_SUSPEND);
-    if (ret < 0 && ret != -EALREADY)
+    ret = pm_device_runtime_put(dev);
+    if (ret < 0)
     {
-        MY_LOG_ERR("LTE UART suspend failed: %d", ret);
+        MY_LOG_ERR("LTE UART runtime put failed: %d", ret);
         return ret;
     }
-    MY_LOG_DBG("LTE UART suspended");
-
+	
+    MY_LOG_DBG("LTE UART runtime put OK");
     return 0;
 }
 
@@ -322,10 +271,17 @@ static int my_pm_lte_uart_suspend(void)
 **           ops      ---        设备操作回调结构体指针
 **出口参数:  无
 **函数功能:  注册设备的电源管理回调函数
+**           注册流程：init() → resume总线 → suspend总线 → state=SUSPENDED
+**           设备注册后默认进入 SUSPENDED 状态（低功耗就绪）
+**注意：     1. 此函数内部会自动完成总线 resume/suspend 操作，调用方无需手动 suspend
+**           2. 如果注册后需要立即使用设备，需显式调用 pm_device_runtime_get()
+**           3. 必须在设备对应的线程上下文内调用此函数
 **返 回 值:  0 表示成功，负值表示错误码
 *********************************************************************/
 int my_pm_device_register(MY_PM_DEV_ID_T dev_id, const struct PM_DEVICE_OPS *ops)
 {
+    int ret;
+
     if (dev_id >= MY_PM_DEV_MAX)
     {
         MY_LOG_ERR("Invalid device ID: %d", dev_id);
@@ -338,14 +294,15 @@ int my_pm_device_register(MY_PM_DEV_ID_T dev_id, const struct PM_DEVICE_OPS *ops
         return -EINVAL;
     }
 
-    /* 初始化设备状态为关闭状态 */
-    l_st_pm_devices[dev_id].state = MY_PM_STATE_OFF;
+    /* 初始化设备状态为未初始化状态 */
+    l_st_pm_devices[dev_id].state = MY_PM_STATE_NOT_INIT;
     l_st_pm_devices[dev_id].ops = ops;
 
-    /* 如果提供了 init 回调，立即执行初始化 */
+    /* 如果提供了 init 回调，执行完整初始化流程，最后将设备状态设置为 SUSPENDED */
     if (ops->init != NULL)
     {
-        int ret = ops->init();
+        /* 先执行设备 init（配置 GPIO 等，检查设备树，不依赖总线），这里必须放到前面执行 */
+        ret = ops->init();
         if (ret < 0)
         {
             MY_LOG_ERR("Device %d init failed: %d", dev_id, ret);
@@ -353,9 +310,60 @@ int my_pm_device_register(MY_PM_DEV_ID_T dev_id, const struct PM_DEVICE_OPS *ops
             return ret;
         }
         MY_LOG_INF("Device %d initialized", dev_id);
+
+        /* 先执行一次 Resume 总线（确保总线可用） */
+        switch (dev_id)
+        {
+            case MY_PM_DEV_NFC:
+                ret = my_pm_i2c22_resume();
+                break;
+            case MY_PM_DEV_GSENSOR:
+                ret = my_pm_i2c21_resume();
+                break;
+            case MY_PM_DEV_LTE:
+                ret = my_pm_lte_uart_resume();
+                break;
+            default:
+                ret = -ENOTSUP;
+                break;
+        }
+        if (ret < 0)
+        {
+            MY_LOG_ERR("Failed to resume bus for device %d: %d", dev_id, ret);
+            l_st_pm_devices[dev_id].ops = NULL;
+            return ret;
+        }
+
+        /* 再执行一次 Suspend 总线（进入低功耗） */
+        switch (dev_id)
+        {
+            case MY_PM_DEV_NFC:
+                ret = my_pm_i2c22_suspend();
+                break;
+            case MY_PM_DEV_GSENSOR:
+                ret = my_pm_i2c21_suspend();
+                break;
+            case MY_PM_DEV_LTE:
+                ret = my_pm_lte_uart_suspend();
+                break;
+            default:
+                ret = -ENOTSUP;
+                break;
+        }
+        if (ret < 0)
+        {
+            MY_LOG_WRN("Failed to suspend bus after init for device %d: %d", dev_id, ret);
+
+            /* 初始化失败，标记为未初始化状态 */
+            l_st_pm_devices[dev_id].state = MY_PM_STATE_NOT_INIT;
+            l_st_pm_devices[dev_id].ops = NULL;
+            return ret;
+        }
     }
 
-    MY_LOG_INF("Device %d registered", dev_id);
+    /* 注册成功：设备默认状态为 SUSPENDED（低功耗就绪） */
+    l_st_pm_devices[dev_id].state = MY_PM_STATE_SUSPENDED;
+    MY_LOG_INF("Device %d registered in SUSPENDED state", dev_id);
     return 0;
 }
 
@@ -393,6 +401,13 @@ int my_pm_device_resume(MY_PM_DEV_ID_T dev_id)
     {
         MY_LOG_DBG("Device %d already resumed", dev_id);
         return 0;
+    }
+
+    /* 只能从 SUSPENDED 状态恢复 */
+    if (ctx->state != MY_PM_STATE_SUSPENDED)
+    {
+        MY_LOG_ERR("Device %d not in SUSPENDED state (state=%d)", dev_id, ctx->state);
+        return -EINVAL;
     }
 
     MY_LOG_INF("Resuming device %d from state %d", dev_id, ctx->state);
@@ -569,7 +584,7 @@ int my_pm_device_suspend(MY_PM_DEV_ID_T dev_id)
         }
     }
 
-    /* 更新设备状态为挂起状态 */
+    /* 更新设备状态为 SUSPENDED */
     ctx->state = MY_PM_STATE_SUSPENDED;
     MY_LOG_INF("Device %d suspended successfully", dev_id);
     return 0;
@@ -587,7 +602,7 @@ MY_PM_STATE_T my_pm_device_get_state(MY_PM_DEV_ID_T dev_id)
     if (dev_id >= MY_PM_DEV_MAX)
     {
         MY_LOG_ERR("Invalid device ID: %d", dev_id);
-        return MY_PM_STATE_OFF;
+        return MY_PM_STATE_NOT_INIT;
     }
 
     return l_st_pm_devices[dev_id].state;
@@ -604,10 +619,6 @@ int my_pm_init(void)
 {
     /* 清零设备上下文数组 */
     memset(l_st_pm_devices, 0, sizeof(l_st_pm_devices));
-
-    /* 初始化 I2C 总线引用计数 */
-    l_u8_i2c22_ref_count = 0;
-    l_u8_i2c21_ref_count = 0;
 
     MY_LOG_INF("Power management subsystem initialized");
     return 0;

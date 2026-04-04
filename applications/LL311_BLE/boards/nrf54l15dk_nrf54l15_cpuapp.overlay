@@ -31,7 +31,6 @@
 		gsensor-i2c = &i2c21;
 		gsensor-pwr-ctrl = &gsensor_pwr_en;
 		nfc-i2c = &i2c22;
-		nfc-pwr-ctrl = &nfc_pwr_en;
 		nfc-npd-ctrl = &nfc_npd_set;
 		buzzer-pwm = &buzzer_pwm_0;
 		fun-key = &fun_key_pin;
@@ -74,17 +73,10 @@
 		};
 	};
 
-	/* NFC 电源控制引脚配置 */
-	nfc_pwr_en: nfc-pwr-en {
-		compatible = "nordic,gpio-pins";
-		gpios = <&gpio2 4 GPIO_ACTIVE_HIGH>;
-		status = "okay";
-	};
-
-	/* NFC NPD 复位引脚配置:P1.14 */
+	/* NFC NPD 低功耗控制引脚配置:P2.04 */
 	nfc_npd_set: nfc-npd-set {
 		compatible = "nordic,gpio-pins";
-		gpios = <&gpio1 14 GPIO_ACTIVE_HIGH>;
+		gpios = <&gpio2 4 GPIO_ACTIVE_HIGH>;
 		status = "okay";
 	};
 
@@ -346,6 +338,11 @@
 /* disable spi nor flash */
 &spi00 {
 	status = "disabled";
+};
+
+/* Disable MX25R64 SPI NOR Flash */
+&mx25r64 {
+    status = "disabled";
 };
 
 /* 用于P0.4唤醒 */

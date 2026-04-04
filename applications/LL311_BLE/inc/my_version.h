@@ -15,6 +15,15 @@
 #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260401"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.01
+** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)
+** 修改内容:        1.修改overlay+prj.conf文件，禁用MX25R64 QSPI Flash，nfc引脚重新设计，匹配最新硬件；
+**                 2.电源管理框架升级，电源管理api更改为pm_device_runtime_get/put,初始化时默认为suspend模式；
+**                 3.NFC模块电源管理重构，引用my_pm模块管理NFC电源；
+*/
+
+//#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260401"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.01
 ** 作    者:        曹阳 (caoyang@jimiiot.com)
 ** 修改内容:        1.增加类似BLE+[命令]=[参数]的统一接口
 **                  2.增加指令透传统一接口。
