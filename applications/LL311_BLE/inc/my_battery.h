@@ -13,12 +13,13 @@
 // 电池状态枚举, 定义了电池的不同状态等级，从空到满
 typedef enum
 {
-    BATT_EMPTY,   /* 电池电量为空 */
-    BATT_LOW,     /* 电池电量低 */
-    BATT_NORMAL,  /* 电池电量正常 */
-    BATT_FAIR,    /* 电池电量良好 */
-    BATT_HIGH,    /* 电池电量高 */
-    BATT_FULL,    /* 电池电量满 */
+    BATT_UNKNOWN = -1,  /* 电池状态未知状态 */
+    BATT_EMPTY,         /* 电池电量为空 */
+    BATT_LOW,           /* 电池电量低 */
+    BATT_NORMAL,        /* 电池电量正常 */
+    BATT_FAIR,          /* 电池电量良好 */
+    BATT_HIGH,          /* 电池电量高 */
+    BATT_FULL,          /* 电池电量满 */
 } MY_BATT_STATE;
 
 // 正常状态 LED 控制结构体, 用于控制电池状态 LED 显示的结构体
@@ -32,9 +33,10 @@ typedef struct
 // 电源状态枚举, 定义了设备的电源连接状态
 typedef enum
 {
-    NO_CHARGING,    /* 充电器未连接 */
-    CHARGING,       /* 充电器已连接（充电中） */
-    CHARG_FULL,     /* 充电器已连接且电池已充满 */
+    CHARG_UNKNOWN = -1,     /* 充电状态未知状态 */
+    NO_CHARGING,            /* 充电器未连接 */
+    CHARGING,               /* 充电器已连接（充电中） */
+    CHARG_FULL,             /* 充电器已连接且电池已充满 */
 } MY_CHG_STATE;
 
 typedef enum

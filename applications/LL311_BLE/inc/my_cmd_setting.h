@@ -113,4 +113,15 @@ uint16_t at_recv_cmd_handler(at_cmd_struc *at_cmd_msg);
 *********************************************************************/
 uint16_t run_nfc_cmd(char *card_id, uint8_t *index);
 
+/*********************************************************************
+**函数名称:  lte_send_command
+**入口参数:  cmd_name     --  命令名称
+**           param        --  命令参数（可选，NULL 表示无参数）
+**出口参数:  无
+**函数功能:  用于构建并发送 LTE 命令到 LTE 模块，支持带参数和不带参数的命令。
+**           命令格式：BLE+命令名称[=参数]
+**返 回 值:  0 表示成功，-1 表示失败（模式非法）
+*********************************************************************/
+int lte_send_command(const char *cmd_name, const char *param);
+
 #endif /* _MY_CMD_SETTING_H_ */

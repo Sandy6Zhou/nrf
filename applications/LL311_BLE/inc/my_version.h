@@ -12,7 +12,15 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260402"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260403"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.03
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:        1.完善电量和充电状态上报和状态变化通知
+**                  2.优化send_alarm_message_to_lte接口函数
+*/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260402"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.02
 ** 作    者:        曹阳 (caoyang@jimiiot.com)

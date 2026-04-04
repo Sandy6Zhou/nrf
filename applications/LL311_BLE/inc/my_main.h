@@ -191,21 +191,15 @@ typedef struct
     uint8_t  motdet_report_type;        /* 模式切换上报方式: 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL */
 
     /* BATLEVEL 指令配置 */
-    uint8_t batlevel_empty_trg;         /* Empty状态触发方式: 0-不触发, 1-在线触发, 2-状态变化触发 */
-    uint8_t batlevel_empty_rpt;         /* Empty状态上报方式: 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL */
-    uint8_t batlevel_low_trg;           /* Low状态触发方式 */
+    uint8_t batlevel_empty_rpt;         /* Empty状态上报方式:0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL */
     uint8_t batlevel_low_rpt;           /* Low状态上报方式 */
-    uint8_t batlevel_normal_trg;        /* Normal状态触发方式 */
     uint8_t batlevel_normal_rpt;        /* Normal状态上报方式 */
-    uint8_t batlevel_fair_trg;          /* Fair状态触发方式 */
     uint8_t batlevel_fair_rpt;          /* Fair状态上报方式 */
-    uint8_t batlevel_high_trg;          /* High状态触发方式 */
     uint8_t batlevel_high_rpt;          /* High状态上报方式 */
-    uint8_t batlevel_full_trg;          /* Full状态触发方式 */
     uint8_t batlevel_full_rpt;          /* Full状态上报方式 */
 
     /* CHARGESTA 指令配置 */
-    uint8_t chargesta_report;           /* 充电状态上报方式: 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL */
+    uint8_t chargesta_report;           /* 充电状态上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL */
 
     /* SHOCKALARM 指令配置 */
     uint8_t shockalarm_sw;              /* 撞击报警开关: 0-OFF, 1-ON */

@@ -125,100 +125,120 @@ struct k_timer buzzer_timer;
 **出口参数:  无
 **函数功能:  发送告警消息到LTE模块
 **返回值:    无
-**注意事项:  函数内部动态分配内存，由LTE任务负责释放
 *********************************************************************/
 void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_info)
 {
-    const char *alarm_str;
-    MSG_S msg;
+    const char *alarm_str = NULL;
     char alarm_msg[64] = {0};
-    char *p_alarm_msg;
-    int n_msg_len;
+    uint8_t rpt = 0;
 
-    // 检查LTE模块电源状态,如果关闭则先开启
-    if (!get_lte_power_state())
-    {
-        my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);
-    }
-
-    // 根据告警类型映射字符串
+    // 根据告警类型映射字符串，设置上报方式和告警类型字符串
     switch(alarm_type)
     {
         case ALARM_OPEN:
             alarm_str = "OPEN";
+            rpt = g_device_cmd_config.remalm_mode;
             break;
 
         case ALARM_ILLEGALUNLOCK:
             alarm_str = "ILLEGALUNLOCK";
+            rpt = g_device_cmd_config.lockerr_report;
             break;
 
         case ALARM_LOCK:
             alarm_str = "LOCK";
+            rpt = g_device_cmd_config.lockstat_report;
             break;
 
         case ALARM_MOTION:
             alarm_str = "MOTION";
+            rpt = g_device_cmd_config.motdet_report_type;
             break;
 
         case ALARM_BATT:
             alarm_str = "BATT";
+            switch(atoi(additional_info))
+            {
+                case BATT_EMPTY:
+                    rpt = g_device_cmd_config.batlevel_empty_rpt;
+                    break;
+
+                case BATT_LOW:
+                    rpt = g_device_cmd_config.batlevel_low_rpt;
+                    break;
+
+                case BATT_NORMAL:
+                    rpt = g_device_cmd_config.batlevel_normal_rpt;
+                    break;
+
+                case BATT_FAIR:
+                    rpt = g_device_cmd_config.batlevel_fair_rpt;
+                    break;
+
+                case BATT_HIGH:
+                    rpt = g_device_cmd_config.batlevel_high_rpt;
+                    break;
+
+                case BATT_FULL:
+                    rpt = g_device_cmd_config.batlevel_full_rpt;
+                    break;
+
+                default:
+                    LOG_ERR("unknown BATT level");
+                    break;
+            }
             break;
 
         case ALARM_CHARGE:
             alarm_str = "CHARGE";
+            rpt = g_device_cmd_config.chargesta_report;
             break;
 
         case ALARM_IMPACT:
             alarm_str = "IMPACT";
+            rpt = g_device_cmd_config.shockalarm_type;
             break;
 
         case ALARM_SEPARATE:
             alarm_str = "SEPARATE";
+            // TODO: 后续补充告警信息和上报方式。
             break;
 
         case ALARM_NFC:
             alarm_str = "NFC";
+            // TODO: 后续补充告警信息和上报方式。
             break;
 
         case ALARM_CUT:
             alarm_str = "CUT";
+            rpt = g_device_cmd_config.lockpincyt_report;
             break;
+
+        // TODO: 遗漏了一个锁销状态告警，需要后续补充。
 
         default:
             MY_LOG_ERR("unknown alarm type");
             return;
     }
 
-    // 构建告警消息字符串
-    if(additional_info != NULL && strlen(additional_info) > 0)
+    // 检查是否需要上报方式
+    if(rpt > REPORT_MODE_NONE)
     {
-        // 包含附加信息的格式："BLE+ALARM=<告警类型>,<时间戳>,<附加信息>"
-        snprintf(alarm_msg, sizeof(alarm_msg), "BLE+ALARM=%s,%lld,%s\r\n", alarm_str, my_get_system_time_sec(), additional_info);
+        // 构建告警消息字符串
+        if (additional_info != NULL && strlen(additional_info) > 0)
+        {
+            // 包含附加信息的格式："<告警类型>,<时间戳>,<上报方式>,<附加信息>"
+            snprintf(alarm_msg, sizeof(alarm_msg), "%s,%lld,%d,%s", alarm_str, my_get_system_time_sec(), rpt, additional_info);
+        }
+        else
+        {
+            // 不包含附加信息的格式："<告警类型>,<时间戳>,<上报方式>"
+            snprintf(alarm_msg, sizeof(alarm_msg), "%s,%lld,%d", alarm_str, my_get_system_time_sec(), rpt);
+        }
+
+        // 发送告警消息到LTE模块
+        lte_send_command("ALARM", alarm_msg);
     }
-    else
-    {
-        // 不包含附加信息的格式："BLE+ALARM=<告警类型>,<时间戳>"
-        snprintf(alarm_msg, sizeof(alarm_msg), "BLE+ALARM=%s,%lld\r\n", alarm_str, my_get_system_time_sec());
-    }
-
-    n_msg_len = strlen(alarm_msg);
-
-    // 动态分配内存存储告警消息
-    MY_MALLOC_BUFFER(p_alarm_msg, n_msg_len + 1);
-    if(p_alarm_msg == NULL)
-    {
-        MY_LOG_ERR("Failed to allocate memory for alarm message");
-        return;
-    }
-
-    memcpy(p_alarm_msg, alarm_msg, n_msg_len);
-    p_alarm_msg[n_msg_len] = '\0';  // 确保字符串终止
-
-    // 构建消息结构体并发送给LTE模块
-    msg.msgID = MY_MSG_LTE_BLE_DATA;
-    msg.pData = p_alarm_msg;
-    msg.DataLen = n_msg_len;
-    my_send_msg_data(MOD_CTRL, MOD_LTE, &msg);
 }
 
 /********************************************************************

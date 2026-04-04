@@ -65,17 +65,11 @@ DeviceCmdConfig g_device_cmd_config = {
     .motdet_report_type = REPORT_MODE_GPRS,           /* 默认GPRS */
 
     /* BATLEVEL 指令默认配置 */
-    .batlevel_empty_trg = EMPTY_TRIGGER_CHANGE,           /* 默认状态变化触发 */
     .batlevel_empty_rpt = REPORT_MODE_GPRS,           /* 默认GPRS */
-    .batlevel_low_trg = EMPTY_TRIGGER_CHANGE,             /* 默认状态变化触发 */
     .batlevel_low_rpt = REPORT_MODE_GPRS,             /* 默认GPRS */
-    .batlevel_normal_trg = EMPTY_TRIGGER_ONLINE,          /* 默认在线触发 */
     .batlevel_normal_rpt = REPORT_MODE_GPRS,          /* 默认GPRS */
-    .batlevel_fair_trg = EMPTY_TRIGGER_ONLINE,            /* 默认在线触发 */
     .batlevel_fair_rpt = REPORT_MODE_GPRS,            /* 默认GPRS */
-    .batlevel_high_trg = EMPTY_TRIGGER_ONLINE,            /* 默认在线触发 */
     .batlevel_high_rpt = REPORT_MODE_GPRS,            /* 默认GPRS */
-    .batlevel_full_trg = EMPTY_TRIGGER_CHANGE,            /* 默认状态变化触发 */
     .batlevel_full_rpt = REPORT_MODE_GPRS,            /* 默认GPRS */
 
     /* CHARGESTA 指令默认配置 */
@@ -214,7 +208,7 @@ int lte_send_command(const char *cmd_name, const char *param)
     }
 
     // 动态分配内存存储告警消息
-    MY_MALLOC_BUFFER(p_msg, LTE_SEND_BUF_LEN);  // 分配内存，加 1 用于存储终止符
+    MY_MALLOC_BUFFER(p_msg, LTE_SEND_BUF_LEN);  // 分配内存
     if(p_msg == NULL)  // 内存分配失败
     {
         MY_LOG_ERR("Failed to allocate memory for LTE command message");  // 输出错误信息
@@ -1220,138 +1214,53 @@ param_invalid:
 **出口参数:  msg->resp_msg  ---  响应消息
 **           msg->resp_length --- 响应长度
 **函数功能:  处理BATLEVEL指令：设置电池电量状态触发与上报配置
-**指令格式:  BATLEVEL,[Empty TRG],[Empty RPT],[LOW TRG],[LOW RPT],
-**                  [Normal TRG],[Normal RPT],[Fair TRG],[Fair RPT],
-**                  [High TRG],[High RPT],[Full TRG],[Full RPT]#
-**参数说明:  共12个参数，每组对应一个电量状态的触发方式和上报方式
-**           TRG参数: 0-不触发, 1-在线触发, 2-状态变化触发
-**           RPT参数: 0-GPRS, 1-GPRS+SMS, 2-GPRS+SMS+CALL
-**默认设置: BATLEVEL,2,0,2,0,1,0,1,0,1,0,2,0#
+**指令格式:  BATLEVEL,[Empty RPT],[LOW RPT],[Normal RPT],[Fair RPT],[High RPT],[Full RPT]#
+**参数说明:  共6个参数，每个参数对应一个电量状态的上报方式
+**           RPT参数: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
+**默认设置: BATLEVEL,1,1,1,1,1,1#
 **返 回 值:  BLE数据类型
 *********************************************************************/
 static int batlevel_cmd_handler(at_cmd_struc* msg)
 {
     uint16_t remaining;
-    int param_values[12];
+    int param_values[6];
     int i;
 
     remaining = sizeof(msg->resp_msg);
 
     /* 检查参数数量 */
-    if (msg->parm_count != 12)
+    if (msg->parm_count != 6)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
         return BLE_DATA_TYPE_AT_CMD;
     }
 
-    /* 解析所有12个参数 */
-    for (i = 0; i < 12; i++)
+    /* 解析所有6个参数 */
+    for (i = 0; i < 6; i++)
     {
         param_values[i] = atoi(msg->parm[i + 1]);
-    }
-
-    /* 验证Empty状态参数 (参数0-1) */
-    if (param_values[0] < 0 || param_values[0] > 2)
-    {
-        LOG_INF("%s=>invalid Empty TRG param: %s", __func__, msg->parm[1]);
-        goto param_invalid;
-    }
-
-    if (param_values[1] < 0 || param_values[1] > 2)
-    {
-        LOG_INF("%s=>invalid Empty RPT param: %s", __func__, msg->parm[2]);
-        goto param_invalid;
-    }
-
-    /* 验证Low状态参数 (参数2-3) */
-    if (param_values[2] < 0 || param_values[2] > 2)
-    {
-        LOG_INF("%s=>invalid LOW TRG param: %s", __func__, msg->parm[3]);
-        goto param_invalid;
-    }
-
-    if (param_values[3] < 0 || param_values[3] > 2)
-    {
-        LOG_INF("%s=>invalid LOW RPT param: %s", __func__, msg->parm[4]);
-        goto param_invalid;
-    }
-
-    /* 验证Normal状态参数 (参数4-5) */
-    if (param_values[4] < 0 || param_values[4] > 2)
-    {
-        LOG_INF("%s=>invalid Normal TRG param: %s", __func__, msg->parm[5]);
-        goto param_invalid;
-    }
-
-    if (param_values[5] < 0 || param_values[5] > 2)
-    {
-        LOG_INF("%s=>invalid Normal RPT param: %s", __func__, msg->parm[6]);
-        goto param_invalid;
-    }
-
-    /* 验证Fair状态参数 (参数6-7) */
-    if (param_values[6] < 0 || param_values[6] > 2)
-    {
-        LOG_INF("%s=>invalid Fair TRG param: %s", __func__, msg->parm[7]);
-        goto param_invalid;
-    }
-
-    if (param_values[7] < 0 || param_values[7] > 2)
-    {
-        LOG_INF("%s=>invalid Fair RPT param: %s", __func__, msg->parm[8]);
-        goto param_invalid;
-    }
-
-    /* 验证High状态参数 (参数8-9) */
-    if (param_values[8] < 0 || param_values[8] > 2)
-    {
-        LOG_INF("%s=>invalid High TRG param: %s", __func__, msg->parm[9]);
-        goto param_invalid;
-    }
-
-    if (param_values[9] < 0 || param_values[9] > 2)
-    {
-        LOG_INF("%s=>invalid High RPT param: %s", __func__, msg->parm[10]);
-        goto param_invalid;
-    }
-
-    /* 验证Full状态参数 (参数10-11) */
-    if (param_values[10] < 0 || param_values[10] > 2)
-    {
-        LOG_INF("%s=>invalid Full TRG param: %s", __func__, msg->parm[11]);
-        goto param_invalid;
-    }
-
-    if (param_values[11] < 0 || param_values[11] > 2)
-    {
-        LOG_INF("%s=>invalid Full RPT param: %s", __func__, msg->parm[12]);
-        goto param_invalid;
+        if (param_values[i] < REPORT_MODE_NONE || param_values[i] > REPORT_MODE_GPRS_SMS_CALL)
+        {
+            LOG_INF("%s=>invalid RPT param: %s", __func__, msg->parm[i]);
+            goto param_invalid;
+        }
     }
 
     /* 所有参数验证通过,统一赋值 */
-    g_device_cmd_config.batlevel_empty_trg = (uint8_t)param_values[0];
-    g_device_cmd_config.batlevel_empty_rpt = (uint8_t)param_values[1];
-    g_device_cmd_config.batlevel_low_trg = (uint8_t)param_values[2];
-    g_device_cmd_config.batlevel_low_rpt = (uint8_t)param_values[3];
-    g_device_cmd_config.batlevel_normal_trg = (uint8_t)param_values[4];
-    g_device_cmd_config.batlevel_normal_rpt = (uint8_t)param_values[5];
-    g_device_cmd_config.batlevel_fair_trg = (uint8_t)param_values[6];
-    g_device_cmd_config.batlevel_fair_rpt = (uint8_t)param_values[7];
-    g_device_cmd_config.batlevel_high_trg = (uint8_t)param_values[8];
-    g_device_cmd_config.batlevel_high_rpt = (uint8_t)param_values[9];
-    g_device_cmd_config.batlevel_full_trg = (uint8_t)param_values[10];
-    g_device_cmd_config.batlevel_full_rpt = (uint8_t)param_values[11];
+    g_device_cmd_config.batlevel_empty_rpt = (uint8_t)param_values[0];
+    g_device_cmd_config.batlevel_low_rpt = (uint8_t)param_values[1];
+    g_device_cmd_config.batlevel_normal_rpt = (uint8_t)param_values[2];
+    g_device_cmd_config.batlevel_fair_rpt = (uint8_t)param_values[3];
+    g_device_cmd_config.batlevel_high_rpt = (uint8_t)param_values[4];
+    g_device_cmd_config.batlevel_full_rpt = (uint8_t)param_values[5];
 
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
-    LOG_INF("BATLEVEL: Empty(TRG=%d,RPT=%d), Low(TRG=%d,RPT=%d), Normal(TRG=%d,RPT=%d), Fair(TRG=%d,RPT=%d), High(TRG=%d,RPT=%d), Full(TRG=%d,RPT=%d)",
-           g_device_cmd_config.batlevel_empty_trg, g_device_cmd_config.batlevel_empty_rpt,
-           g_device_cmd_config.batlevel_low_trg, g_device_cmd_config.batlevel_low_rpt,
-           g_device_cmd_config.batlevel_normal_trg, g_device_cmd_config.batlevel_normal_rpt,
-           g_device_cmd_config.batlevel_fair_trg, g_device_cmd_config.batlevel_fair_rpt,
-           g_device_cmd_config.batlevel_high_trg, g_device_cmd_config.batlevel_high_rpt,
-           g_device_cmd_config.batlevel_full_trg, g_device_cmd_config.batlevel_full_rpt);
+    LOG_INF("BATLEVEL: Empty RPT=%d, Low RPT=%d, Normal RPT=%d, Fair RPT=%d, High RPT=%d, Full RPT=%d",
+           g_device_cmd_config.batlevel_empty_rpt, g_device_cmd_config.batlevel_low_rpt,
+           g_device_cmd_config.batlevel_normal_rpt, g_device_cmd_config.batlevel_fair_rpt,
+           g_device_cmd_config.batlevel_high_rpt, g_device_cmd_config.batlevel_full_rpt);
 
     //TODO 具体逻辑处理
 
@@ -1369,7 +1278,7 @@ param_invalid:
 **           msg->resp_length --- 响应长度
 **函数功能:  处理CHARGESTA指令：设置充电状态变化上报方式
 **指令格式:  CHARGESTA,[RPT]#
-**参数说明:  [RPT] - 状态变化时的上报方式: 0-GPRS(默认), 1-GPRS+SMS, 2-GPRS+SMS+CALL
+**参数说明:  [RPT] - 状态变化时的上报方式: 0-不上报, 1-GPRS(默认), 2-GPRS+SMS, 3-GPRS+SMS+CALL
 **返 回 值:  BLE数据类型
 *********************************************************************/
 static int chargesta_cmd_handler(at_cmd_struc* msg)
@@ -1389,7 +1298,7 @@ static int chargesta_cmd_handler(at_cmd_struc* msg)
 
     /* 解析RPT参数 */
     report_value = atoi(msg->parm[1]);
-    if (report_value < 0 || report_value > 2)
+    if (report_value < REPORT_MODE_NONE || report_value > REPORT_MODE_GPRS_SMS_CALL)
     {
         LOG_INF("%s=>invalid RPT param: %s", __func__, msg->parm[1]);
         goto param_invalid;

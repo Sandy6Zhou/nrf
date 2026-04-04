@@ -209,6 +209,34 @@ void chg_timer_handler(struct k_timer *timer)
 }
 
 /*********************************************************************
+**函数名称:  my_chg_event_reporting
+**入口参数:  无
+**出口参数:  无
+**函数功能:  通过比较当前充电状态与上次记录的充电状态，
+**           当状态发生变化且充电状态报告功能开启时，
+**           生成包含时间戳、报告配置和当前充电状态的命令参数，
+**           并通过 LTE 网络发送 ALARM 命令上报事件。
+*********************************************************************/
+void my_chg_event_reporting()
+{
+    static MY_CHG_STATE s_last_chg_state = CHARG_UNKNOWN;     // 上次充电状态
+    char cmd_param[2] = {0};                 // 命令参数缓冲区
+
+    // 当充电状态发生变化且报告功能开启时，上报事件
+    if (s_last_chg_state != g_charg_state)
+    {
+        // 格式化命令参数：包含时间戳、报告配置和当前充电状态
+        snprintf(cmd_param, sizeof(cmd_param), "%d", g_charg_state);
+
+        // 通过 LTE 发送 ALARM 命令
+        send_alarm_message_to_lte(ALARM_CHARGE, cmd_param);
+
+        // 更新上次充电状态
+        s_last_chg_state = g_charg_state;
+    }
+}
+
+/*********************************************************************
 **函数名称:  my_battery_show_chgled
 **入口参数:  无
 **出口参数:  无
@@ -257,6 +285,9 @@ void my_battery_show_chgled()
         batt_led_set_level(0);  // 关闭所有电池LED
         LOG_INF("The charger is not plugged in.");
     }
+
+    // 充电状态发生变化时上报事件
+    my_chg_event_reporting();
 }
 
 /*********************************************************************
@@ -520,6 +551,31 @@ int8_t my_battery_read_percent()
 **函数名称:  my_battery_update_state
 **入口参数:  无
 **出口参数:  无
+**函数功能:  通过比较当前电池状态与上次记录的电池状态，
+**           当状态发生变化时，根据不同的电池状态和对应的上报配置，
+**           生成包含时间戳、报告配置和当前电池状态的命令参数，
+**           并通过 LTE 网络发送 ALARM 命令上报事件。
+*********************************************************************/
+void my_battery_event_reporting()
+{
+    static MY_BATT_STATE s_last_batt_state = BATT_UNKNOWN;   // 上次电池状态
+    char cmd_param[2] = {0};                 // 命令参数缓冲区
+
+    // 当电池状态发生变化时，根据不同状态进行处理
+    if (g_batt_led_ctrl.state != s_last_batt_state)
+    {
+        snprintf(cmd_param, sizeof(cmd_param), "%d", g_batt_led_ctrl.state);
+        send_alarm_message_to_lte(ALARM_BATT, cmd_param);
+
+        // 更新上次电池状态
+        s_last_batt_state = g_batt_led_ctrl.state;
+    }
+}
+
+/*********************************************************************
+**函数名称:  my_battery_update_state
+**入口参数:  无
+**出口参数:  无
 **函数功能:  根据电池电量百分比更新电池状态和充电状态,实现电量显示的平滑过渡，
 **           并根据充电状态调整更新频率
 *********************************************************************/
@@ -566,12 +622,8 @@ void my_battery_update_state()
         // 初始化更新计数器和显示电量百分比
         s_batt_update_count = 0;
         s_show_percent = percent;
-        // 如果检测到充电，则设置充电状态并发送充电显示消息
-        if (gpio_pin_get_dt(&charge_det) == 1)
-        {
-            g_charg_state = CHARGING;
-            my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_SHOW_CHARG);
-        }
+        // 初始化时发送一次充电消息, 函数会在里面检测是否是充电状态, 确保在上电时显示正确的充电状态
+        my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_SHOW_CHARG);
     }
 
     // 未充电时的电量更新逻辑
@@ -667,6 +719,8 @@ void my_battery_update_state()
     }
 
     LOG_INF("battery class:%d", g_batt_led_ctrl.state);  // 输出电池状态等级
+    // 电池状态发生变化时上报事件
+    my_battery_event_reporting();
 
     // 如果正在充电
     if (g_charg_state != NO_CHARGING)
