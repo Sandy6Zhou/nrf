@@ -38,6 +38,9 @@ typedef void (*TIMER_FUN)(void *param);
 #define DEFAULT_LONG_LIFE_INTERVAL      (4 * 60)
 #define DEFAULT_START_TIME              "0001"
 
+//NFC联动最大数量
+#define NFCTRIG_MAX_RULES  10
+
 /* 消息结构体定义 */
 typedef struct MSG_S
 {
@@ -142,6 +145,21 @@ typedef enum
     EMPTY_TRIGGER_CHANGE,           /* 2-状态变化触发 */
 } EMPTY_TRIGGER_MODE_T;
 
+//NFC触发规则项结构体，用于存储单个NFC卡号与指令的关联关系
+typedef struct
+{
+    char  nfctrig_nfc_no[16];       /* 联动的NFC卡号 */
+    char     nfctrig_command[128];      /* 需要执行的完整可执行指令 */
+} nfctrig_rule_t;
+
+//NFC触发规则表结构体，管理所有已配置的NFC触发规则
+typedef struct
+{
+    nfctrig_rule_t nfctrig_rule[NFCTRIG_MAX_RULES];
+    uint8_t count;              //当前nfc_add数量
+} nfctrig_table_t;
+
+
 /* 设备指令配置结构体 */
 typedef struct
 {
@@ -222,9 +240,8 @@ typedef struct
     /* BUZZER 直接控制指令配置 */
     uint8_t buzzer_operator;            /* 蜂鸣器操作: 0-停止, 1-持续报警, 2-成功提示音, 3-失败提示音, 4-异常提示音, 5-一般报警音 */
 
-    /* NCFTRIG 指令配置 */
-    char     ncftrig_nfc_no[16];        /* 联动的NFC卡号 */
-    char     ncftrig_command[128];      /* 需要执行的完整可执行指令 */
+    /* NFCTRIG 指令配置 */
+    nfctrig_table_t nfctrig_table;
 
     /* NFCAUTH 指令配置 */
     NfcAuthCard nfcauth_cards[10];      /* NFC卡权限数组，最多10张卡 */

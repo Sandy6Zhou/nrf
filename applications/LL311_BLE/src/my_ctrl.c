@@ -32,8 +32,8 @@ LOG_MODULE_REGISTER(my_ctrl, LOG_LEVEL_INF);
 #define LOCK_PIN_DEBOUNCE_MS 100
 /* 定义NFC刷卡记录缓存的最大数量（可根据实际需求调整） */
 #define NFC_CACHE_MAX_NUM 10
-/* 重复刷卡判断时间阈值：60秒 */
-#define NFC_REPEAT_INTERVAL 60
+/* 重复刷卡判断时间阈值：1秒 */
+#define NFC_REPEAT_INTERVAL 1
 
 /* 硬件设备树定义 */
 static const struct gpio_dt_spec fun_key = GPIO_DT_SPEC_GET(DT_ALIAS(fun_key), gpios);
@@ -302,8 +302,8 @@ static void update_card_cache(const uint8_t *card_id, uint8_t id_len, time_t swi
 **入口参数:  card_id    ---        输入，待判断的NFC卡号指针
             id_len     ---        输入，卡号长度
 **出口参数:  无
-**函数功能:  判断是否需要执行定位上传，60秒内重复刷卡返回0，否则返回1
-**返 回 值:  0表示无需定位上传（60秒内重复刷卡），1表示需要定位上传
+**函数功能:  判断是否需要执行定位上传，1秒内重复刷卡返回0，否则返回1
+**返 回 值:  0表示无需定位上传（1秒内重复刷卡），1表示需要定位上传
 *********************************************************************/
 static int is_need_location_upload(const uint8_t *card_id, uint8_t id_len)
 {
@@ -320,7 +320,7 @@ static int is_need_location_upload(const uint8_t *card_id, uint8_t id_len)
         time_diff = now - g_nfc_card_cache[index].last_swipe_time;
         if (time_diff >= 0 && time_diff <= NFC_REPEAT_INTERVAL)
         {
-            // 60秒内重复刷卡，无需定位上传
+            // 1秒内重复刷卡，无需定位上传
             return 0;
         }
     }
@@ -345,6 +345,7 @@ int nfc_card_detected(uint8_t *card_id, uint8_t id_len, uint8_t *card_index)
     int time_check_result;
     time_t current_time;
     NfcAuthCard *current_card;
+    char card_id_str[33];
 
     /* 初始化当前卡片索引为无效值 */
     current_card_index = -1;
@@ -355,10 +356,13 @@ int nfc_card_detected(uint8_t *card_id, uint8_t id_len, uint8_t *card_index)
         return -1;
     }
 
+    /* 将二进制卡号转换为十六进制字符串，以与配置中的字符串格式匹配 */
+    hex2hexstr(card_id, id_len, (uint8_t *)card_id_str, sizeof(card_id_str));
+
     /* 遍历所有授权卡片 */
     for (i = 0; i < g_device_cmd_config.nfcauth_card_count; i++)
     {
-        if (strncmp(card_id, g_device_cmd_config.nfcauth_cards[i].nfc_no, id_len) == 0)
+        if (strcmp(card_id_str, g_device_cmd_config.nfcauth_cards[i].nfc_no) == 0)
         {
             /* 记录匹配的卡片索引 */
             current_card_index = i;
@@ -447,6 +451,19 @@ void handle_nfc_card_event(uint8_t *card_id, uint8_t id_len)
         return ;
     }
 
+    //执行NFC联动指令
+    ret = run_nfc_cmd(card_id, &card_index);
+    if (ret)
+    {
+        MY_LOG_INF("Command executed success: cmd_type:%d; command:%s", ret, g_device_cmd_config.nfctrig_table.nfctrig_rule[card_index].nfctrig_command);
+    }
+    else
+    {
+        MY_LOG_INF("Command executed fail: cmd_type:%d", ret);
+    }
+
+    card_index = 0;
+
     // TODO 4G就绪后发送NFC刷卡事件：BLE+ALARM=<告警类型>(NFC),< 时间戳 >,< 附加信息 >(NFC卡号)
     my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);
 
@@ -454,8 +471,6 @@ void handle_nfc_card_event(uint8_t *card_id, uint8_t id_len)
     /* 符合开锁规则 */
     if (ret == 0)
     {
-        //发消息控制刷卡成功提示音
-        my_set_buzzer_mode(BUZZER_EVENT_NFC_SUCCESS);
         /* 启动开锁操作 */
         my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_OPENLOCKING);
         MY_LOG_INF("start to openlock");
@@ -1416,6 +1431,12 @@ void my_buzzer_play(int buzzer_mode)
             //NFC激活：响100ms, 无停顿, 仅播放一次
             g_buzzer_ctrl_config(1, 0, 1);//提示100ms
             break;
+
+        case BUZZER_EVENT_READ_NFC_SUCCESS:
+            //NFC读卡成功，鸣200ms,播放一次
+            g_buzzer_ctrl_config(2, 0, 1);
+            break;
+
     }
 
     my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_BUZZER_ON);

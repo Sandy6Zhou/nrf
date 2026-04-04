@@ -929,6 +929,42 @@ static int cmd_buzzer_test(const struct shell *sh, size_t argc, char **argv)
     return 0;
 }
 
+static int cmd_nfctrig_test(const struct shell *sh, size_t argc, char **argv)
+{
+    int len;
+    uint8_t card_index = 0; 
+    uint16_t ret = 0;
+
+    if (argc < 2)
+    {
+        shell_error(sh, "Missing parameter");
+        return -EINVAL;
+    }
+
+    memset(shell_test_buff, 0, sizeof(shell_test_buff));
+
+    len = strlen(argv[1]);
+    memcpy(shell_test_buff, argv[1], len);
+    shell_test_buff[len] = 0;
+
+    shell_print(sh, "param: %s, len: %d", argv[1], len);
+
+    //执行NFC联动指令
+    ret = run_nfc_cmd(argv[1], &card_index);
+    if (ret)
+    {
+        MY_LOG_INF("Command executed success: cmd_type:%d; command:%s", ret, g_device_cmd_config.nfctrig_table.nfctrig_rule[card_index].nfctrig_command);
+    }
+    else
+    {
+        MY_LOG_INF("Command executed fail: cmd_type:%d", ret);
+    }
+
+
+    return 0;
+}
+
+
 /* 注册自定义命令到 Shell 子系统 */
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(sysinfo, NULL, "Display system information", cmd_system_info),
@@ -947,6 +983,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(blogcfg, NULL, "BLE log config: app blogcfg <global|mod|level|show>", cmd_ble_log_config),
     SHELL_CMD(ble_test, NULL, "test", cmd_ble_test),
     SHELL_CMD(buzzer_test, NULL, "Run Buzzer test", cmd_buzzer_test),
+    SHELL_CMD(nfctrig_test, NULL, "Run nfctrig test", cmd_nfctrig_test),
     SHELL_SUBCMD_SET_END
 );
 /* Zephyr Shell 子系统提供的宏，随 nRF Connect SDK一起提供，用来在 Shell里注册一个“根命令”

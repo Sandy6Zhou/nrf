@@ -588,6 +588,8 @@ int main(void)
                     struct nfc_card_info *card = (struct nfc_card_info *)msg.pData;
                     MY_LOG_INF("NFC Card detected, type: %d", card->type);
                     LOG_HEXDUMP_INF(card->uid, card->uid_len, "NFC UID");
+                    //读卡成功提示音
+                    my_set_buzzer_mode(BUZZER_EVENT_READ_NFC_SUCCESS);
                     /* 刷卡检测流程 */
                     handle_nfc_card_event(card->uid, card->uid_len);
                 }

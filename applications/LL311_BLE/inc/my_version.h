@@ -12,7 +12,15 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260401"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260401"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.02
+** 作    者:        吴楚庆 (wuchuqing@jimiiot.com)
+** 修改内容:        1.增加NFC联动指令（增删查）,定义NFCTRG相关结构体
+**                 2.修改my_cmd_setting.h指令解析接口，兼容" "内容为一个参数
+*/
+
+//#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260401"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.01
 ** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)

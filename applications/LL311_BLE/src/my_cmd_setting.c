@@ -114,9 +114,7 @@ DeviceCmdConfig g_device_cmd_config = {
     /* BUZZER 直接控制指令默认配置 */
     .buzzer_operator = 0,             /* 默认停止 */
 
-    /* NCFTRIG 指令默认配置 */
-    .ncftrig_nfc_no = {0},           /* 默认空 */
-    .ncftrig_command = {0},          /* 默认空 */
+    /* NFCTRIG 指令默认配置 */
 
     /* NFCAUTH 指令默认配置 */
     .nfcauth_card_count = 0,         /* 默认0张卡 */
@@ -144,7 +142,7 @@ static int tag_cmd_handler(at_cmd_struc* msg);
 static int lockcd_cmd_handler(at_cmd_struc* msg);
 static int led_cmd_handler(at_cmd_struc* msg);
 static int buzzer_cmd_handler(at_cmd_struc* msg);
-static int ncftrig_cmd_handler(at_cmd_struc* msg);
+static int nfctrig_cmd_handler(at_cmd_struc* msg);
 static int nfcauth_cmd_handler(at_cmd_struc* msg);
 static int btlog_cmd_handler(at_cmd_struc* msg);
 static int bkey_cmd_handler(at_cmd_struc* msg);
@@ -172,7 +170,7 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"LOCKCD",         lockcd_cmd_handler},
     {"LED",            led_cmd_handler},
     {"BUZZER",         buzzer_cmd_handler},
-    {"NCFTRIG",        ncftrig_cmd_handler},
+    {"NFCTRIG",        nfctrig_cmd_handler},
     {"NFCAUTH",        nfcauth_cmd_handler},
     {"BTLOG",          btlog_cmd_handler},
     {"BKEY_SET",       bkey_cmd_handler},
@@ -580,6 +578,7 @@ int at_cmd_str_analyse(char *str_data, char **tar_data, int limit, char startCha
     static char *blank = "";
     int len, i = 0, j = 0, status = 0;
     char *p;
+    uint8_t in_quote = 0;   //是否在引号内
 
     if (str_data == NULL)
     {
@@ -589,6 +588,27 @@ int at_cmd_str_analyse(char *str_data, char **tar_data, int limit, char startCha
     len = strlen(str_data);
     for (i = 0, j = 0, p = str_data; i < len; i++, p++)
     {
+        // 处理引号状态切换
+        if (*p == '"')
+        {
+            if (in_quote)
+            {
+                // 结束引号 → 截断字符串
+                *p = '\0';
+            }
+            else
+            {
+                // 起始引号 , 参数起点后移
+                if (status == 1 && j > 0)
+                {
+                    tar_data[j - 1] = p + 1;
+                }
+            }
+
+            in_quote = !in_quote;
+            continue;
+        }
+
         if (status == 0 && (*p == startChar || startChar == NULL))
         {
             status = 1;
@@ -599,7 +619,15 @@ int at_cmd_str_analyse(char *str_data, char **tar_data, int limit, char startCha
 
             if (startChar == NULL)
             {
-                tar_data[j++] = p;
+                // 如果是引号开头，跳过
+                if (*p == '"')
+                {
+                    tar_data[j++] = p + 1;
+                }
+                else
+                {
+                    tar_data[j++] = p;
+                }
             }
             else if (*(p + 1) == splitChar)
             {
@@ -616,15 +644,18 @@ int at_cmd_str_analyse(char *str_data, char **tar_data, int limit, char startCha
             continue;
         }
 
-        if (strchr(endChars, *p) != NULL)
+        // 只有不在引号内才判断结束符
+        if (!in_quote && strchr(endChars, *p) != NULL)
         {
             *p = 0;
             break;
         }
 
-        if (*p == splitChar)
+        // 只有不在引号内才按 splitChar 分割
+        if (!in_quote && *p == splitChar)
         {
             *p = 0;
+
             if (j >= limit)
             {
                 return -3;
@@ -645,6 +676,13 @@ int at_cmd_str_analyse(char *str_data, char **tar_data, int limit, char startCha
     {
         tar_data[i] = blank;
     }
+
+    //检测引号是否闭合
+    if (in_quote)
+    {
+        return -1;
+    }
+
     return j;
 }
 
@@ -664,8 +702,7 @@ uint16_t at_recv_cmd_handler(at_cmd_struc *at_cmd_msg)
 
     data_ptr = at_cmd_msg->rcv_msg;
     cmd_Len = strlen(data_ptr);
-    data_ptr[cmd_Len] = '\r';
-    data_ptr[cmd_Len+1] = '\n';
+    data_ptr[cmd_Len] = '\0';
 
     // 解析AT指令参数
     par_len = at_cmd_str_analyse(data_ptr, at_cmd_msg->parm, PARM_MAX, NULL, "#", split_ch);
@@ -674,7 +711,6 @@ uint16_t at_recv_cmd_handler(at_cmd_struc *at_cmd_msg)
         LOG_INF("at_cmd_analyse_par_len error, len=%d", par_len);
         return cmd_type;
     }
-
     at_cmd_msg->parm_count = par_len - 1;
 #if 0
     if (at_cmd_msg->parm_count)
@@ -710,6 +746,47 @@ uint16_t at_recv_cmd_handler(at_cmd_struc *at_cmd_msg)
     }
     return cmd_type;
 }
+
+/********************************************************************
+**函数名称:  run_nfc_cmd
+**入口参数:  card_id      ---      输入，NFC卡号指针
+**           index      ---        匹配到卡号的索引
+**出口参数:  at_cmd_msg中更新响应消息内容和响应长度
+**函数功能:  执行NFC联动指令
+**返回值:    成功返回处理函数返回的BLE数据类型，未匹配指令或处理失败返回0
+*********************************************************************/
+uint16_t run_nfc_cmd(char *card_id, uint8_t *index)
+{
+    at_cmd_struc at_cmd_msg;
+    uint16_t cmd_type = 0;
+    int i = 0;
+    uint8_t found = 0;
+
+    //遍历匹配卡号
+    for (i = 0; i < g_device_cmd_config.nfctrig_table.count; i++)
+    {
+        /* 内容匹配 */
+        if (strcmp(g_device_cmd_config.nfctrig_table.nfctrig_rule[i].nfctrig_nfc_no, card_id) == 0)
+        {
+            found = 1;
+            break;
+        }
+    }
+
+    if (found)
+    {
+        *index = i;
+        //复制
+        strcpy(at_cmd_msg.rcv_msg, g_device_cmd_config.nfctrig_table.nfctrig_rule[i].nfctrig_command);
+
+        MY_LOG_INF("at_cmd_msg.rcv_msg:%s", at_cmd_msg.rcv_msg);
+        MY_LOG_INF("at_cmd_msg.rcv_msglen:%d", strlen(at_cmd_msg.rcv_msg));
+        cmd_type = at_recv_cmd_handler(&at_cmd_msg);
+    }
+
+    return cmd_type;
+}
+
 
 /********************************************************************
 **函数名称:  remalm_cmd_handler
@@ -1988,66 +2065,223 @@ param_invalid:
 }
 
 /********************************************************************
-**函数名称:  ncftrig_cmd_handler
-**入口参数:  msg      ---        AT指令结构体指针
-**出口参数:  msg->resp_msg  ---  响应消息
+** 函数名称:  nfctrig_cmd_handler
+** 入口参数:  msg      ---  AT指令结构体指针
+** 出口参数:  msg->resp_msg   ---  响应消息
 **           msg->resp_length --- 响应长度
-**函数功能:  处理NCFTRIG指令：将NFC卡号与需要执行的指令关联
-**指令格式:  NCFTRIG,[NFC NO.],[Command]#
-**参数说明:  NFC NO. - 联动的NFC卡号
-**           Command - 需要执行的完整可执行指令
-**返 回 值:  BLE数据类型
+** 函数功能:  处理 NFCTRIG 指令，实现 NFC 卡号与执行指令的关联功能
+**
+** 指令格式说明:
+** 1. 添加/设置: NFCTRIG,ADD,[NFC NO.],[Command]#
+**    - 功能: 绑定卡号与指令。
+** 2. 查询:     NFCTRIG,CHECK# 
+**    - 功能: 查询当前所有已绑定的规则。
+**    - 回复格式: [NFC NO.]_[Command];[NFC NO.]_[Command]...
+** 3. 删除:     NFCTRIG,DEL,ALL#
+**    - 功能: 删除所有绑定。
+** 4. 删除特定: NFCTRIG,DEL,[NFC NO.]#
+**    - 功能: 删除指定卡号的绑定。
+**
+** 返 回 值:  BLE数据类型
 *********************************************************************/
-static int ncftrig_cmd_handler(at_cmd_struc* msg)
+static int nfctrig_cmd_handler(at_cmd_struc* msg)
 {
     uint16_t remaining;
     int nfc_no_len;
     int command_len;
+    int i = 0;
+    int index = 0;
+    uint8_t found = 0;
+    char temp_buf[256];
+    int temp_len = 0;
 
     remaining = sizeof(msg->resp_msg);
 
-    /* 检查参数数量 */
-    if (msg->parm_count != 2)
+    /* 参数数量基础校验 */
+    if (msg->parm_count < 1)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+        goto param_invalid;
+    }
+
+    if (strcmp(msg->parm[1], "ADD") == 0)
+    {
+        /* 检查参数数量 */
+        if (msg->parm_count != 3)
+        {
+            LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+            goto param_invalid;
+        }
+
+        /* 校验NFC NO.参数 */
+        nfc_no_len = strlen(msg->parm[2]);
+        if (nfc_no_len == 0 || nfc_no_len >= sizeof(g_device_cmd_config.nfctrig_table.nfctrig_rule[0].nfctrig_nfc_no))
+        {
+            LOG_INF("%s=>invalid NFC NO. param: %s", __func__, msg->parm[2]);
+            goto param_invalid;
+        }
+
+        /* 校验Command参数 */
+        command_len = strlen(msg->parm[3]);
+        if (command_len == 0 || command_len >= sizeof(g_device_cmd_config.nfctrig_table.nfctrig_rule[0].nfctrig_command))
+        {
+            LOG_INF("%s=>invalid Command param: %s", __func__, msg->parm[3]);
+            goto param_invalid;
+        }
+
+        /* 检查Command参数是否为NFCTRIG,ADD */
+        if (strstr(msg->parm[3], "NFCTRIG,ADD") != NULL)
+        {
+            LOG_INF("%s=>Command param cannot be 'NFCTRIG,ADD'", __func__);
+            goto param_invalid;
+        }
+
+        /* 1. 判满 */
+        if (g_device_cmd_config.nfctrig_table.count >= NFCTRIG_MAX_RULES)
+        {
+            LOG_INF("table full");
+            goto param_invalid;
+        }
+
+        /* 2. 查重 */
+        for (i = 0; i < g_device_cmd_config.nfctrig_table.count; i++)
+        {
+            //比较卡号
+            if (strcmp((char*)g_device_cmd_config.nfctrig_table.nfctrig_rule[i].nfctrig_nfc_no, msg->parm[2]) == 0)
+            {
+                LOG_INF("NFC already exists");
+                goto param_invalid;
+            }
+        }
+            /* 3. 插入 */
+        index = g_device_cmd_config.nfctrig_table.count;
+
+        strcpy(g_device_cmd_config.nfctrig_table.nfctrig_rule[index].nfctrig_nfc_no, msg->parm[2]);
+        strcpy(g_device_cmd_config.nfctrig_table.nfctrig_rule[index].nfctrig_command, msg->parm[3]);
+        g_device_cmd_config.nfctrig_table.count++;
+
+        LOG_INF("%s=>%s,%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3]);
+
+
+        LOG_INF("NFCTRIG_ADD: NFC_NO=%s, Command=%s",
+            g_device_cmd_config.nfctrig_table.nfctrig_rule[index].nfctrig_nfc_no,
+            g_device_cmd_config.nfctrig_table.nfctrig_rule[index].nfctrig_command);
+
+        /* 生成成功响应 */
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
         return BLE_DATA_TYPE_AT_CMD;
-    }
 
-    /* 解析NFC NO.参数 */
-    nfc_no_len = strlen(msg->parm[1]);
-    if (nfc_no_len == 0 || nfc_no_len >= sizeof(g_device_cmd_config.ncftrig_nfc_no))
+    }
+    else if (strcmp(msg->parm[1], "CHECK") == 0)
     {
-        LOG_INF("%s=>invalid NFC NO. param: %s", __func__, msg->parm[1]);
+        /* CHECK指令参数数量校验：需要1个参数 */
+        if (msg->parm_count != 1)
+        {
+            LOG_INF("%s=>DEL param count error: %d", __func__, msg->parm_count);
+            goto param_invalid;
+        }
+
+        for (i = 0; i < g_device_cmd_config.nfctrig_table.count; i++)
+        {
+            if (i == g_device_cmd_config.nfctrig_table.count - 1)
+            {
+                temp_len += snprintf(temp_buf + temp_len, sizeof(temp_buf) - temp_len,
+                                "%s_%s", g_device_cmd_config.nfctrig_table.nfctrig_rule[i].nfctrig_nfc_no,
+                                g_device_cmd_config.nfctrig_table.nfctrig_rule[i].nfctrig_command);
+            }
+            else
+            {
+                temp_len += snprintf(temp_buf + temp_len, sizeof(temp_buf) - temp_len,
+                                "%s_%s;", g_device_cmd_config.nfctrig_table.nfctrig_rule[i].nfctrig_nfc_no,
+                                g_device_cmd_config.nfctrig_table.nfctrig_rule[i].nfctrig_command);
+            }
+            found = 1;
+        }
+
+        if (found)
+        {
+            //TODO 回传的数据有可能太大返回有问题，后续需要分包回传处理
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "%s", temp_buf);
+            LOG_INF("%s=>CHECK,COUNT=%d", __func__, g_device_cmd_config.nfctrig_table.count);
+            return BLE_DATA_TYPE_AT_CMD;
+        }
+        else
+        {
+            LOG_INF("%s=>CHECK not found", __func__);
+            goto param_invalid;
+        }
+
+    }
+    else if (strcmp(msg->parm[1], "DEL") == 0)
+    {
+        /* DEL指令参数数量校验 */
+        if (msg->parm_count != 2)
+        {
+            LOG_INF("%s=>DEL param count error: %d", __func__, msg->parm_count);
+            goto param_invalid;
+        }
+
+        /* 删除所有已授权卡号 */
+        if (strcmp(msg->parm[2], "ALL") == 0)
+        {
+            memset(g_device_cmd_config.nfctrig_table.nfctrig_rule, 0, sizeof(g_device_cmd_config.nfctrig_table.nfctrig_rule));
+            g_device_cmd_config.nfctrig_table.count = 0;
+            LOG_INF("%s=>DEL ALL", __func__);
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "NFCTRIG Delete ALL Success.");
+            return BLE_DATA_TYPE_AT_CMD;
+        }
+        /* 删除指定卡号 */
+        else
+        {
+            for (i = 0; i < g_device_cmd_config.nfctrig_table.count; i++)
+            {
+                if (strcmp(g_device_cmd_config.nfctrig_table.nfctrig_rule[i].nfctrig_nfc_no, msg->parm[2]) == 0)
+                {
+                    found = 1;
+                    /* 将后面的卡前移，覆盖被删除的卡 */
+                    for (index = i; index < g_device_cmd_config.nfctrig_table.count - 1; index++)
+                    {
+                        memcpy(&g_device_cmd_config.nfctrig_table.nfctrig_rule[index],
+                               &g_device_cmd_config.nfctrig_table.nfctrig_rule[index + 1],
+                               sizeof(nfctrig_rule_t));
+                    }
+                    /* 清空最后一个位置 */
+                    memset(&g_device_cmd_config.nfctrig_table.nfctrig_rule[g_device_cmd_config.nfctrig_table.count - 1],
+                           0, sizeof(nfctrig_rule_t));
+                    g_device_cmd_config.nfctrig_table.count--;
+                    break;
+                }
+            }
+            if (found)
+            {
+                LOG_INF("%s=>DEL,%s", __func__, msg->parm[2]);
+                msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_NFCTRIG %s Delete Success.", msg->parm[2]);
+                return BLE_DATA_TYPE_AT_CMD;
+            }
+            else
+            {
+                LOG_INF("%s=>DEL,%s not found", __func__, msg->parm[2]);
+                goto param_invalid;
+            }
+        }
+    }
+    /* 无效的操作类型 */
+    else
+    {
+        LOG_INF("%s=>invalid operation: %s", __func__, msg->parm[1]);
         goto param_invalid;
     }
-
-    /* 解析Command参数 */
-    command_len = strlen(msg->parm[2]);
-    if (command_len == 0 || command_len >= sizeof(g_device_cmd_config.ncftrig_command))
-    {
-        LOG_INF("%s=>invalid Command param: %s", __func__, msg->parm[2]);
-        goto param_invalid;
-    }
-
-    /* 所有参数验证通过,统一赋值 */
-    strcpy(g_device_cmd_config.ncftrig_nfc_no, msg->parm[1]);
-    strcpy(g_device_cmd_config.ncftrig_command, msg->parm[2]);
-
-    LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
-
-    /* 生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
-    LOG_INF("NCFTRIG: NFC_NO=%s, Command=%s",
-           g_device_cmd_config.ncftrig_nfc_no,
-           g_device_cmd_config.ncftrig_command);
-
-    //TODO 具体逻辑处理
-
-    return BLE_DATA_TYPE_AT_CMD;
 
 param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    if (msg->parm_count >= 1)
+    {
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_%s_FAIL", msg->parm[0], msg->parm[1]);
+    }
+    else
+    {
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    }
+    
     return BLE_DATA_TYPE_AT_CMD;
 }
 

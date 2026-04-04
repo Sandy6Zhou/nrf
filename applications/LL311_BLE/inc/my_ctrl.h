@@ -37,7 +37,7 @@ typedef enum
     BUZZER_EVENT_LOCK_FAIL,             // 上锁/解锁失败提示(滑块异常): 3次长鸣, 每次1000ms, 间隔500ms
     BUZZER_EVENT_NFC_ACTIVATE,          // NFC激活提示: 蜂鸣器提示 100ms
 
-    BUZZER_EVENT_NFC_SUCCESS        // 10: NFC 刷卡成功 200ms
+    BUZZER_EVENT_READ_NFC_SUCCESS        // 10: NFC 读卡成功 200ms
 } MY_BUZZER_MODE;
 
 extern int g_buzzer_mode;

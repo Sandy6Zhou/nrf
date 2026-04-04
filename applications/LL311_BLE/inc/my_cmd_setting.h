@@ -103,4 +103,14 @@ int set_intelligent_params(DeviceWorkModeConfig *config, uint32_t static_int, ui
 *********************************************************************/
 uint16_t at_recv_cmd_handler(at_cmd_struc *at_cmd_msg);
 
+/********************************************************************
+**函数名称:  run_nfc_cmd
+**入口参数:  card_id      ---      输入，NFC卡号指针
+**           index      ---        匹配到卡号的索引
+**出口参数:  at_cmd_msg中更新响应消息内容和响应长度
+**函数功能:  执行NFC联动指令
+**返回值:    成功返回处理函数返回的BLE数据类型，未匹配指令或处理失败返回0
+*********************************************************************/
+uint16_t run_nfc_cmd(char *card_id, uint8_t *index);
+
 #endif /* _MY_CMD_SETTING_H_ */
