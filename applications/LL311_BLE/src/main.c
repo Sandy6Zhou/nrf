@@ -327,6 +327,9 @@ void switch_work_mode(MY_WORK_MODE mode)
     // 发送工作模式切换命令给LTE模块
     lte_send_command("MODESET", buf);
 
+    // 工作模式切换时根据配置的扫描模式决定是否上报扫描数据
+    my_scan_upload_on_lte_wakeup();
+
     MY_LOG_INF("Work mode switch request sent: %d", gConfigParam.device_workmode_config.workmode_config.current_mode);
 }
 

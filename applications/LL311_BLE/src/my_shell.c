@@ -1008,6 +1008,147 @@ static int cmd_nfc_swip_test(const struct shell *sh, size_t argc, char **argv)
     return 0;
 }
 
+/********************************************************************
+**函数名称:  cmd_tag_scan_set_config
+**入口参数:  shell   ---        Shell 实例指针
+**           argc    ---        参数数量
+**           argv    ---        参数数组
+**出口参数:  无
+**函数功能:  配置 Tag 扫描参数
+**返 回 值:  0 表示成功，负数表示失败
+**使用示例:  app tagscan <mode> <scan_interval> <scan_length> <upload_interval>
+*********************************************************************/
+static int cmd_tag_scan_set_config(const struct shell *shell, size_t argc, char **argv)
+{
+    uint8_t mode;
+    uint32_t scan_interval;
+    uint32_t scan_length;
+    uint32_t upload_interval;
+    char *p_endptr;
+
+    if (argc != 5)
+    {
+        shell_print(shell, "Usage: app tagscan <mode> <scan_interval> <scan_length> <upload_interval>");
+        shell_print(shell, "  mode            : Scan mode (0-3, 0=off 1=wakeup 2=period_cache 3=period_upload)");
+        shell_print(shell, "  scan_interval   : Scan interval (s), must > scan_length");
+        shell_print(shell, "  scan_length     : Scan length (s), must > 0");
+        shell_print(shell, "  upload_interval : Upload interval (s), mode 3 required");
+        return -EINVAL;
+    }
+
+    // 解析 mode 参数
+    mode = (uint8_t)strtoul(argv[1], &p_endptr, 10);
+    if (*p_endptr != '\0' || mode > 3)
+    {
+        shell_error(shell, "Invalid mode: %s, mode must be 0-3", argv[1]);
+        shell_print(shell, "  0: off");
+        shell_print(shell, "  1: wakeup_scan (scan on LTE wakeup)");
+        shell_print(shell, "  2: period_cache (periodic scan, upload on LTE wakeup)");
+        shell_print(shell, "  3: period_upload (periodic scan + periodic upload)");
+        return -EINVAL;
+    }
+
+    // 解析 scan_interval 参数
+    scan_interval = strtoul(argv[2], &p_endptr, 10);
+    if (*p_endptr != '\0' || scan_interval == 0 || scan_interval > 86400)
+    {
+        shell_error(shell, "Invalid scan_interval: %s, must be 1-86400 seconds", argv[2]);
+        return -EINVAL;
+    }
+
+    // 解析 scan_length 参数
+    scan_length = strtoul(argv[3], &p_endptr, 10);
+    if (*p_endptr != '\0' || scan_length == 0 || scan_length > 86400)
+    {
+        shell_error(shell, "Invalid scan_length: %s, must be 1-86400 seconds", argv[3]);
+        return -EINVAL;
+    }
+
+    // 解析 upload_interval 参数
+    upload_interval = strtoul(argv[4], &p_endptr, 10);
+    if (*p_endptr != '\0' || upload_interval > 86400)
+    {
+        shell_error(shell, "Invalid upload_interval: %s, must be 0-86400 seconds", argv[4]);
+        return -EINVAL;
+    }
+
+    // 校验 scan_interval 必须大于 scan_length
+    if (scan_interval <= scan_length)
+    {
+        shell_error(shell, "scan_interval (%u) must be greater than scan_length (%u)", scan_interval, scan_length);
+        return -EINVAL;
+    }
+
+    // 模式 3 要求 upload_interval 必须大于 0
+    if (mode == 3 && upload_interval == 0)
+    {
+        shell_error(shell, "Mode 3 (period_upload) requires upload_interval > 0");
+        return -EINVAL;
+    }
+
+    // 模式 3 要求 upload_interval 应该大于 scan_interval（避免频繁上报）
+    if (mode == 3 && upload_interval <= scan_interval)
+    {
+        shell_warn(shell, "Warning: upload_interval (%u) should be greater than scan_interval (%u) in mode 3", upload_interval, scan_interval);
+    }
+
+    my_scan_set_config(mode, scan_interval, scan_length, upload_interval);
+
+    shell_print(shell, "Tag scan config set OK:");
+    shell_print(shell, "  mode            = %d (%s)", mode,
+                mode == 0 ? "off" : (mode == 1 ? "wakeup_scan" : (mode == 2 ? "period_cache" : "period_upload")));
+    shell_print(shell, "  scan_interval   = %u s", scan_interval);
+    shell_print(shell, "  scan_length     = %u s", scan_length);
+    shell_print(shell, "  upload_interval = %u s", upload_interval);
+
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  cmd_alarm_test
+**入口参数:  sh      ---        Shell 实例指针
+**           argc    ---        参数数量
+**           argv    ---        参数数组
+**出口参数:  无
+**函数功能:  测试发送告警消息到 LTE 模块
+**返 回 值:  0 表示成功，负数表示失败
+**使用示例:  app alarmtest <type> [info]
+*********************************************************************/
+static int cmd_alarm_test(const struct shell *sh, size_t argc, char **argv)
+{
+    int n_alarm_type;
+    const char *p_additional_info;
+
+    if (argc < 2)
+    {
+        shell_print(sh, "Usage: app alarmtest <type> [info]");
+        shell_print(sh, "  type: 0=OPEN, 1=ILLEGALUNLOCK, 2=LOCK, 3=MOTION,");
+        shell_print(sh, "        4=BATT, 5=CHARGE, 6=IMPACT, 7=SEPARATE,");
+        shell_print(sh, "        8=NFC, 9=CUT, 10=OTHER");
+        shell_print(sh, "  info: optional additional info string");
+        return -EINVAL;
+    }
+
+    // 解析告警类型
+    n_alarm_type = atoi(argv[1]);
+    if (n_alarm_type < 0 || n_alarm_type > ALARM_OTHER)
+    {
+        shell_error(sh, "Invalid alarm type: %d", n_alarm_type);
+        return -EINVAL;
+    }
+
+    // 获取附加信息（可选）
+    p_additional_info = (argc >= 3) ? argv[2] : NULL;
+
+    // 发送告警消息
+    send_alarm_message_to_lte((alarm_type_t)n_alarm_type, p_additional_info);
+
+    shell_print(sh, "Alarm message sent to LTE:");
+    shell_print(sh, "  type: %d", n_alarm_type);
+    shell_print(sh, "  info: %s", p_additional_info ? p_additional_info : "(none)");
+
+    return 0;
+}
 
 /* 注册自定义命令到 Shell 子系统 */
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
@@ -1029,6 +1170,8 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(buzzer_test, NULL, "Run Buzzer test", cmd_buzzer_test),
     SHELL_CMD(nfctrig_test, NULL, "Run nfctrig test", cmd_nfctrig_test),
     SHELL_CMD(nfc_swip_test, NULL, "Run nfc swipe test", cmd_nfc_swip_test),
+    SHELL_CMD(tagscan, NULL, "Set tag scan config: app tagscan <mode> <scan_interval> <scan_length> <upload_interval>", cmd_tag_scan_set_config),
+    SHELL_CMD(alarmtest, NULL, "Test alarm message: app alarmtest <type> [info]", cmd_alarm_test),
     SHELL_SUBCMD_SET_END
 );
 /* Zephyr Shell 子系统提供的宏，随 nRF Connect SDK一起提供，用来在 Shell里注册一个“根命令”

@@ -1673,6 +1673,21 @@ static int bt_updata_cmd_handler(at_cmd_struc* msg)
         goto param_invalid;
     }
 
+    // 检查Scan Interval是否大于Scan Length
+    if (scan_interval_value <= scan_length_value)
+    {
+        LOG_INF("%s=>interval must be greater than length", __func__);
+        goto param_invalid;
+    }
+
+    // 建议upload_interval应该大于scan_interval（避免频繁上报）
+    if (mode_value == 3 && updata_interval_value <= scan_interval_value)
+    {
+        LOG_INF("%s=>Warning: upload_interval(%u) should be greater than scan_interval(%u)",
+                __func__, updata_interval_value, scan_interval_value);
+        goto param_invalid;
+    }
+
     /* 所有参数验证通过,统一赋值 */
     gConfigParam.bt_updata_config.bt_updata_mode = (uint8_t)mode_value;
     gConfigParam.bt_updata_config.bt_updata_scan_interval = scan_interval_value;
@@ -1690,7 +1705,11 @@ static int bt_updata_cmd_handler(at_cmd_struc* msg)
            gConfigParam.bt_updata_config.bt_updata_scan_length,
            gConfigParam.bt_updata_config.bt_updata_updata_interval);
 
-    //TODO 具体逻辑处理
+    // 应用TAG扫描配置
+    my_scan_set_config(gConfigParam.bt_updata_config.bt_updata_mode,
+                           gConfigParam.bt_updata_config.bt_updata_scan_interval,
+                           gConfigParam.bt_updata_config.bt_updata_scan_length,
+                           gConfigParam.bt_updata_config.bt_updata_updata_interval);
 
     return BLE_DATA_TYPE_AT_CMD;
 

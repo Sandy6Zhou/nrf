@@ -64,6 +64,7 @@
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/bluetooth/hci.h>
 #include <zephyr/bluetooth/uuid.h>
+#include <zephyr/bluetooth/addr.h>
 
 /* Zephyr MCUmgr */
 #include <zephyr/mgmt/mcumgr/mgmt/callbacks.h>
@@ -140,6 +141,7 @@ typedef enum
     LTE_BOOT_REASON_LONG_LIFE = 1,  // 长续航模式间隔定位上报
     LTE_BOOT_REASON_SMART = 2,      // 智能模式间隔定位上报
     LTE_BOOT_REASON_ALARM = 3,      // 告警事件唤醒
+    LTE_BOOT_REASON_SCAN = 4,       // 扫描数据上报
     LTE_BOOT_REASON_RESERVED = 255, // 预留(未知原因)
 } lte_boot_reason_t;
 
@@ -151,6 +153,11 @@ typedef enum
     // MY_TIMER_WDT_FEED,       /* 看门狗喂狗定时器 */
     MY_TIMER_LTE_POWER,      // LTE电源控制定时器
     MY_TIMER_SHUTDOWN,       // 关机定时器
+
+    /* 扫描定时器 */
+    MY_TIMER_SCAN_INTERVAL,   // 周期扫描定时器
+    MY_TIMER_SCAN_LENGTH,     // 单次扫描时长定时器
+    MY_TIMER_UPLOAD_INTERVAL, // 上报间隔定时器
 
     MY_TIMER_MAX_ID,
 } MY_E_TIMER;
@@ -232,6 +239,13 @@ typedef enum
     MY_MSG_LTE_BLE_DATA,        /* 蓝牙指令数据 */
 
     MY_MSG_SHUTDOWN,            /* 关机消息 */
+
+    /* 扫描处理程序消息 */
+    MY_MSG_TAG_SCAN_PROCESS,    /* TAG扫描数据处理消息 */
+    MY_MSG_SCAN_INTERVAL,       /* 周期扫描定时器消息 */
+    MY_MSG_SCAN_LENGTH,         /* 单次扫描时长定时器消息 */
+    MY_MSG_SCAN_UPLOAD,         /* 上报间隔定时器消息 */
+    MY_MSG_UPLOAD_WAKEUP,       /* 扫描数据在LTE唤醒时顺便上报消息 */
 } MY_MAIN_TASK_MSG;
 
 /* ========== 集中引用所有模块头文件 ========== */
@@ -254,5 +268,6 @@ typedef enum
 #include "my_dfu_jimi.h"
 #include "my_ble_log.h"
 #include "my_pm.h"
+#include "my_ble_scan.h"
 
 #endif /* _MY_COMMON_H_ */

@@ -1,0 +1,1186 @@
+/********************************************************************
+**版权所有         深圳市几米物联有限公司
+**文件名称:        my_ble_scan.c
+**文件描述:        设备扫描模块实现
+**当前版本:        V1.0
+**作    者:       周森达 (zhousenda@jimiiot.com)
+**完成日期:        2026.04.14
+*********************************************************************
+** 功能描述:        设备扫描模块实现
+**                 1. 实现主动扫描，分离处理ADV_IND和SCAN_RSP数据
+**                 2. ADV_IND解析FF数据并缓存，SCAN_RSP解析名称/UUID/电量
+**                 3. 名称前缀过滤通过后，合并ADV缓存与SCAN_RSP数据
+**                 4. 支持四种工作模式：关闭/唤醒扫描/周期缓存/周期上报
+**                 5. 按MAC地址聚合结果，表满时替换最小RSSI设备
+**                 6. 使用消息队列实现无锁设计，所有操作在BLE线程中串行执行
+*********************************************************************/
+#include "my_comm.h"
+
+LOG_MODULE_REGISTER(my_ble_scan, LOG_LEVEL_INF);
+
+static tag_prefix_table_t s_prefix_table;       // 前缀表
+static tag_scan_result_table_t s_result_table;  // 结果表
+static scan_config_t s_scan_config;             // 扫描配置
+
+/* ADV数据缓存表（用于等待SCAN_RSP名称过滤后再合并） */
+static adv_cache_item_t s_adv_cache_table[ADV_CACHE_MAX_NUM];
+/* 全局序号计数器，用于标记缓存项新旧 */
+static uint32_t s_cache_seq_counter;
+
+K_MSGQ_DEFINE(s_tag_scan_process_msgq, sizeof(tag_scan_process_msg_t), 16, 4);
+
+/* 扫描参数（主动扫描模式）
+ * 将 interval 设大、window 设小，可以大幅降低功耗
+ */
+static struct bt_le_scan_param s_scan_param = {
+    .type       = BT_LE_SCAN_TYPE_ACTIVE,           // 主动扫描
+    .options    = BT_LE_SCAN_OPT_FILTER_DUPLICATE,
+    .interval   = 0x0640,                           // 1000 ms间隔
+    .window     = BT_GAP_SCAN_FAST_WINDOW,          // 30 ms时长
+    .timeout    = 0,
+};
+
+/* 扫描回调结构 */
+static struct bt_le_scan_cb s_scan_cb;
+
+static void scan_trigger_upload(void);
+
+/********************************************************************
+**函数名称:  parse_scan_rsp_name
+**入口参数:  buf_ptr         ---        接收数据缓冲区
+**           name      ---        输出设备名称缓冲区
+**           max_len     ---        名称缓冲区最大长度
+**出口参数:  name      ---        存储解析出的设备名称
+**函数功能:  从SCAN_RSP数据中解析设备名称
+**返 回 值:  true表示解析成功，false表示解析失败
+*********************************************************************/
+static bool parse_scan_rsp_name(struct net_buf_simple *buf_ptr, char *name, uint8_t max_len)
+{
+    struct net_buf_simple data_buf;
+    uint8_t len;
+    uint8_t type;
+    uint8_t data_len;
+    uint8_t copy_len;
+
+    // 克隆缓冲区结构体，以便独立移动读取指针，不影响原始缓冲区
+    net_buf_simple_clone(buf_ptr, &data_buf);
+
+    // 遍历SCAN_RSP数据，解析AD结构
+    while (data_buf.len > 1)
+    {
+        // 读取AD结构长度字段
+        len = net_buf_simple_pull_u8(&data_buf);
+        if (len == 0)
+        {
+            break;
+        }
+
+        if (data_buf.len < len)
+        {
+            return false;
+        }
+
+        // 读取AD结构类型字段
+        type = net_buf_simple_pull_u8(&data_buf);
+        // 计算数据字段长度 = 总长度 - 类型字段(1字节)
+        data_len = len - 1;
+
+        // 检查是否为设备名称类型
+        if (type == BT_DATA_NAME_SHORTENED || type == BT_DATA_NAME_COMPLETE)
+        {
+            // 复制设备名称，预留1字节给字符串结束符
+            copy_len = MIN(data_len, (uint8_t)(max_len - 1));
+            memcpy(name, net_buf_simple_pull_mem(&data_buf, copy_len), copy_len);
+            name[copy_len] = '\0';
+            if (data_len > copy_len)
+            {
+                net_buf_simple_pull_mem(&data_buf, data_len - copy_len);
+            }
+            return true;
+        }
+
+        // 跳过非名称类型的数据字段
+        net_buf_simple_pull_mem(&data_buf, data_len);
+    }
+
+    return false;
+}
+
+/********************************************************************
+**函数名称:  parse_ff_data
+**入口参数:  buf_ptr         ---        接收数据缓冲区
+**           ff_data   ---        输出FF数据缓冲区
+**           max_len     ---        FF数据缓冲区最大长度
+**出口参数:  ff_data   ---        存储解析出的FF数据
+**           out_len_ptr     ---        输出FF数据实际长度
+**函数功能:  从广播数据中解析FF数据（Manufacturer Specific Data）
+**返 回 值:  true表示解析成功，false表示解析失败
+*********************************************************************/
+static bool parse_ff_data(struct net_buf_simple *buf_ptr, uint8_t *ff_data,
+                          uint8_t max_len, uint8_t *out_len_ptr)
+{
+    struct net_buf_simple data_buf;
+    uint8_t len;
+    uint8_t type;
+    uint8_t data_len;
+    uint8_t copy_len;
+
+    // 克隆缓冲区结构体，以便独立移动读取指针
+    net_buf_simple_clone(buf_ptr, &data_buf);
+
+    // 遍历数据，解析AD结构
+    while (data_buf.len > 1)
+    {
+        // 读取AD结构长度字段
+        len = net_buf_simple_pull_u8(&data_buf);
+        if (len == 0)
+        {
+            break;
+        }
+
+        if (data_buf.len < len)
+        {
+            return false;
+        }
+
+        // 读取AD结构类型字段
+        type = net_buf_simple_pull_u8(&data_buf);
+        // 计算数据字段长度 = 总长度 - 类型字段(1字节)
+        data_len = len - 1;
+
+        // 检查是否为Manufacturer Specific Data类型(0xFF)
+        if (type == BT_DATA_MANUFACTURER_DATA && data_len == TAG_FF_DATA_MAX_LEN)
+        {
+            // 复制FF数据
+            copy_len = MIN(data_len, max_len);
+            memcpy(ff_data, net_buf_simple_pull_mem(&data_buf, copy_len), copy_len);
+            if (data_len > copy_len)
+            {
+                net_buf_simple_pull_mem(&data_buf, data_len - copy_len);
+            }
+            *out_len_ptr = copy_len;
+            return true;
+        }
+
+        // 跳过非FF类型的数据字段
+        net_buf_simple_pull_mem(&data_buf, data_len);
+    }
+
+    return false;
+}
+
+/********************************************************************
+**函数名称:  parse_scan_rsp_payload
+**入口参数:  buf_ptr         ---        接收数据缓冲区
+**           result_ptr      ---        扫描结果结构体指针
+**出口参数:  result_ptr      ---        更新UUID和电量字段
+**函数功能:  从扫描响应包中解析UUID和电量百分比
+**           UUID在0x02类型中
+**           电量在0x04类型中，格式为：第七字节=0x02(类型)，第八字节=电量值
+**返 回 值:  true表示解析到至少一个字段，false表示全部解析失败
+*********************************************************************/
+static bool parse_scan_rsp_payload(struct net_buf_simple *buf_ptr, tag_scan_result_t *result_ptr)
+{
+    struct net_buf_simple data_buf;
+    uint8_t len;
+    uint8_t type;
+    uint8_t data_len;
+    uint8_t copy_len;
+    const uint8_t *data_ptr;
+    bool uuid_found = false;
+    bool battery_found = false;
+
+    // 克隆缓冲区结构体
+    net_buf_simple_clone(buf_ptr, &data_buf);
+
+    // 遍历数据，解析AD结构
+    while (data_buf.len > 1)
+    {
+        // 读取AD结构长度字段
+        len = net_buf_simple_pull_u8(&data_buf);
+        if (len == 0)
+        {
+            break;
+        }
+
+        if (data_buf.len < len)
+        {
+            return (uuid_found || battery_found);
+        }
+
+        // 读取AD结构类型字段
+        type = net_buf_simple_pull_u8(&data_buf);
+        // 计算数据字段长度
+        data_len = len - 1;
+        data_ptr = net_buf_simple_pull_mem(&data_buf, data_len);
+
+        // 检查是否为16-bit UUID类型(0x02)
+        if ((type == BT_DATA_UUID16_SOME) && (!uuid_found))
+        {
+            // 复制UUID数据
+            copy_len = MIN(data_len, UUID_MAX_LEN);
+            memcpy(result_ptr->uuid, data_ptr, copy_len);
+            result_ptr->uuid_len = copy_len;
+            uuid_found = true;
+        }
+        // 检查是否包含电量字段(类型0x04)
+        else if ((type == BT_DATA_UUID32_SOME) && (!battery_found) && (data_len >= 8))
+        {
+            // 检查第七字节是否为0x02（电量数据类型）
+            if (data_ptr[6] == 0x02)
+            {
+                result_ptr->battery_percent = data_ptr[7];
+                battery_found = true;
+            }
+        }
+    }
+
+    return (uuid_found || battery_found);
+}
+
+/********************************************************************
+**函数名称:  tag_name_match
+**入口参数:  name      ---        设备名称
+**           len         ---        名称长度
+**出口参数:  无
+**函数功能:  检查设备名称是否匹配前缀表中的任一前缀
+**返 回 值:  true表示匹配成功，false表示不匹配
+*********************************************************************/
+static bool tag_name_match(const char *name, uint8_t len)
+{
+    uint8_t i;
+    uint8_t prefix_len;
+
+    // 参数校验
+    if (len == 0 || name == NULL)
+    {
+        return false;
+    }
+
+    // 遍历前缀表，匹配任一前缀
+    for (i = 0; i < s_prefix_table.count; i++)
+    {
+        // 跳过无效前缀
+        if (!s_prefix_table.items[i].valid)
+        {
+            continue;
+        }
+
+        // 获取前缀长度
+        prefix_len = s_prefix_table.items[i].len;
+        // 比较前缀（名称长度需大于等于前缀长度）
+        if (len >= prefix_len &&
+            strncmp(name, s_prefix_table.items[i].prefix, prefix_len) == 0)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/********************************************************************
+**函数名称:  tag_scan_result_save
+**入口参数:  result_ptr      ---        扫描结果指针
+**出口参数:  无
+**函数功能:  保存扫描结果到结果表（按地址聚合最终有效数据）
+**返 回 值:  无
+*********************************************************************/
+static void tag_scan_result_save(tag_scan_result_t *result_ptr)
+{
+    uint8_t i;
+    uint16_t replace_idx;
+    tag_scan_result_t *item_ptr;
+    int8_t min_rssi;
+
+    // 检查是否已存在相同MAC地址的设备
+    for (i = 0; i < s_result_table.count; i++)
+    {
+        if (bt_addr_le_cmp(&s_result_table.items[i].addr, &result_ptr->addr) == 0)
+        {
+            item_ptr = &s_result_table.items[i];
+
+            // 更新设备名称和RSSI
+            strncpy(item_ptr->name, result_ptr->name, sizeof(item_ptr->name) - 1);
+            item_ptr->rssi = result_ptr->rssi;
+
+            // 更新FF数据
+            if (result_ptr->ff_data_len > 0)
+            {
+                memcpy(item_ptr->ff_data, result_ptr->ff_data, result_ptr->ff_data_len);
+                item_ptr->ff_data_len = result_ptr->ff_data_len;
+            }
+
+            // 更新UUID数据
+            if (result_ptr->uuid_len > 0)
+            {
+                memcpy(item_ptr->uuid, result_ptr->uuid, result_ptr->uuid_len);
+                item_ptr->uuid_len = result_ptr->uuid_len;
+            }
+
+            // 更新电量百分比
+            item_ptr->battery_percent = result_ptr->battery_percent;
+
+            LOG_INF("TAG updated: %s, RSSI: %d", item_ptr->name, item_ptr->rssi);
+
+#if 0
+            if (item_ptr->ff_data_len > 0)
+            {
+                LOG_HEXDUMP_INF(item_ptr->ff_data, item_ptr->ff_data_len, "TAG FF Data:");
+            }
+
+            if (item_ptr->uuid_len > 0)
+            {
+                LOG_HEXDUMP_INF(item_ptr->uuid, item_ptr->uuid_len, "TAG UUID Data:");
+            }
+#endif
+
+            return;
+        }
+    }
+
+    // 添加新设备
+    if (s_result_table.count < TAG_RESULT_MAX_NUM)
+    {
+        item_ptr = &s_result_table.items[s_result_table.count];
+        memcpy(item_ptr, result_ptr, sizeof(tag_scan_result_t));
+        s_result_table.count++;
+
+        LOG_INF("TAG found: %s, RSSI: %d, count: %d",
+                result_ptr->name, result_ptr->rssi, s_result_table.count);
+
+#if 0
+        if (result_ptr->ff_data_len > 0)
+        {
+            LOG_HEXDUMP_INF(result_ptr->ff_data, result_ptr->ff_data_len, "TAG FF Data:");
+        }
+
+        if (result_ptr->uuid_len > 0)
+        {
+            LOG_HEXDUMP_INF(result_ptr->uuid, result_ptr->uuid_len, "TAG UUID Data:");
+        }
+#endif
+
+    }
+    // 替换最小RSSI的设备
+    else
+    {
+        replace_idx = 0;
+        min_rssi = s_result_table.items[0].rssi;
+        for (i = 1; i < TAG_RESULT_MAX_NUM; i++)
+        {
+            if (s_result_table.items[i].rssi < min_rssi)
+            {
+                min_rssi = s_result_table.items[i].rssi;
+                replace_idx = i;
+            }
+        }
+
+        if (result_ptr->rssi > min_rssi)
+        {
+            item_ptr = &s_result_table.items[replace_idx];
+            memcpy(item_ptr, result_ptr, sizeof(tag_scan_result_t));
+            LOG_WRN("TAG result table full, replace idx=%d, old_rssi=%d, new_rssi=%d",
+                    replace_idx, min_rssi, result_ptr->rssi);
+        }
+        else
+        {
+            LOG_WRN("TAG result table full, drop weak TAG, rssi=%d", result_ptr->rssi);
+        }
+    }
+}
+
+/********************************************************************
+**函数名称:  scan_recv_cb
+**入口参数:  info_ptr        ---        扫描接收信息
+**           buf_ptr         ---        接收数据缓冲区
+**出口参数:  无
+**函数功能:  扫描接收回调函数，接收ADV和SCAN_RSP数据并发送消息到BLE线程
+**返 回 值:  无
+*********************************************************************/
+static void scan_recv_cb(const struct bt_le_scan_recv_info *info_ptr,
+                              struct net_buf_simple *buf_ptr)
+{
+    char name[ADV_NAME_MAX_LEN] = {0};
+    uint8_t ff_temp[TAG_FF_DATA_MAX_LEN];
+    uint8_t ff_len;
+    tag_scan_process_msg_t process_msg;
+    int err;
+
+    // 只处理广播包和扫描响应包
+    if (info_ptr->adv_type != BT_GAP_ADV_TYPE_ADV_IND &&
+        info_ptr->adv_type != BT_GAP_ADV_TYPE_SCAN_RSP)
+    {
+        return;
+    }
+
+    memset(&process_msg, 0, sizeof(tag_scan_process_msg_t));
+
+    process_msg.adv_type = info_ptr->adv_type;
+    bt_addr_le_copy(&process_msg.result.addr, info_ptr->addr);
+    process_msg.result.rssi = info_ptr->rssi;
+
+    if (info_ptr->adv_type == BT_GAP_ADV_TYPE_ADV_IND)
+    {
+        // 处理广播包(ADV_IND)，解析厂商自定义FF数据
+        ff_len = 0;
+        if (!parse_ff_data(buf_ptr, ff_temp, sizeof(ff_temp), &ff_len))
+        {
+            return;
+        }
+
+        memcpy(process_msg.result.ff_data, ff_temp, ff_len);
+        process_msg.result.ff_data_len = ff_len;
+    }
+    else
+    {
+        // 处理扫描响应包(SCAN_RSP)，解析设备名称和载荷数据
+        if (!parse_scan_rsp_name(buf_ptr, name, sizeof(name)))
+        {
+            return;
+        }
+
+        // 拷贝设备名称到消息结构体，预留一个字节存放结束符
+        strncpy(process_msg.result.name, name,
+                sizeof(process_msg.result.name) - 1);
+        // 解析扫描响应载荷数据
+        parse_scan_rsp_payload(buf_ptr, &process_msg.result);
+    }
+
+    // 将处理后的消息放入消息队列，使用非阻塞方式
+    err = k_msgq_put(&s_tag_scan_process_msgq, &process_msg, K_NO_WAIT);
+    if (err)
+    {
+        // 消息队列已满或其他错误，直接返回
+        // LOG_INF("TAG scan msgq full, drop msg");
+        return;
+    }
+
+    // 发送消息到BLE线程处理
+    my_send_msg(MOD_BLE, MOD_BLE, MY_MSG_TAG_SCAN_PROCESS);
+}
+
+/********************************************************************
+**函数名称:  tag_scan_data_handle
+**入口参数:  process_msg_ptr  ---        扫描处理消息指针
+**出口参数:  无
+**函数功能:  在BLE线程中处理扫描数据，完成过滤、缓存和结果保存
+**返 回 值:  无
+*********************************************************************/
+static void tag_scan_data_handle(tag_scan_process_msg_t *process_msg_ptr)
+{
+    uint8_t i, j;
+    uint8_t oldest_idx;
+    uint32_t min_seq;
+    bool found;
+    tag_scan_result_t *result_ptr;
+
+    if (process_msg_ptr == NULL)
+    {
+        return;
+    }
+
+    result_ptr = &process_msg_ptr->result;
+
+    // 处理ADV_IND广播包：缓存FF数据，等待后续SCAN_RSP合并
+    if (process_msg_ptr->adv_type == BT_GAP_ADV_TYPE_ADV_IND)
+    {
+        found = false;
+        // 步骤1: 查找已存在的缓存并更新
+        for (i = 0; i < ADV_CACHE_MAX_NUM; i++)
+        {
+            if (s_adv_cache_table[i].valid &&
+                bt_addr_le_cmp(&s_adv_cache_table[i].addr, &result_ptr->addr) == 0)
+            {
+                memcpy(s_adv_cache_table[i].ff_data, result_ptr->ff_data, result_ptr->ff_data_len);
+                s_adv_cache_table[i].ff_data_len = result_ptr->ff_data_len;
+                s_adv_cache_table[i].seq_num = s_cache_seq_counter++;
+                found = true;
+                break;
+            }
+        }
+
+        // 步骤2: 未找到则查找空闲位置新增缓存
+        if (!found)
+        {
+            for (i = 0; i < ADV_CACHE_MAX_NUM; i++)
+            {
+                if (!s_adv_cache_table[i].valid)
+                {
+                    bt_addr_le_copy(&s_adv_cache_table[i].addr, &result_ptr->addr);
+                    memcpy(s_adv_cache_table[i].ff_data, result_ptr->ff_data, result_ptr->ff_data_len);
+                    s_adv_cache_table[i].ff_data_len = result_ptr->ff_data_len;
+                    s_adv_cache_table[i].valid = true;
+                    s_adv_cache_table[i].seq_num = s_cache_seq_counter++;
+                    found = true;
+                    break;
+                }
+            }
+        }
+
+        // 步骤3: 缓存已满则替换最旧条目
+        if (!found)
+        {
+            min_seq = s_adv_cache_table[0].seq_num;
+            oldest_idx = 0;
+            for (j = 1; j < ADV_CACHE_MAX_NUM; j++)
+            {
+                if (s_adv_cache_table[j].seq_num < min_seq)
+                {
+                    min_seq = s_adv_cache_table[j].seq_num;
+                    oldest_idx = j;
+                }
+            }
+
+            bt_addr_le_copy(&s_adv_cache_table[oldest_idx].addr, &result_ptr->addr);
+            memcpy(s_adv_cache_table[oldest_idx].ff_data, result_ptr->ff_data, result_ptr->ff_data_len);
+            s_adv_cache_table[oldest_idx].ff_data_len = result_ptr->ff_data_len;
+            s_adv_cache_table[oldest_idx].valid = true;
+            s_adv_cache_table[oldest_idx].seq_num = s_cache_seq_counter++;
+            LOG_WRN("ADV cache full, overwrite oldest[%d], FF len: %d", oldest_idx, result_ptr->ff_data_len);
+        }
+
+#if 0
+        LOG_HEXDUMP_INF(result_ptr->ff_data, result_ptr->ff_data_len, "Cached FF Data:");
+#endif
+
+        return;
+    }
+
+    // 处理SCAN_RSP响应包：名称过滤、FF数据合并、结果保存
+    // 名称匹配过滤，不符合则丢弃，同时释放对应ADV缓存
+    if (!tag_name_match(result_ptr->name, strlen(result_ptr->name)))
+    {
+        // 清理该MAC对应的ADV缓存，避免无效数据长期占用缓存槽
+        for (i = 0; i < ADV_CACHE_MAX_NUM; i++)
+        {
+            if (s_adv_cache_table[i].valid &&
+                bt_addr_le_cmp(&s_adv_cache_table[i].addr, &result_ptr->addr) == 0)
+            {
+                s_adv_cache_table[i].valid = false;
+                break;
+            }
+        }
+        return;
+    }
+
+    // 从缓存中查找并合并FF数据
+    for (i = 0; i < ADV_CACHE_MAX_NUM; i++)
+    {
+        if (s_adv_cache_table[i].valid &&
+            bt_addr_le_cmp(&s_adv_cache_table[i].addr, &result_ptr->addr) == 0)
+        {
+            memcpy(result_ptr->ff_data, s_adv_cache_table[i].ff_data,
+                   s_adv_cache_table[i].ff_data_len);
+            result_ptr->ff_data_len = s_adv_cache_table[i].ff_data_len;
+            s_adv_cache_table[i].valid = false;
+            LOG_INF("FF data merged from cache[%d], len: %d", i, result_ptr->ff_data_len);
+            break;
+        }
+    }
+
+#if 0
+    if (result_ptr->uuid_len > 0)
+    {
+        LOG_INF("TAG UUID found, len: %d", result_ptr->uuid_len);
+        LOG_HEXDUMP_INF(result_ptr->uuid, result_ptr->uuid_len, "UUID Data:");
+    }
+
+    LOG_INF("TAG battery: %d%%", result_ptr->battery_percent);
+#endif
+
+    // 保存TAG扫描结果
+    tag_scan_result_save(result_ptr);
+}
+
+/********************************************************************
+**函数名称:  tag_prefix_table_init
+**入口参数:  无
+**出口参数:  无
+**函数功能:  初始化前缀表，添加默认前缀
+**返 回 值:  无
+*********************************************************************/
+static void tag_prefix_table_init(void)
+{
+    memset(&s_prefix_table, 0, sizeof(s_prefix_table));
+
+    // 添加默认前缀
+    my_tag_prefix_add("L780");
+    my_tag_prefix_add("PB7");
+    my_tag_prefix_add("LL311");
+    my_tag_prefix_add("PET");
+    // 未来可继续添加...
+}
+
+/********************************************************************
+**函数名称:  scan_interval_timer_cb
+**入口参数:  param         ---        定时器参数
+**出口参数:  无
+**函数功能:  周期扫描定时器回调函数，发送消息到BLE线程
+**返 回 值:  无
+*********************************************************************/
+static void scan_interval_timer_cb(void *param)
+{
+    // 发送消息到BLE线程处理
+    my_send_msg(MOD_BLE, MOD_BLE, MY_MSG_SCAN_INTERVAL);
+}
+
+/********************************************************************
+**函数名称:  scan_length_timer_cb
+**入口参数:  param         ---        定时器参数
+**出口参数:  无
+**函数功能:  单次扫描时长定时器回调函数，发送消息到BLE线程
+**返 回 值:  无
+*********************************************************************/
+static void scan_length_timer_cb(void *param)
+{
+    // 发送消息到BLE线程处理
+    my_send_msg(MOD_BLE, MOD_BLE, MY_MSG_SCAN_LENGTH);
+}
+
+/********************************************************************
+**函数名称:  upload_interval_timer_cb
+**入口参数:  param         ---        定时器参数
+**出口参数:  无
+**函数功能:  上报间隔定时器回调函数，发送消息到BLE线程
+**返 回 值:  无
+*********************************************************************/
+static void upload_interval_timer_cb(void *param)
+{
+    // 发送消息到BLE线程处理
+    my_send_msg(MOD_BLE, MOD_BLE, MY_MSG_SCAN_UPLOAD);
+}
+
+/********************************************************************
+**函数名称:  scan_start_internal
+**入口参数:  无
+**出口参数:  无
+**函数功能:  内部函数：启动主动扫描，在BLE线程中调用
+**返 回 值:  0表示成功，负值表示失败
+*********************************************************************/
+static int scan_start_internal(void)
+{
+    int err;
+
+    if (s_scan_config.mode == SCAN_MODE_OFF)
+    {
+        return -EINVAL;
+    }
+
+    if (s_scan_config.state == SCAN_STATE_SCANNING)
+    {
+        LOG_WRN("ble scan already in progress");
+        return 0;
+    }
+
+    // 启动扫描，使用扫描参数
+    err = bt_le_scan_start(&s_scan_param, NULL);
+    if (err)
+    {
+        LOG_ERR("Failed to start scan (err %d)", err);
+        return err;
+    }
+
+    s_scan_config.state = SCAN_STATE_SCANNING;
+    LOG_INF("ble scan started");
+
+    // 启动单次扫描时长定时器
+    if (s_scan_config.scan_length > 0)
+    {
+        my_start_timer(MY_TIMER_SCAN_LENGTH, s_scan_config.scan_length * 1000,
+                       false, scan_length_timer_cb);
+    }
+
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  scan_stop_internal
+**入口参数:  无
+**出口参数:  无
+**函数功能:  内部函数：停止扫描，在BLE线程中调用
+**返 回 值:  0表示成功，负值表示失败
+*********************************************************************/
+static int scan_stop_internal(void)
+{
+    int err;
+
+    if (s_scan_config.state != SCAN_STATE_SCANNING)
+    {
+        return 0;
+    }
+
+    err = bt_le_scan_stop();
+    if (err)
+    {
+        LOG_ERR("Failed to stop scan (err %d)", err);
+        return err;
+    }
+
+    if ((s_scan_config.mode == SCAN_MODE_PERIOD_CACHE ||
+         s_scan_config.mode == SCAN_MODE_PERIOD_UPLOAD) &&
+        s_result_table.count > 0)
+    {
+        s_scan_config.state = SCAN_STATE_WAITING_UPLOAD;
+    }
+    else
+    {
+        s_scan_config.state = SCAN_STATE_IDLE;
+    }
+    LOG_INF("ble scan stopped");
+
+    // 清空ADV缓存表和缓存序号计数器，避免跨扫描周期残留
+    memset(&s_adv_cache_table, 0, sizeof(s_adv_cache_table));
+    s_cache_seq_counter = 0;
+
+    // 停止单次扫描时长定时器
+    my_stop_timer(MY_TIMER_SCAN_LENGTH);
+
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  scan_set_config_internal
+**入口参数:  mode        ---        工作模式（0-3）
+**           scan_interval ---      扫描间隔（秒）
+**           scan_length ---        单次扫描时长（秒）
+**           upload_interval ---    上报间隔（秒）
+**出口参数:  无
+**函数功能:  内部函数：设置扫描配置，在BLE线程中调用
+**返 回 值:  无
+*********************************************************************/
+static void scan_set_config_internal(uint8_t mode, uint32_t scan_interval,
+                                  uint32_t scan_length, uint32_t upload_interval)
+{
+    // 停止所有定时器
+    my_stop_timer(MY_TIMER_SCAN_INTERVAL);
+    my_stop_timer(MY_TIMER_SCAN_LENGTH);
+    my_stop_timer(MY_TIMER_UPLOAD_INTERVAL);
+
+    // 停止当前扫描
+    scan_stop_internal();
+
+    // 清空数据
+    memset(&s_result_table, 0, sizeof(s_result_table));
+
+    // 更新配置
+    s_scan_config.mode = (scan_mode_t)mode;
+    s_scan_config.scan_interval = scan_interval;
+    s_scan_config.scan_length = scan_length;
+    s_scan_config.upload_interval = upload_interval;
+    s_scan_config.state = SCAN_STATE_IDLE;
+
+    LOG_INF("scan config: Mode=%d, ScanInterval=%us, ScanLength=%us, UploadInterval=%us",
+            mode, scan_interval, scan_length, upload_interval);
+
+    // 根据模式启动相应功能
+    switch (s_scan_config.mode)
+    {
+        case SCAN_MODE_OFF:
+            // Mode 0：关闭所有功能
+            LOG_INF("scan disabled");
+            break;
+
+        case SCAN_MODE_WAKEUP_SCAN:
+            // Mode 1：等待LTE唤醒时扫描
+            LOG_INF("scan Mode 1: Wait for LTE wakeup");
+            break;
+
+        case SCAN_MODE_PERIOD_CACHE:
+            // Mode 2：周期扫描，等待LTE唤醒时上报
+            LOG_INF("scan Mode 2: Periodic scan started");
+
+            my_start_timer(MY_TIMER_SCAN_INTERVAL, s_scan_config.scan_interval * 1000,
+                            true, scan_interval_timer_cb);
+
+            scan_start_internal();
+            break;
+
+        case SCAN_MODE_PERIOD_UPLOAD:
+            // Mode 3：周期扫描 + 定时上报
+            LOG_INF("scan Mode 3: Periodic scan and upload started");
+
+            my_start_timer(MY_TIMER_SCAN_INTERVAL, s_scan_config.scan_interval * 1000,
+                            true, scan_interval_timer_cb);
+
+            my_start_timer(MY_TIMER_UPLOAD_INTERVAL, s_scan_config.upload_interval * 1000,
+                            true, upload_interval_timer_cb);
+
+            scan_start_internal();
+            break;
+
+        default:
+            LOG_ERR("Invalid scan mode: %d", mode);
+            break;
+    }
+}
+
+/********************************************************************
+**函数名称:  tag_scan_upload_data
+**入口参数:  无
+**出口参数:  无
+**函数功能:  上报TAG扫描数据到LTE模块（LTE已唤醒时调用），在BLE线程中调用
+**返 回 值:  无
+*********************************************************************/
+static void tag_scan_upload_data(void)
+{
+    uint8_t i, j;
+    uint8_t upload_count;
+    tag_scan_result_t *item_ptr;
+    char upload_msg[256] = {0};
+    char mac_str[13] = {0};
+    char uuid_str[UUID_MAX_LEN * 2 + 1] = {0};
+    uint8_t rssi_upload;
+    char ff_str[TAG_FF_DATA_MAX_LEN * 2 + 1] = {0};
+
+    if (s_scan_config.state == SCAN_STATE_SCANNING)
+    {
+        LOG_WRN("scan is in progress, skip upload");
+        return;
+    }
+
+    // 检查是否有数据需要上报
+    if (s_result_table.count == 0)
+    {
+        LOG_INF("No scan data to upload");
+        s_scan_config.state = SCAN_STATE_IDLE;
+        return;
+    }
+
+    s_scan_config.state = SCAN_STATE_WAITING_UPLOAD;
+
+    // 记录上报数量
+    upload_count = s_result_table.count;
+
+    // 遍历结果表，逐个上报TAG设备信息
+    for (i = 0; i < upload_count; i++)
+    {
+        item_ptr = &s_result_table.items[i];
+
+        // 将MAC地址转换为字符串格式
+        snprintf(mac_str, sizeof(mac_str), "%02X%02X%02X%02X%02X%02X",
+                 item_ptr->addr.a.val[5], item_ptr->addr.a.val[4],
+                 item_ptr->addr.a.val[3], item_ptr->addr.a.val[2],
+                 item_ptr->addr.a.val[1], item_ptr->addr.a.val[0]);
+
+        // RSSI转换：实际值为负数，上传值为补码形式（按位取反+1）
+        // 例如：实际-52(0xCC)，上传值0xCC
+        rssi_upload = (uint8_t)item_ptr->rssi;
+
+        // 构建UUID字符串（十六进制）
+        if (item_ptr->uuid_len > 0)
+        {
+            memset(uuid_str, 0, sizeof(uuid_str));
+            for (j = 0; j < item_ptr->uuid_len && j < UUID_MAX_LEN; j++)
+            {
+                snprintf(&uuid_str[j * 2], 3, "%02X", item_ptr->uuid[j]);
+            }
+        }
+        else
+        {
+            strncpy(uuid_str, "N/A", sizeof(uuid_str) - 1);
+        }
+
+        // 构建FF数据字符串（十六进制）
+        if (item_ptr->ff_data_len > 0)
+        {
+            memset(ff_str, 0, sizeof(ff_str));
+            for (j = 0; j < item_ptr->ff_data_len && j < TAG_FF_DATA_MAX_LEN; j++)
+            {
+                snprintf(&ff_str[j * 2], 3, "%02X", item_ptr->ff_data[j]);
+            }
+            // 构建上报消息：MAC(6字节),电量,RSSI,名称长度,名称,UUID长度,UUID,FF长度,FF数据
+            snprintf(upload_msg, sizeof(upload_msg), "%s,%d,%02X,%d,%s,%d,%s,%d,%s",
+                     mac_str, item_ptr->battery_percent, rssi_upload,
+                     strlen(item_ptr->name), item_ptr->name,
+                     item_ptr->uuid_len, uuid_str,
+                     item_ptr->ff_data_len, ff_str);
+        }
+        else
+        {
+            // 构建上报消息：MAC(6字节),电量,RSSI,名称长度,名称,UUID长度,UUID,FF长度(0),FF数据(无)
+            snprintf(upload_msg, sizeof(upload_msg), "%s,%d,%02X,%d,%s,%d,%s,0,N/A",
+                     mac_str, item_ptr->battery_percent, rssi_upload,
+                     strlen(item_ptr->name), item_ptr->name,
+                     item_ptr->uuid_len, uuid_str);
+        }
+
+        // 发送TAG数据到LTE模块
+        lte_send_command("TAG", upload_msg);
+
+        LOG_INF("TAG uploaded: MAC:%s, Bat:%d%%, RSSI:0x%02X, NameLen:%d, Name:%s, UUIDLen:%d, UUID:%s, FFLen:%d",
+                mac_str, item_ptr->battery_percent, rssi_upload,
+                strlen(item_ptr->name), item_ptr->name,
+                item_ptr->uuid_len, uuid_str, item_ptr->ff_data_len);
+
+#if 0
+        // 打印聚合后的关键原始数据，方便抓包对比
+        if (item_ptr->ff_data_len > 0)
+        {
+            LOG_HEXDUMP_INF(item_ptr->ff_data, item_ptr->ff_data_len, "Upload FF Data:");
+        }
+#endif
+
+    }
+
+    // 上报完成后清空结果表
+    memset(&s_result_table, 0, sizeof(s_result_table));
+    s_scan_config.state = SCAN_STATE_IDLE;
+
+    LOG_INF("TAG scan data upload complete, count: %d, table cleared", upload_count);
+}
+
+/********************************************************************
+**函数名称:  scan_trigger_upload
+**入口参数:  无
+**出口参数:  无
+**函数功能:  主动唤醒LTE并上报扫描数据（Mode 3定时上报时调用），在BLE线程中调用
+**返 回 值:  无
+*********************************************************************/
+static void scan_trigger_upload(void)
+{
+    // 如果正在扫描，立即停止扫描（保证上报的及时性）
+    if (s_scan_config.state == SCAN_STATE_SCANNING)
+    {
+        LOG_INF("scan in progress, stop scan for upload");
+        scan_stop_internal();  // 停止扫描
+    }
+
+    // 检查是否有数据需要上报
+    if (s_result_table.count == 0)
+    {
+        LOG_INF("No scan data to upload");
+        s_scan_config.state = SCAN_STATE_IDLE;
+        return;
+    }
+
+    // 设置LTE开机原因为扫描数据上报
+    set_lte_boot_reason(LTE_BOOT_REASON_SCAN);
+
+    LOG_INF("Trigger LTE wakeup and upload %d TAGs", s_result_table.count);
+
+    // 上报数据（lte_send_command会自动唤醒LTE）
+    tag_scan_upload_data();
+}
+
+/********************************************************************
+**函数名称:  my_scan_init
+**入口参数:  无
+**出口参数:  无
+**函数功能:  初始化扫描模块，注册扫描回调，初始化前缀表
+**返 回 值:  0表示成功，负值表示失败
+*********************************************************************/
+int my_scan_init(void)
+{
+    int err;
+
+    // 初始化前缀表
+    tag_prefix_table_init();
+
+    // 初始化扫描配置（从全局配置读取）
+    s_scan_config.mode = gConfigParam.bt_updata_config.bt_updata_mode;
+    s_scan_config.scan_interval = gConfigParam.bt_updata_config.bt_updata_scan_interval;
+    s_scan_config.scan_length = gConfigParam.bt_updata_config.bt_updata_scan_length;
+    s_scan_config.upload_interval = gConfigParam.bt_updata_config.bt_updata_updata_interval;
+    s_scan_config.state = SCAN_STATE_IDLE;
+
+    // 清空结果表
+    memset(&s_result_table, 0, sizeof(s_result_table));
+    memset(&s_adv_cache_table, 0, sizeof(s_adv_cache_table));
+    s_cache_seq_counter = 0;
+
+    // 注册扫描回调
+    s_scan_cb.recv = scan_recv_cb;
+    err = bt_le_scan_cb_register(&s_scan_cb);
+    if (err)
+    {
+        LOG_ERR("Failed to register scan callback (err %d)", err);
+        return err;
+    }
+
+    LOG_INF("scan module initialized");
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  my_scan_set_config
+**入口参数:  mode        ---        工作模式（0-3）
+**           scan_interval ---      扫描间隔（秒）
+**           scan_length ---        单次扫描时长（秒）
+**           upload_interval ---    上报间隔（秒）
+**出口参数:  无
+**函数功能:  设置扫描配置参数（直接调用，调用者需在BLE线程中）
+**返 回 值:  无
+**注意事项:  此函数必须在BLE线程中调用，或确保串行执行安全
+*********************************************************************/
+void my_scan_set_config(uint8_t mode, uint32_t scan_interval,
+                           uint32_t scan_length, uint32_t upload_interval)
+{
+    // 直接调用内部配置函数（调用者已在BLE线程中，无需消息队列中转）
+    scan_set_config_internal(mode, scan_interval, scan_length, upload_interval);
+}
+
+/********************************************************************
+**函数名称:  my_scan_upload_on_lte_wakeup
+**入口参数:  无
+**出口参数:  无
+**函数功能:  LTE唤醒时处理扫描（告警/工作模式切换时调用）
+**           Mode 1：启动扫描
+**           Mode 2/3：上报扫描数据
+**返 回 值:  无
+**注意事项:  此函数在LTE已唤醒或正在唤醒时调用，不主动唤醒LTE
+*********************************************************************/
+void my_scan_upload_on_lte_wakeup(void)
+{
+    // 发送消息到BLE线程处理
+    my_send_msg(MOD_BLE, MOD_BLE, MY_MSG_UPLOAD_WAKEUP);
+}
+
+/********************************************************************
+**函数名称:  my_tag_prefix_add
+**入口参数:  prefix    ---        要添加的前缀字符串
+**出口参数:  无
+**函数功能:  添加过滤前缀到前缀表
+**返 回 值:  0表示成功，负值表示失败
+*********************************************************************/
+int my_tag_prefix_add(const char *prefix)
+{
+    uint8_t index;
+    uint8_t len;
+
+    // 检查前缀表是否已满
+    if (s_prefix_table.count >= TAG_PREFIX_MAX_NUM)
+    {
+        LOG_ERR("Prefix table full");
+        return -ENOMEM;
+    }
+
+    // 获取前缀长度并校验
+    len = strlen(prefix);
+    if (len == 0 || len >= TAG_PREFIX_MAX_LEN)
+    {
+        LOG_ERR("Invalid prefix length");
+        return -EINVAL;
+    }
+
+    // 添加前缀到表中
+    index = s_prefix_table.count;
+    memcpy(s_prefix_table.items[index].prefix, prefix, len);
+    s_prefix_table.items[index].len = len;
+    s_prefix_table.items[index].valid = true;
+    s_prefix_table.count++;
+
+    LOG_INF("Prefix added: %s", prefix);
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  my_scan_msg_handler
+**入口参数:  msg           ---        消息结构体指针
+**出口参数:  无
+**函数功能:  扫描消息处理函数，在BLE线程中调用
+**返 回 值:  无
+**注意事项:  此函数必须在BLE线程的消息处理循环中调用
+*********************************************************************/
+void my_scan_msg_handler(MSG_S *msg)
+{
+    tag_scan_process_msg_t process_msg;
+    uint16_t process_count;
+
+    if (msg == NULL)
+    {
+        return;
+    }
+
+    switch (msg->msgID)
+    {
+        case MY_MSG_TAG_SCAN_PROCESS:
+            // 从内部消息队列取出扫描数据，完成过滤、缓存和结果保存
+            process_count = 0;
+            while (k_msgq_get(&s_tag_scan_process_msgq, &process_msg, K_NO_WAIT) == 0)
+            {
+                tag_scan_data_handle(&process_msg);
+                process_count++;
+            }
+            if (process_count > 1)
+            {
+                LOG_INF("TAG scan process drain count: %d", process_count);
+            }
+            break;
+
+        case MY_MSG_SCAN_INTERVAL:
+            // 周期扫描定时器消息
+            if ((s_scan_config.mode == SCAN_MODE_PERIOD_CACHE ||
+                 s_scan_config.mode == SCAN_MODE_PERIOD_UPLOAD) &&
+                s_scan_config.state != SCAN_STATE_SCANNING)
+            {
+                scan_start_internal();
+            }
+            break;
+
+        case MY_MSG_SCAN_LENGTH:
+            // 单次扫描时长定时器消息
+            scan_stop_internal();
+            if (s_scan_config.mode == SCAN_MODE_WAKEUP_SCAN)
+            {
+                // Mode 1：扫描完成后上报数据
+                if (s_result_table.count > 0)
+                {
+                    LOG_INF("Mode 1: Trigger data upload after scan");
+                    tag_scan_upload_data();
+                }
+                s_scan_config.state = SCAN_STATE_IDLE;
+            }
+            break;
+
+        case MY_MSG_SCAN_UPLOAD:
+            // 上报间隔定时器消息（Mode 3 定时主动唤醒LTE并上报）
+            if (s_scan_config.mode == SCAN_MODE_PERIOD_UPLOAD &&
+                s_result_table.count > 0)
+            {
+                // Mode 3：主动唤醒LTE并上报数据
+                scan_trigger_upload();
+                if (s_scan_config.state != SCAN_STATE_SCANNING)
+                {
+                    s_scan_config.state = SCAN_STATE_IDLE;
+                }
+            }
+            break;
+
+        case MY_MSG_UPLOAD_WAKEUP:
+            // LTE唤醒时处理扫描数据（告警/工作模式切换时调用）
+            switch (s_scan_config.mode)
+            {
+                case SCAN_MODE_WAKEUP_SCAN:
+                    // Mode 1：启动扫描
+                    LOG_INF("LTE wakeup (Mode 1): start scanning");
+                    if (s_scan_config.state != SCAN_STATE_SCANNING)
+                    {
+                        scan_start_internal();
+                    }
+                    break;
+
+                case SCAN_MODE_PERIOD_CACHE:
+                case SCAN_MODE_PERIOD_UPLOAD:
+                    // Mode 2/3：立即停止扫描并上报数据
+                    if (s_result_table.count > 0)
+                    {
+                        if (s_scan_config.state == SCAN_STATE_SCANNING)
+                        {
+                            LOG_INF("Mode %d LTE wakeup: stop scan and upload %d TAGs",
+                                    s_scan_config.mode, s_result_table.count);
+                            scan_stop_internal();
+                        }
+                        tag_scan_upload_data();
+                    }
+                    break;
+
+                default:
+                    break;
+            }
+            break;
+
+        default:
+            break;
+    }
+}

@@ -40,6 +40,7 @@ target_sources(app PRIVATE
   src/my_ble_log.c
   src/my_dfu_jimi.c
   src/my_pm.c
+  src/my_ble_scan.c
 )
 
 # NORDIC SDK APP END

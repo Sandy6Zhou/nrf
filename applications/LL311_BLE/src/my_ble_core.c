@@ -1202,6 +1202,9 @@ static void my_ble_task(void *p1, void *p2, void *p3)
     /* 初始化蓝牙日志模块 */
     ble_log_init();
 
+    /* 初始化扫描模块 */
+    my_scan_init();
+
     for (;;)
     {
         my_recv_msg(&my_ble_msgq, (void *)&msg, sizeof(MSG_S), K_FOREVER);
@@ -1232,6 +1235,15 @@ static void my_ble_task(void *p1, void *p2, void *p3)
                     MY_FREE_BUFFER(msg.pData);
                     msg.pData = NULL;
                 }
+                break;
+
+            /* 扫描消息处理 */
+            case MY_MSG_TAG_SCAN_PROCESS:
+            case MY_MSG_SCAN_INTERVAL:
+            case MY_MSG_SCAN_LENGTH:
+            case MY_MSG_SCAN_UPLOAD:
+            case MY_MSG_UPLOAD_WAKEUP:
+                my_scan_msg_handler(&msg);
                 break;
 
             default:

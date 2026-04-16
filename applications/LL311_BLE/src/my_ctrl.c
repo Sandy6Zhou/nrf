@@ -248,6 +248,9 @@ void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_i
 
         // 发送告警消息到LTE模块
         lte_send_command("ALARM", alarm_msg);
+
+        // 告警唤醒4G时,根据配置的扫描模式决定是否上报扫描数据
+        my_scan_upload_on_lte_wakeup();
     }
 }
 

@@ -15,6 +15,16 @@
 #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260416"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.16
+** 作    者:       周森达 (zhousenda@jimiiot.com)
+** 修改内容:        1.新增my_ble_scan 模块，支持主动扫描、ADV/SCAN_RSP分离解析、名称前缀过滤、MAC地址聚合及按RSSI替换
+**                 2.支持4种工作模式：关闭 / LTE 唤醒扫描 / 周期缓存 / 周期主动上报
+**                 3.集成LTE唤醒上报链路：工作模式切换、告警触发时顺带上报
+**                 4.新增BTUPDATA AT 指令与 app tagscan Shell 命令用于参数配置
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260416"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.16
 ** 作    者:        吴楚庆 (wuchuqing@jimiiot.com)
 ** 修改内容:        1.新增网络开锁/上锁指令，通过数据透传LTE+CMD指令
 **                  2.LTE+CMD处理程序移动到与蓝牙指令处理程序同个线程
