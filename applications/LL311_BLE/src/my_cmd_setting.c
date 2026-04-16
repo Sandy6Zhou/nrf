@@ -164,6 +164,8 @@ static int bunlock_cmd_handler(at_cmd_struc* msg);
 static int block_cmd_handler(at_cmd_struc* msg);
 static int version_cmd_handler(at_cmd_struc* msg);
 static int modeset_cmd_handler(at_cmd_struc* msg);
+static int jatag_cmd_handler(at_cmd_struc* msg);
+static int jgtag_cmd_handler(at_cmd_struc* msg);
 
 static const at_cmd_attr_t at_cmd_attr_table[] =
 {
@@ -182,6 +184,8 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"BT_CRFPWR",      bt_crfpwr_cmd_handler},
     {"BT_UPDATA",      bt_updata_cmd_handler},
     {"TAG",            tag_cmd_handler},
+    {"JATAG",          jatag_cmd_handler},
+    {"JGTAG",          jgtag_cmd_handler},
     {"LOCKCD",         lockcd_cmd_handler},
     {"LED",            led_cmd_handler},
     {"BUZZER",         buzzer_cmd_handler},
@@ -813,7 +817,7 @@ uint16_t run_nfc_cmd(char *card_id, uint8_t *index)
 
 /********************************************************************
 **函数名称:  run_lte_cmd
-**入口参数:  at_cmd_msg      ---   指令结构体指针，包含接收的指令和响应存储区域(输入/输出)  
+**入口参数:  at_cmd_msg      ---   指令结构体指针，包含接收的指令和响应存储区域(输入/输出)
 **出口参数:  at_cmd_msg中更新响应消息内容和响应长度
 **函数功能:  执行LTE+CMD指令中的command
 **返回值:    未匹配指令或命令解析失败返回0
@@ -821,7 +825,7 @@ uint16_t run_nfc_cmd(char *card_id, uint8_t *index)
 *********************************************************************/
 uint16_t run_lte_cmd(at_cmd_struc *at_cmd_msg)
 {
-    
+
     uint16_t cmd_type = 0;
 
     MY_LOG_INF("at_cmd_msg->rcv_msg:%s", at_cmd_msg->rcv_msg);
@@ -1858,7 +1862,140 @@ static int tag_cmd_handler(at_cmd_struc* msg)
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
     LOG_INF("TAG: SW=%d, Interval=%u", g_device_cmd_config.tag_sw, g_device_cmd_config.tag_interval);
 
-    //TODO 具体逻辑处理
+    //更新非连接广播参数，里面会按配置打开或关闭广播，根据tag_sw的值
+    my_ble_updata_adv_param(g_device_cmd_config.tag_interval);
+
+    return BLE_DATA_TYPE_AT_CMD;
+
+param_invalid:
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    return BLE_DATA_TYPE_AT_CMD;
+}
+
+/********************************************************************
+**函数名称:  jatag_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针
+**出口参数:  msg->resp_msg  ---  响应消息
+**           msg->resp_length --- 响应长度
+**函数功能:  处理JATAG指令：设置JATag定位功能开关
+**指令格式:  JATAG,[SW]#
+**兼容指令:  JATAG,ON#（按默认或已设置参数开启功能）
+**参数说明:  SW - 功能开关(默认：OFF)
+**           ON：开启
+**           OFF：关闭
+**返 回 值:  BLE数据类型
+*********************************************************************/
+static int jatag_cmd_handler(at_cmd_struc* msg)
+{
+    uint16_t remaining;
+    int sw_value;
+
+    remaining = sizeof(msg->resp_msg);
+
+    /* 检查参数数量：支持1个参数(JATAG,ON)*/
+    if (msg->parm_count != 1)
+    {
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+
+    /* 解析SW参数 */
+    if (strcmp(msg->parm[1], "ON") == 0)
+    {
+        sw_value = 1;
+    }
+    else if (strcmp(msg->parm[1], "OFF") == 0)
+    {
+        sw_value = 0;
+    }
+    else
+    {
+        LOG_INF("%s=>invalid SW param: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
+
+    if (gConfigParam.adv_valid_value.GoogleValid == 0)
+    {
+        LOG_INF("JATAG: GoogleValid is 0");
+        goto param_invalid;
+    }
+    /* 所有参数验证通过,统一赋值 */
+    gConfigParam.adv_valid_value.AppleValid = (uint8_t)sw_value;
+    set_adv_valid_status(APPLE_ADV_TYPE, gConfigParam.adv_valid_value.AppleValid);
+    my_no_con_start_adv(g_device_cmd_config.tag_sw);
+
+    LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
+
+    /* 生成成功响应 */
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+    LOG_INF("JATAG: SW=%d, Interval=%u", gConfigParam.adv_valid_value.AppleValid, g_device_cmd_config.tag_interval);
+
+    return BLE_DATA_TYPE_AT_CMD;
+
+param_invalid:
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    return BLE_DATA_TYPE_AT_CMD;
+}
+
+/********************************************************************
+**函数名称:  jgtag_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针
+**出口参数:  msg->resp_msg  ---  响应消息
+**           msg->resp_length --- 响应长度
+**函数功能:  处理JGTAG指令：设置JGTAG定位功能开关
+**指令格式:  JGTAG,[SW]#
+**兼容指令:  JGTAG,ON#（按默认或已设置参数开启功能）
+**参数说明:  SW - 功能开关(默认：OFF)
+**           ON：开启
+**           OFF：关闭
+**返 回 值:  BLE数据类型
+*********************************************************************/
+static int jgtag_cmd_handler(at_cmd_struc* msg)
+{
+    uint16_t remaining;
+    int sw_value;
+
+    remaining = sizeof(msg->resp_msg);
+
+    /* 检查参数数量：支持1个参数(JGTAG,ON)*/
+    if (msg->parm_count != 1)
+    {
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+
+    /* 解析SW参数 */
+    if (strcmp(msg->parm[1], "ON") == 0)
+    {
+        sw_value = 1;
+    }
+    else if (strcmp(msg->parm[1], "OFF") == 0)
+    {
+        sw_value = 0;
+    }
+    else
+    {
+        LOG_INF("%s=>invalid SW param: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
+
+    if (gConfigParam.adv_valid_value.AppleValid == 0)
+    {
+        LOG_INF("JGTAG: AppleValid is 0");
+        goto param_invalid;
+    }
+    /* 所有参数验证通过,统一赋值 */
+    gConfigParam.adv_valid_value.GoogleValid = (uint8_t)sw_value;
+    set_adv_valid_status(GOOGLE_ADV_TYPE, gConfigParam.adv_valid_value.GoogleValid);
+    my_no_con_start_adv(g_device_cmd_config.tag_sw);
+
+    LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
+
+    /* 生成成功响应 */
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+    LOG_INF("JGTAG: SW=%d, Interval=%u", gConfigParam.adv_valid_value.GoogleValid, g_device_cmd_config.tag_interval);
 
     return BLE_DATA_TYPE_AT_CMD;
 
@@ -2047,7 +2184,7 @@ param_invalid:
 ** 指令格式说明:
 ** 1. 添加/设置: NFCTRIG,ADD,[NFC NO.],"[Command]"#
 **    - 功能: 绑定卡号与指令。
-** 2. 查询:     NFCTRIG,CHECK# 
+** 2. 查询:     NFCTRIG,CHECK#
 **    - 功能: 查询当前所有已绑定的规则。
 **    - 回复格式: [NFC NO.]_[Command];[NFC NO.]_[Command]...
 ** 3. 删除:     NFCTRIG,DEL,ALL#
@@ -2256,7 +2393,7 @@ param_invalid:
     {
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
     }
-    
+
     return BLE_DATA_TYPE_AT_CMD;
 }
 
@@ -3143,7 +3280,7 @@ static int modeset_cmd_handler(at_cmd_struc* msg)
         // 解析长续航模式参数
         param_work_mode_config.long_battery.reporting_interval_min = atoi(msg->parm[2]);
         // 设置长续航模式参数
-        if (set_long_battery_params(&g_device_cmd_config.workmode_config, 
+        if (set_long_battery_params(&g_device_cmd_config.workmode_config,
             param_work_mode_config.long_battery.reporting_interval_min, msg->parm[3]) < 0)
         {
             LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);

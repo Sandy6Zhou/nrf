@@ -12,7 +12,16 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260413"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260414"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.14
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:        1.优化TAG广播，将四路广播修改为三路广播，广播方式改为可连接广播常开，不可连接广播按设置的指令打开，不可连接广播至少打开一个。
+**                  2.增加两个小开关，JATAG和JGTAG，用来单独控制两个不可连接广播的打开和关闭，初始化时默认JATAG打开，另一个关闭。
+**                  3.TAG,JATAG,JGTAG指令的实现。
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260413"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.13
 ** 作    者:        曹阳 (caoyang@jimiiot.com)

@@ -55,9 +55,10 @@ static struct bt_conn *current_conn;
 static struct k_work adv_work;
 static struct bt_le_ext_adv *ext_adv[CONFIG_BT_EXT_ADV_MAX_ADV_SET];
 
-ADV_HDL_S con_adv_obj_hdl[2] = {                  // 可连接广播句柄（GOOGLE/APPLE）
-    {.handle = NULL, .valid = true},
-    {.handle = NULL, .valid = true}
+ADV_HDL_S con_adv_obj_hdl =
+{                  // 可连接广播句柄（APPLE）
+    .handle = NULL,
+    .valid = true,
 };
 ADV_HDL_S no_con_adv_obj_hdl[2] = {               // 不可连接广播句柄（GOOGLE/APPLE）
     {.handle = NULL, .valid = true},
@@ -369,20 +370,6 @@ int ble_set_tx_power_by_param(void)
 }
 
 /********************************************************************
-**函数名称:  set_adv_valid_status
-**入口参数:  index    ---        广播类型索引（0:APPLE, 1:GOOGLE）
-**           status   ---        广播状态（0:无效, 1:有效）
-**出口参数:  无
-**函数功能:  设置指定类型广播的有效状态
-**返 回 值:  无
-*********************************************************************/
-void set_adv_valid_status(MY_ADV_TYPE index, int status)
-{
-    con_adv_obj_hdl[index].valid = status;
-    no_con_adv_obj_hdl[index].valid = status;
-}
-
-/********************************************************************
 **函数名称:  get_adv_data
 **入口参数:  adv_type ---        广播类型（GOOGLE_ADV_TYPE/APPLE_ADV_TYPE）
 **           adv_data  ---        输出：广播数据指针
@@ -526,35 +513,27 @@ static void start_adv(ADV_HDL_S *adv_obj_hdl, bool enable)
     bool is_running;
     MY_ADV_TYPE adv_type;
     const char *adv_type_str;
-    const char *connect_type_str;
 
     /* 判断是Google还是Apple */
-    if (adv_obj_hdl == &con_adv_obj_hdl[GOOGLE_ADV_TYPE] ||
-        adv_obj_hdl == &no_con_adv_obj_hdl[GOOGLE_ADV_TYPE]) {
+    if (adv_obj_hdl == &no_con_adv_obj_hdl[GOOGLE_ADV_TYPE])
+    {
         adv_type_str = "GOOGLE";
         adv_type = GOOGLE_ADV_TYPE;
-    } else if (adv_obj_hdl == &con_adv_obj_hdl[APPLE_ADV_TYPE] ||
-               adv_obj_hdl == &no_con_adv_obj_hdl[APPLE_ADV_TYPE]) {
+    }
+    else if (adv_obj_hdl == &no_con_adv_obj_hdl[APPLE_ADV_TYPE])
+    {
         adv_type_str = "APPLE";
         adv_type = APPLE_ADV_TYPE;
-    } else {
+    }
+    else
+    {
         adv_type_str = "UNKNOWN";
     }
 
-    /* 判断是可连接还是不可连接 */
-    if (adv_obj_hdl == &con_adv_obj_hdl[GOOGLE_ADV_TYPE] ||
-        adv_obj_hdl == &con_adv_obj_hdl[APPLE_ADV_TYPE]) {
-        connect_type_str = "CONNECTABLE";
-    } else if (adv_obj_hdl == &no_con_adv_obj_hdl[GOOGLE_ADV_TYPE] ||
-               adv_obj_hdl == &no_con_adv_obj_hdl[APPLE_ADV_TYPE]) {
-        connect_type_str = "NON-CONNECTABLE";
-    } else {
-        connect_type_str = "UNKNOWN";
-    }
+    LOG_INF("%s called: [%s] enable=%d", __func__, adv_type_str, enable);
 
-    LOG_INF("%s called: [%s] [%s] enable=%d", __func__, adv_type_str, connect_type_str, enable);
-
-    if (!adv_obj_hdl->valid || adv_obj_hdl->handle == NULL) {
+    if (!adv_obj_hdl->valid || adv_obj_hdl->handle == NULL)
+    {
         LOG_WRN("Adv handle invalid: %p", adv_obj_hdl->handle);
         return;
     }
@@ -598,6 +577,24 @@ static void start_adv(ADV_HDL_S *adv_obj_hdl, bool enable)
 }
 
 /********************************************************************
+**函数名称:  set_adv_valid_status
+**入口参数:  index    ---        广播类型索引（0:APPLE, 1:GOOGLE）
+**           status   ---        广播状态（0:无效, 1:有效）
+**出口参数:  无
+**函数功能:  设置指定类型广播的有效状态
+**返 回 值:  无
+*********************************************************************/
+void set_adv_valid_status(MY_ADV_TYPE index, int status)
+{
+    // 无效状态时，先停止广播，再设置无效状态
+    if (status == 0)
+    {
+        start_adv(&no_con_adv_obj_hdl[index], false);
+    }
+    no_con_adv_obj_hdl[index].valid = status;
+}
+
+/********************************************************************
 **函数名称:  adv_work_handler
 **入口参数:  work      ---        工作结构体指针
 **出口参数:  无
@@ -609,8 +606,7 @@ static void adv_work_handler(struct k_work *work)
     ARG_UNUSED(work);
 
     LOG_INF("Restart connectable advertising");
-    start_adv(&con_adv_obj_hdl[GOOGLE_ADV_TYPE], true);
-    start_adv(&con_adv_obj_hdl[APPLE_ADV_TYPE], true);
+    start_adv(&con_adv_obj_hdl, true);
 }
 
 /********************************************************************
@@ -651,13 +647,8 @@ static void connected(struct bt_conn *conn, uint8_t err)
     connect_id = bt_conn_index(conn);
     LOG_INF("connect_id %d", connect_id);
 
-    /* 蓝牙连接上后，默认被连接的广播会自动停止，同时需要手动停止另一路广播并开启不可连接的广播，
-     * 这里直接手动停止两路可连接的广播，接口里面会优先判断广播状态，再决定要不要开启/关闭
-     */
-    start_adv(&con_adv_obj_hdl[GOOGLE_ADV_TYPE], false);
-    start_adv(&con_adv_obj_hdl[APPLE_ADV_TYPE], false);
-    start_adv(&no_con_adv_obj_hdl[GOOGLE_ADV_TYPE], true);
-    start_adv(&no_con_adv_obj_hdl[APPLE_ADV_TYPE], true);
+    /* 蓝牙连接上后，默认被连接的广播会自动停止*/
+    start_adv(&con_adv_obj_hdl, false);
 
     /* 清除蓝牙日志断开标志，允许日志发送
      * 注意：必须在连接成功后调用，确保日志可以正常发送 */
@@ -713,9 +704,6 @@ static void recycled_cb(void)
     {
         LOG_INF("Connection object recycled. Restart connectable adv!");
 
-        // 优先关闭两路不可连接广播，再开启两路可连接广播
-        start_adv(&no_con_adv_obj_hdl[GOOGLE_ADV_TYPE], false);
-        start_adv(&no_con_adv_obj_hdl[APPLE_ADV_TYPE], false);
         advertising_start();
     }
 }
@@ -840,7 +828,7 @@ bool ble_is_data_channel_ready(void)
 *********************************************************************/
 static int connectable_adv_create(void)
 {
-    int err, i;
+    int err;
     struct bt_le_adv_param param = {
         .options = BT_LE_ADV_OPT_CONN | BT_LE_ADV_OPT_USE_IDENTITY,
         .interval_min = ADV_INTERVAL,
@@ -848,15 +836,13 @@ static int connectable_adv_create(void)
         .peer = NULL,
     };
 
-    for (i = 0; i < CON_ADV_OBJ_MAX_NUM; i++)
+    err = bt_le_ext_adv_create(&param, &adv_cb, &ext_adv);
+    if (err)
     {
-        err = bt_le_ext_adv_create(&param, &adv_cb, &ext_adv[i]);
-        if (err) {
-            LOG_ERR("Create adv set fail: %d", err);
-            return err;
-        }
-        con_adv_obj_hdl[i].handle = ext_adv[i];
+        LOG_ERR("Create adv set fail: %d", err);
+        return err;
     }
+    con_adv_obj_hdl.handle = ext_adv[0];
 
     return err;
 }
@@ -880,15 +866,50 @@ static int non_connectable_adv_create(void)
 
     for (i = 0; i < CON_ADV_OBJ_MAX_NUM; i++)
     {
-        err = bt_le_ext_adv_create(&param, &adv_cb, &ext_adv[2+i]);
+        err = bt_le_ext_adv_create(&param, &adv_cb, &ext_adv[1+i]);
         if (err) {
             LOG_ERR("Create adv set fail: %d", err);
             return err;
         }
-        no_con_adv_obj_hdl[i].handle = ext_adv[2+i];
+        no_con_adv_obj_hdl[i].handle = ext_adv[1+i];
     }
 
     return err;
+}
+
+/********************************************************************
+**函数名称:  my_ble_updata_adv_param
+**入口参数:  ms_data --- 广播间隔时间，单位为毫秒(ms)
+**出口参数:  无
+**函数功能:  更新BLE非连接广播参数
+**返 回 值:  无
+*********************************************************************/
+void my_ble_updata_adv_param(uint16_t ms_data)
+{
+    /**
+     * 配置新的广告参数
+     * - options: 设置为可扫描广告(BT_LE_ADV_OPT_SCANNABLE)和使用身份地址(BT_LE_ADV_OPT_USE_IDENTITY)
+     * - interval_min/max: 将毫秒转换为BLE广告间隔单位(0.625ms/单位)
+     * - peer: 设置为NULL，表示非定向广告
+     */
+    struct bt_le_adv_param new_param =
+    {
+        .options = BT_LE_ADV_OPT_SCANNABLE | BT_LE_ADV_OPT_USE_IDENTITY,
+        .interval_min = ms_data/0.625,  // 转换为BLE广告间隔单位(0.625ms)
+        .interval_max = ms_data/0.625,  // 转换为BLE广告间隔单位(0.625ms)
+        .peer = NULL,                   // 非定向广告
+    };
+
+    // 先停止非连接广告,传入参数0表示停止所有非连接广告
+    my_no_con_start_adv(0);
+
+    // 更新Apple类型非连接广告的参数,使用新配置的广告参数
+    bt_le_ext_adv_update_param(no_con_adv_obj_hdl[APPLE_ADV_TYPE].handle, &new_param);
+    // 更新Google类型非连接广告的参数,使用相同的新配置广告参数
+    bt_le_ext_adv_update_param(no_con_adv_obj_hdl[GOOGLE_ADV_TYPE].handle, &new_param);
+
+    // 重新启动非连接广告,使用设备命令配置中的tag_sw值
+    my_no_con_start_adv(g_device_cmd_config.tag_sw);
 }
 
 /********************************************************************
@@ -1028,6 +1049,31 @@ static enum mgmt_cb_return ota_pending_cb(uint32_t event, enum mgmt_cb_return pr
 }
 
 /********************************************************************
+**函数名称:  my_no_con_start_adv
+**入口参数:  tag_sw ---   广播控制开关：1-开启广播，0-关闭广播
+**出口参数:  无
+**函数功能:  同时控制苹果和谷歌两种类型的广播打开和关闭
+**返 回 值:  无
+*********************************************************************/
+void my_no_con_start_adv(uint8_t tag_sw)
+{
+    if (tag_sw == 1)
+    {
+        // 开启苹果类型的广播
+        start_adv(&no_con_adv_obj_hdl[APPLE_ADV_TYPE], true);
+        // 开启谷歌类型的广播
+        start_adv(&no_con_adv_obj_hdl[GOOGLE_ADV_TYPE], true);
+    }
+    else
+    {
+        // 关闭苹果类型的广播
+        start_adv(&no_con_adv_obj_hdl[APPLE_ADV_TYPE], false);
+        // 关闭谷歌类型的广播
+        start_adv(&no_con_adv_obj_hdl[GOOGLE_ADV_TYPE], false);
+    }
+}
+
+/********************************************************************
 **函数名称:  my_ble_core_start
 **入口参数:  无
 **出口参数:  无
@@ -1127,11 +1173,10 @@ int my_ble_core_start(void)
     err = non_connectable_adv_create();
     if (err) return err;
 
-    // 初始状态：关闭不可连接广播，开启可连接广播
-    start_adv(&no_con_adv_obj_hdl[APPLE_ADV_TYPE], false);
-    start_adv(&no_con_adv_obj_hdl[GOOGLE_ADV_TYPE], false);
-    start_adv(&con_adv_obj_hdl[APPLE_ADV_TYPE], true);
-    start_adv(&con_adv_obj_hdl[GOOGLE_ADV_TYPE], true);
+    // 初始状态：根据tag_sw判断是否开启不可连接广播
+    my_no_con_start_adv(g_device_cmd_config.tag_sw);
+
+    start_adv(&con_adv_obj_hdl, true);
 
     LOG_INF("BLE core start success");
     return 0;
