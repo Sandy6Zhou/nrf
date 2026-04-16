@@ -86,6 +86,19 @@ K_MSGQ_DEFINE(my_gsensor_msgq, sizeof(MSG_S), 10, 4);
 K_THREAD_STACK_DEFINE(my_gsensor_task_stack, MY_GSENSOR_TASK_STACK_SIZE);
 static struct k_thread my_gsensor_task_data;
 
+/* 电源管理回调函数前置声明 */
+static int gsensor_pm_init(void);
+static int gsensor_pm_suspend(void);
+static int gsensor_pm_resume(void);
+
+/* GSENSOR 电源管理操作回调结构体 */
+static const struct PM_DEVICE_OPS gsensor_pm_ops =
+{
+    .init = gsensor_pm_init,
+    .suspend = gsensor_pm_suspend,
+    .resume = gsensor_pm_resume,
+};
+
 /********************************************************************
 **函数名称:  my_gsensor_get_state
 **入口参数:  无
@@ -282,6 +295,114 @@ LOOP:
     //TODO 后续运动状态改变,需要将运动状态传给4G
 }
 
+/********************************************************************
+**函数名称:  gsensor_pm_init
+**入口参数:  无
+**出口参数:  无
+**函数功能:  G-Sensor 电源管理初始化回调（首次启动时调用），配置电源控制 GPIO
+**返 回 值:  0 表示成功，负值表示失败
+*********************************************************************/
+static int gsensor_pm_init(void)
+{
+    int err;  // 错误码变量
+
+    /* 配置 G-Sensor power 引脚，默认拉低*/
+    err = my_gsensor_pwr_on(false);
+    if (err)
+    {
+        MY_LOG_ERR("Failed to configure power GPIO: %d", err);
+        return err;  // 返回配置错误
+    }
+
+    MY_LOG_INF("G-Sensor pwr initialized in low power mode");
+    return 0;  // 初始化成功
+}
+
+/********************************************************************
+**函数名称:  gsensor_pm_suspend
+**入口参数:  无
+**出口参数:  无
+**函数功能:  挂起 G-Sensor，关闭其电源以进入低功耗状态
+**返 回 值:  0 表示成功，负值表示错误码
+*********************************************************************/
+static int gsensor_pm_suspend(void)
+{
+    int ret = 0;
+
+    // 关闭 G-Sensor 电源，使其进入低功耗状态
+    ret = my_gsensor_pwr_on(false);
+    if (ret != 0)
+    {
+        MY_LOG_ERR("Failed to suspend G-Sensor power: %d", ret);
+        return ret;  // 返回关闭失败错误
+    }
+
+    // 设置 sensor_ready 为 false，表示传感器不再就绪
+    sensor_ready = false;
+
+    // 记录挂起状态和功耗信息
+    MY_LOG_INF("G-Sensor pwr suspended (power low)");
+    return 0;  // 挂起成功
+}
+
+/********************************************************************
+**函数名称:  gsensor_pm_resume
+**入口参数:  无
+**出口参数:  无
+**函数功能:  恢复 G-Sensor 从低功耗状态到工作状态
+**返 回 值:  0 表示成功，负值表示失败
+**
+**详细说明:  该函数在 G-Sensor 需要恢复工作时被调用，主要完成以下工作：
+**           1. 打开 G-Sensor 电源
+**           2. 尝试初始化 LSM6DSV16X 传感器，最多尝试 3 次
+**           3. 如果初始化失败，关闭电源并返回错误
+**           4. 如果初始化成功，获取运动状态
+**           5. 记录恢复状态和重试次数
+**
+**重试机制:  为提高可靠性，函数实现了最多 3 次的初始化重试，每次重试前等待 10ms
+**           确保 I2C 总线稳定，避免因总线不稳定导致的初始化失败
+*********************************************************************/
+static int gsensor_pm_resume(void)
+{
+    int result;         // 初始化结果
+    int retry_count = 0; // 重试计数
+
+    // 打开 G-Sensor 电源
+    my_gsensor_pwr_on(true);
+
+    // 尝试初始化 LSM6DSV16X 传感器，最多尝试 3 次
+    do
+    {
+        result = my_lsm6dsv16x_init();
+        if (result == 0)
+        {
+            break; // 初始化成功，退出重试循环
+        }
+
+        retry_count++;
+        MY_LOG_WRN("G-Sensor init attempt %d failed: %d", retry_count, result);
+        k_msleep(10); /* 等待 I2C 总线稳定 */
+    } while (retry_count < 3);
+
+    // 初始化失败处理
+    if (result != 0)
+    {
+        MY_LOG_ERR("Failed to reinitialize G-Sensor API after %d attempts: %d", retry_count, result);
+        /* 恢复失败，重新进入低功耗 */
+        my_gsensor_pwr_on(false);
+        return -EIO; // 返回 I/O 错误
+    }
+
+    // 初始化成功，获取运动状态
+    get_motion_status();
+
+    // 等待 50ms 确保传感器稳定
+     k_sleep(K_MSEC(50));
+
+    // 记录恢复状态和重试次数
+    MY_LOG_INF("G-Sensor resumed (initialized, retries: %d)", retry_count);
+    return 0; // 恢复成功
+}
 
 /********************************************************************
 **函数名称:  my_gsensor_task
@@ -297,6 +418,19 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
     ARG_UNUSED(p3);
 
     MSG_S msg;
+    int ret;
+
+    /* 注册 G-Sensor 到电源管理模块 */
+    ret = my_pm_device_register(MY_PM_DEV_GSENSOR, &gsensor_pm_ops);
+    if (ret < 0)
+    {
+        MY_LOG_ERR("G-Sensor PM registration failed");
+        /* 注册失败，线程继续运行但无法使用 PM 功能 */
+    }
+    else
+    {
+        MY_LOG_INF("G-Sensor PM registered successfully");
+    }
 
     MY_LOG_INF("G-Sensor thread started");
 
@@ -341,21 +475,13 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
             }
 
             case MY_MSG_GSENSOR_PWROFF:
-                my_gsensor_pwr_on(false);
+                /* 通过电源管理模块挂起 G-Sensor 设备（会自动挂起 I2C21 总线），会调用 gsensor_pm_suspend */
+                my_pm_device_suspend(MY_PM_DEV_GSENSOR);
                 break;
 
             case MY_MSG_GSENSOR_PWRON:
-                my_gsensor_pwr_on(true);
-                my_send_msg(MOD_GSENSOR, MOD_GSENSOR, MY_MSG_GSENSOR_INIT);
-                break;
-
-            case MY_MSG_GSENSOR_INIT:
-                my_lsm6dsv16x_init();
-                my_send_msg(MOD_GSENSOR, MOD_GSENSOR, MY_MSG_GSENSOR_GET_MOTION_STATUS);
-                break;
-
-            case MY_MSG_GSENSOR_GET_MOTION_STATUS:
-                get_motion_status();
+                /* 通过电源管理模块恢复 G-Sensor 设备（会自动恢复 I2C21 总线），会调用 gsensor_pm_resume */
+                my_pm_device_resume(MY_PM_DEV_GSENSOR);
                 break;
 
             default:
@@ -531,6 +657,7 @@ int my_gsensor_init(k_tid_t *tid)
     err = my_lsm6dsv16x_init();
     if (err != 0)
     {
+        my_gsensor_pwr_on(false);
         return err;
     }
 

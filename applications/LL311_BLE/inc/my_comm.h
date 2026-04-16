@@ -189,8 +189,6 @@ typedef enum
     /* G-Sensor处理程序消息 */
     MY_MSG_GSENSOR_PWRON,
     MY_MSG_GSENSOR_PWROFF,
-    MY_MSG_GSENSOR_GET_MOTION_STATUS,
-    MY_MSG_GSENSOR_INIT,
     MY_MSG_GSENSOR_READ, /* G-Sensor 读取六轴数据 */
 
     /* NFC处理程序消息 */

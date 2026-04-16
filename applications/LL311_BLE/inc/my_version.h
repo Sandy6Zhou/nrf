@@ -12,7 +12,14 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260407"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260408"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.08
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:        1.初步实现G-Sensor功耗管理功能，后续确认G-Sensor工作逻辑后再做调整。
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260407"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.07
 ** 作    者:        曹阳 (caoyang@jimiiot.com)

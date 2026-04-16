@@ -99,12 +99,9 @@ static int cmd_reboot(const struct shell *shell, size_t argc, char **argv)
 *********************************************************************/
 static int cmd_gsensor_read(const struct shell *shell, size_t argc, char **argv)
 {
-    MSG_S msg;
-    msg.msgID = MY_MSG_GSENSOR_READ;
-    msg.pData = NULL;
-    msg.DataLen = 0;
-
-    my_send_msg_data(MOD_MAIN, MOD_GSENSOR, &msg);
+    my_send_msg(MOD_MAIN, MOD_GSENSOR, MY_MSG_GSENSOR_PWRON);
+    my_send_msg(MOD_MAIN, MOD_GSENSOR, MY_MSG_GSENSOR_READ);
+    my_send_msg(MOD_MAIN, MOD_GSENSOR, MY_MSG_GSENSOR_PWROFF);
     shell_print(shell, "G-Sensor read command sent");
 
     return 0;

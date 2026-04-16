@@ -38,7 +38,7 @@ LOG_MODULE_REGISTER(my_pm, LOG_LEVEL_INF);
 #define I2C22_NODE DT_ALIAS(nfc_i2c)
 
 /* ========== I2C21 总线设备节点（G-Sensor使用） ========== */
-#define I2C21_NODE DT_ALIAS(i2c21)
+#define I2C21_NODE DT_ALIAS(gsensor_i2c)
 
 /* ========== LTE UART 总线设备节点 ========== */
 #define LTE_UART_NODE DT_ALIAS(lte_uart)
