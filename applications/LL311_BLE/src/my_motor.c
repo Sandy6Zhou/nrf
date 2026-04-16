@@ -245,12 +245,12 @@ static void closelock_posdet_timer_handler(struct k_timer *timer)
                 // TODO 非法解锁上报,直接发消息给LTE线程,由4G判断是否要上报
 
                 /* 蜂鸣器报警方式 */
-                if (g_device_cmd_config.lockerr_buzzer == ALARM_TEMPORARY)
+                if (gConfigParam.lockerr_config.lockerr_buzzer == ALARM_TEMPORARY)
                 {
                     //发消息到ctrl线程,报警30s
                     my_set_buzzer_mode(BUZZER_GENERAL_ALARM);
                 }
-                else if (g_device_cmd_config.lockerr_buzzer == ALARM_CONTINUOUS)
+                else if (gConfigParam.lockerr_config.lockerr_buzzer == ALARM_CONTINUOUS)
                 {
                     //发消息到ctrl线程,持续报警直到收到关闭蜂鸣器报警指令
                     my_set_buzzer_mode(BUZZER_CONTINUOUS_ALARM);

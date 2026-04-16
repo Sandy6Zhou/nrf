@@ -144,22 +144,22 @@ void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_i
     {
         case ALARM_OPEN:
             alarm_str = "OPEN";
-            rpt = g_device_cmd_config.remalm_mode;
+            rpt = gConfigParam.remalm_config.remalm_mode;
             break;
 
         case ALARM_ILLEGALUNLOCK:
             alarm_str = "ILLEGALUNLOCK";
-            rpt = g_device_cmd_config.lockerr_report;
+            rpt = gConfigParam.lockerr_config.lockerr_report;
             break;
 
         case ALARM_LOCK:
             alarm_str = "LOCK";
-            rpt = g_device_cmd_config.lockstat_report;
+            rpt = gConfigParam.lockstat_config.lockstat_report;
             break;
 
         case ALARM_MOTION:
             alarm_str = "MOTION";
-            rpt = g_device_cmd_config.motdet_report_type;
+            rpt = gConfigParam.motdet_config.motdet_report_type;
             break;
 
         case ALARM_BATT:
@@ -167,27 +167,27 @@ void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_i
             switch(atoi(additional_info))
             {
                 case BATT_EMPTY:
-                    rpt = g_device_cmd_config.batlevel_empty_rpt;
+                    rpt = gConfigParam.batlevel_config.batlevel_empty_rpt;
                     break;
 
                 case BATT_LOW:
-                    rpt = g_device_cmd_config.batlevel_low_rpt;
+                    rpt = gConfigParam.batlevel_config.batlevel_low_rpt;
                     break;
 
                 case BATT_NORMAL:
-                    rpt = g_device_cmd_config.batlevel_normal_rpt;
+                    rpt = gConfigParam.batlevel_config.batlevel_normal_rpt;
                     break;
 
                 case BATT_FAIR:
-                    rpt = g_device_cmd_config.batlevel_fair_rpt;
+                    rpt = gConfigParam.batlevel_config.batlevel_fair_rpt;
                     break;
 
                 case BATT_HIGH:
-                    rpt = g_device_cmd_config.batlevel_high_rpt;
+                    rpt = gConfigParam.batlevel_config.batlevel_high_rpt;
                     break;
 
                 case BATT_FULL:
-                    rpt = g_device_cmd_config.batlevel_full_rpt;
+                    rpt = gConfigParam.batlevel_config.batlevel_full_rpt;
                     break;
 
                 default:
@@ -198,12 +198,12 @@ void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_i
 
         case ALARM_CHARGE:
             alarm_str = "CHARGE";
-            rpt = g_device_cmd_config.chargesta_report;
+            rpt = gConfigParam.batlevel_config.chargesta_report;
             break;
 
         case ALARM_IMPACT:
             alarm_str = "IMPACT";
-            rpt = g_device_cmd_config.shockalarm_type;
+            rpt = gConfigParam.shockalarm_config.shockalarm_type;
             break;
 
         case ALARM_SEPARATE:
@@ -218,12 +218,12 @@ void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_i
 
         case ALARM_CUT:
             alarm_str = "CUT";
-            rpt = g_device_cmd_config.lockpincyt_report;
+            rpt = gConfigParam.lockpincyt_config.lockpincyt_report;
             break;
 
         case ALARM_LOCKPIN:
             alarm_str = "LOCKPIN";
-            rpt = g_device_cmd_config.pinstat_report;
+            rpt = gConfigParam.pinstat_config.pinstat_report;
             break;
 
         default:
@@ -385,9 +385,9 @@ int nfc_card_detected(uint8_t *card_id, uint8_t *card_index)
     }
 
     /* 遍历所有授权卡片 */
-    for (i = 0; i < g_device_cmd_config.nfcauth_card_count; i++)
+    for (i = 0; i < gConfigParam.nfcauth_config.nfcauth_card_count; i++)
     {
-        if (strcmp(card_id, g_device_cmd_config.nfcauth_cards[i].nfc_no) == 0)
+        if (strcmp(card_id, gConfigParam.nfcauth_config.nfcauth_cards[i].nfc_no) == 0)
         {
             /* 记录匹配的卡片索引 */
             current_card_index = i;
@@ -405,7 +405,7 @@ int nfc_card_detected(uint8_t *card_id, uint8_t *card_index)
 
     *card_index = current_card_index;
 
-    current_card = &g_device_cmd_config.nfcauth_cards[current_card_index];  /* 获取当前卡片指针 */
+    current_card = &gConfigParam.nfcauth_config.nfcauth_cards[current_card_index];  /* 获取当前卡片指针 */
 
     /* 检查是否需要时间验证 */
     if (current_card->time_valid == 1)
@@ -486,7 +486,7 @@ void handle_nfc_card_event(uint8_t *card_id, uint8_t id_len)
     if (ret)
     {
         //命令匹配成功，具体执行结果看命令响应
-        MY_LOG_INF("Command matched success: cmd_type:%d; command:%s", ret, g_device_cmd_config.nfctrig_table.nfctrig_rule[nfctrig_card_index].nfctrig_command);
+        MY_LOG_INF("Command matched success: cmd_type:%d; command:%s", ret, gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[nfctrig_card_index].nfctrig_command);
     }
     else
     {
@@ -752,9 +752,9 @@ static void lock_pin_timer_handler(struct k_timer *timer)
         msgID = new_state ? MY_MSG_CTRL_LOCK_PIN_INSERTED : MY_MSG_CTRL_LOCK_PIN_DISCONNECTED;
         if (new_state)
         {
-            if (g_device_cmd_config.pinstat_report)
+            if (gConfigParam.pinstat_config.pinstat_report)
             {
-                if (g_device_cmd_config.pinstat_trigger == PINSTAT_TRIGGER_MODE_INSERT || g_device_cmd_config.pinstat_trigger == PINSTAT_TRIGGER_MODE_BOTH)
+                if (gConfigParam.pinstat_config.pinstat_trigger == PINSTAT_TRIGGER_MODE_INSERT || gConfigParam.pinstat_config.pinstat_trigger == PINSTAT_TRIGGER_MODE_BOTH)
                 {
 
                     my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);
@@ -766,9 +766,9 @@ static void lock_pin_timer_handler(struct k_timer *timer)
         }
         else
         {
-            if (g_device_cmd_config.pinstat_report)
+            if (gConfigParam.pinstat_config.pinstat_report)
             {
-                if (g_device_cmd_config.pinstat_trigger == PINSTAT_TRIGGER_MODE_REMOVE || g_device_cmd_config.pinstat_trigger == PINSTAT_TRIGGER_MODE_BOTH)
+                if (gConfigParam.pinstat_config.pinstat_trigger == PINSTAT_TRIGGER_MODE_REMOVE || gConfigParam.pinstat_config.pinstat_trigger == PINSTAT_TRIGGER_MODE_BOTH)
                 {
 
                     my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);
@@ -784,12 +784,12 @@ static void lock_pin_timer_handler(struct k_timer *timer)
                 send_alarm_message_to_lte(ALARM_CUT, NULL);
 
                 /* 蜂鸣器报警 */
-                if (g_device_cmd_config.lockpincyt_buzzer == ALARM_TEMPORARY)
+                if (gConfigParam.lockpincyt_config.lockpincyt_buzzer == ALARM_TEMPORARY)
                 {
                     //发消息到ctrl线程,报警30s
                     my_set_buzzer_mode(BUZZER_GENERAL_ALARM);
                 }
-                else if (g_device_cmd_config.lockpincyt_buzzer == ALARM_CONTINUOUS)
+                else if (gConfigParam.lockpincyt_config.lockpincyt_buzzer == ALARM_CONTINUOUS)
                 {
                     //发消息到ctrl线程,持续报警直到收到关闭蜂鸣器报警指令
                     my_set_buzzer_mode(BUZZER_CONTINUOUS_ALARM);
@@ -850,13 +850,13 @@ static void key_falling_edge_handler(void)
 static void auto_lock_detection(void)
 {
     MY_LOG_INF("%s:run", __func__);
-    if (g_device_cmd_config.lockcd_countdown == 0)
+    if (gConfigParam.locked_config.lockcd_countdown == 0)
     {
         return ;
     }
 
     // 自动上锁定时器
-    k_timer_start(&auto_lock_timer, K_MSEC(g_device_cmd_config.lockcd_countdown * 1000), K_NO_WAIT);
+    k_timer_start(&auto_lock_timer, K_MSEC(gConfigParam.locked_config.lockcd_countdown * 1000), K_NO_WAIT);
 }
 
 /********************************************************************
@@ -1298,7 +1298,7 @@ void my_lock_led_ctrl_start(uint16_t on_ms, uint16_t off_ms, uint32_t duration_m
     else
     {
         // 检查 LED 显示功能是否启用
-        if (g_device_cmd_config.led_display == 1)
+        if (gConfigParam.led_config.led_display == 1)
         {
             s_lock_led_ctrl.on_ms = on_ms / 100;  // 将点亮时间转换为 100 毫秒为单位
             s_lock_led_ctrl.period_ms = (on_ms+off_ms) / 100;  // 计算闪烁周期并转换为 100 毫秒为单位
@@ -1552,7 +1552,7 @@ static void buzzer_timer_handler(struct k_timer *timer)
 *********************************************************************/
 void my_ctrl_report_tamper_alarm(void)
 {
-    if (g_device_cmd_config.remalm_sw)
+    if (gConfigParam.remalm_config.remalm_sw)
     {
         //开启4G电源
         my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);

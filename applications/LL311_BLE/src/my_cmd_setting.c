@@ -35,106 +35,6 @@
 
 LOG_MODULE_REGISTER(my_cmd_setting, LOG_LEVEL_INF);
 
-/* 全局指令配置变量定义 */
-DeviceCmdConfig g_device_cmd_config =
-{
-    // 设备工作模式配置
-    .workmode_config =
-    {
-        .current_mode = MY_MODE_SMART,
-        .long_battery =
-        {
-            .reporting_interval_min = 240,
-            .start_time = "0001",
-        },
-        .intelligent =
-        {
-            .stop_status_interval_sec = 86400,
-            .land_status_interval_sec = 15,
-            .land_status_interval_dis = 100,
-            .sea_status_interval_sec = 14400,
-            .sleep_switch = 2,
-        },
-    },
-
-    /* REMALM 指令默认配置 */
-    .remalm_sw = 0,                    /* 默认关闭 */
-    .remalm_mode = REPORT_MODE_GPRS,                  /* 默认GPRS */
-
-    /* LOCKPINCYT 指令默认配置 */
-    .lockpincyt_report = REPORT_MODE_GPRS,             /* 默认GPRS */
-    .lockpincyt_buzzer = ALARM_TEMPORARY,             /* 默认报警30s */
-
-    /* LOCKERR 指令默认配置 */
-    .lockerr_report = REPORT_MODE_GPRS,               /* 默认GPRS */
-    .lockerr_buzzer = ALARM_TEMPORARY,               /* 默认报警30s */
-
-    /* PINSTAT 指令默认配置 */
-    .pinstat_report = REPORT_MODE_GPRS,               /* 默认GPRS */
-    .pinstat_trigger = PINSTAT_TRIGGER_MODE_BOTH,              /* 默认都触发 */
-
-    /* LOCKSTAT 指令默认配置 */
-    .lockstat_report = REPORT_MODE_GPRS,              /* 默认GPRS */
-    .lockstat_trigger = LOCK_TRIGGER_NONE,             /* 默认都不触发 */
-
-    /* MOTDET 指令默认配置 */
-    .motdet_static_g = 10,             /* 默认10 mg */
-    .motdet_land_g = 2000,             /* 默认2000 mg */
-    .motdet_static_land_length = 50,   /* 默认50 s */
-    .motdet_sea_transport_time = 10,   /* 默认10 s */
-    .motdet_report_type = REPORT_MODE_GPRS,           /* 默认GPRS */
-
-    /* BATLEVEL 指令默认配置 */
-    .batlevel_empty_rpt = REPORT_MODE_GPRS,           /* 默认GPRS */
-    .batlevel_low_rpt = REPORT_MODE_GPRS,             /* 默认GPRS */
-    .batlevel_normal_rpt = REPORT_MODE_GPRS,          /* 默认GPRS */
-    .batlevel_fair_rpt = REPORT_MODE_GPRS,            /* 默认GPRS */
-    .batlevel_high_rpt = REPORT_MODE_GPRS,            /* 默认GPRS */
-    .batlevel_full_rpt = REPORT_MODE_GPRS,            /* 默认GPRS */
-
-    /* CHARGESTA 指令默认配置 */
-    .chargesta_report = REPORT_MODE_GPRS,             /* 默认GPRS */
-
-    /* SHOCKALARM 指令默认配置 */
-    .shockalarm_sw = 0,                /* 默认关闭 */
-    .shockalarm_level = 3,             /* 默认中等敏感度 */
-    .shockalarm_type = REPORT_MODE_GPRS,              /* 默认GPRS */
-
-    /* STARTR 指令默认配置 */
-    .startr_sw = 0,                    /* 默认关闭 */
-
-    /* PWRSAVE 指令默认配置 */
-    .pwsave_sw = 0,                    /* 默认关闭 */
-
-    /* BT_UPDATA 指令默认配置 */
-    .bt_updata_mode = 0,               /* 默认不开启 */
-    .bt_updata_scan_interval = 600,    /* 默认600秒 */
-    .bt_updata_scan_length = 10,       /* 默认10秒 */
-    .bt_updata_updata_interval = 14400,/* 默认14400秒 */
-
-    /* TAG 指令默认配置 */
-    .tag_sw = 0,                       /* 默认关闭 */
-    .tag_interval = 2000,              /* 默认2000ms */
-
-    /* LOCKCD 指令默认配置 */
-    .lockcd_countdown = 3,             /* 默认3秒 */
-
-    /* LED 指令默认配置 */
-    .led_display = 0,                  /* 默认关闭 */
-
-    /* BUZZER 直接控制指令默认配置 */
-    .buzzer_operator = 0,             /* 默认停止 */
-
-    /* NFCTRIG 指令默认配置 */
-
-    /* NFCAUTH 指令默认配置 */
-    .nfcauth_card_count = 0,         /* 默认0张卡 */
-
-    /* BKEY 指令默认配置 */
-    .bt_key = "000000",              /* 默认密钥 */
-
-};
-
 static int remalm_cmd_handler(at_cmd_struc* msg);
 static int lockpincyt_cmd_handler(at_cmd_struc* msg);
 static int lockerr_cmd_handler(at_cmd_struc* msg);
@@ -788,10 +688,10 @@ uint16_t run_nfc_cmd(char *card_id, uint8_t *index)
     uint8_t found = 0;
 
     //遍历匹配卡号
-    for (i = 0; i < g_device_cmd_config.nfctrig_table.count; i++)
+    for (i = 0; i < gConfigParam.nfctrig_config.nfctrig_table.count; i++)
     {
         /* 卡号匹配 */
-        if (strcmp(g_device_cmd_config.nfctrig_table.nfctrig_rule[i].nfctrig_nfc_no, card_id) == 0)
+        if (strcmp(gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[i].nfctrig_nfc_no, card_id) == 0)
         {
             found = 1;
             break;
@@ -802,7 +702,7 @@ uint16_t run_nfc_cmd(char *card_id, uint8_t *index)
     {
         *index = i;
         //复制
-        strcpy(at_cmd_msg.rcv_msg, g_device_cmd_config.nfctrig_table.nfctrig_rule[i].nfctrig_command);
+        strcpy(at_cmd_msg.rcv_msg, gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[i].nfctrig_command);
 
         MY_LOG_INF("at_cmd_msg.rcv_msg:%s", at_cmd_msg.rcv_msg);
         MY_LOG_INF("at_cmd_msg.rcv_msglen:%d", strlen(at_cmd_msg.rcv_msg));
@@ -891,14 +791,14 @@ static int remalm_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
-    g_device_cmd_config.remalm_sw = (uint8_t)sw_value;
-    g_device_cmd_config.remalm_mode = (uint8_t)m_value;
+    gConfigParam.remalm_config.remalm_sw = (uint8_t)sw_value;
+    gConfigParam.remalm_config.remalm_mode = (uint8_t)m_value;
 
     LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
 
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
-    LOG_INF("REMALM: SW=%d, M=%d", g_device_cmd_config.remalm_sw, g_device_cmd_config.remalm_mode);
+    LOG_INF("REMALM: SW=%d, M=%d", gConfigParam.remalm_config.remalm_sw, gConfigParam.remalm_config.remalm_mode);
 
     //TODO 具体逻辑处理
 
@@ -953,16 +853,16 @@ static int lockpincyt_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
-    g_device_cmd_config.lockpincyt_report = (uint8_t)report_value;
-    g_device_cmd_config.lockpincyt_buzzer = (uint8_t)buzzer_value;
+    gConfigParam.lockpincyt_config.lockpincyt_report = (uint8_t)report_value;
+    gConfigParam.lockpincyt_config.lockpincyt_buzzer = (uint8_t)buzzer_value;
 
     LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
 
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
     LOG_INF("LOCKPINCYT: Report=%d, Buzzer=%d",
-           g_device_cmd_config.lockpincyt_report,
-           g_device_cmd_config.lockpincyt_buzzer);
+           gConfigParam.lockpincyt_config.lockpincyt_report,
+           gConfigParam.lockpincyt_config.lockpincyt_buzzer);
 
     //TODO 具体逻辑处理
 
@@ -1017,16 +917,16 @@ static int lockerr_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
-    g_device_cmd_config.lockerr_report = (uint8_t)report_value;
-    g_device_cmd_config.lockerr_buzzer = (uint8_t)buzzer_value;
+    gConfigParam.lockerr_config.lockerr_report = (uint8_t)report_value;
+    gConfigParam.lockerr_config.lockerr_buzzer = (uint8_t)buzzer_value;
 
     LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
 
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
     LOG_INF("LOCKERR: Report=%d, Buzzer=%d",
-           g_device_cmd_config.lockerr_report,
-           g_device_cmd_config.lockerr_buzzer);
+           gConfigParam.lockerr_config.lockerr_report,
+           gConfigParam.lockerr_config.lockerr_buzzer);
 
     //TODO 具体逻辑处理
 
@@ -1081,16 +981,16 @@ static int pinstat_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
-    g_device_cmd_config.pinstat_report = (uint8_t)report_value;
-    g_device_cmd_config.pinstat_trigger = (uint8_t)trigger_value;
+    gConfigParam.pinstat_config.pinstat_report = (uint8_t)report_value;
+    gConfigParam.pinstat_config.pinstat_trigger = (uint8_t)trigger_value;
 
     LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
 
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
     LOG_INF("PINSTAT: Report=%d, Trigger=%d",
-           g_device_cmd_config.pinstat_report,
-           g_device_cmd_config.pinstat_trigger);
+           gConfigParam.pinstat_config.pinstat_report,
+           gConfigParam.pinstat_config.pinstat_trigger);
 
     //TODO 具体逻辑处理
 
@@ -1145,16 +1045,16 @@ static int lockstat_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
-    g_device_cmd_config.lockstat_report = (uint8_t)report_value;
-    g_device_cmd_config.lockstat_trigger = (uint8_t)trigger_value;
+    gConfigParam.lockstat_config.lockstat_report = (uint8_t)report_value;
+    gConfigParam.lockstat_config.lockstat_trigger = (uint8_t)trigger_value;
 
     LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
 
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
     LOG_INF("LOCKSTAT: Report=%d, Trigger=%d",
-           g_device_cmd_config.lockstat_report,
-           g_device_cmd_config.lockstat_trigger);
+           gConfigParam.lockstat_config.lockstat_report,
+           gConfigParam.lockstat_config.lockstat_trigger);
 
     //TODO 具体逻辑处理
 
@@ -1239,11 +1139,11 @@ static int motdet_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
-    g_device_cmd_config.motdet_static_g = (uint16_t)static_g_value;
-    g_device_cmd_config.motdet_land_g = (uint16_t)land_g_value;
-    g_device_cmd_config.motdet_static_land_length = (uint16_t)static_land_length_value;
-    g_device_cmd_config.motdet_sea_transport_time = (uint16_t)sea_transport_time_value;
-    g_device_cmd_config.motdet_report_type = (uint8_t)report_type_value;
+    gConfigParam.motdet_config.motdet_static_g = (uint16_t)static_g_value;
+    gConfigParam.motdet_config.motdet_land_g = (uint16_t)land_g_value;
+    gConfigParam.motdet_config.motdet_static_land_length = (uint16_t)static_land_length_value;
+    gConfigParam.motdet_config.motdet_sea_transport_time = (uint16_t)sea_transport_time_value;
+    gConfigParam.motdet_config.motdet_report_type = (uint8_t)report_type_value;
 
     LOG_INF("%s=>%s,%s,%s,%s,%s,%s", __func__, msg->parm[0], msg->parm[1],
            msg->parm[2], msg->parm[3], msg->parm[4], msg->parm[5]);
@@ -1251,11 +1151,11 @@ static int motdet_cmd_handler(at_cmd_struc* msg)
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
     LOG_INF("MOTDET: StaticG=%d, LandG=%d, StaticLandLen=%d, SeaTime=%d, ReportType=%d",
-           g_device_cmd_config.motdet_static_g,
-           g_device_cmd_config.motdet_land_g,
-           g_device_cmd_config.motdet_static_land_length,
-           g_device_cmd_config.motdet_sea_transport_time,
-           g_device_cmd_config.motdet_report_type);
+           gConfigParam.motdet_config.motdet_static_g,
+           gConfigParam.motdet_config.motdet_land_g,
+           gConfigParam.motdet_config.motdet_static_land_length,
+           gConfigParam.motdet_config.motdet_sea_transport_time,
+           gConfigParam.motdet_config.motdet_report_type);
 
     //TODO 具体逻辑处理
 
@@ -1305,19 +1205,19 @@ static int batlevel_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
-    g_device_cmd_config.batlevel_empty_rpt = (uint8_t)param_values[0];
-    g_device_cmd_config.batlevel_low_rpt = (uint8_t)param_values[1];
-    g_device_cmd_config.batlevel_normal_rpt = (uint8_t)param_values[2];
-    g_device_cmd_config.batlevel_fair_rpt = (uint8_t)param_values[3];
-    g_device_cmd_config.batlevel_high_rpt = (uint8_t)param_values[4];
-    g_device_cmd_config.batlevel_full_rpt = (uint8_t)param_values[5];
+    gConfigParam.batlevel_config.batlevel_empty_rpt = (uint8_t)param_values[0];
+    gConfigParam.batlevel_config.batlevel_low_rpt = (uint8_t)param_values[1];
+    gConfigParam.batlevel_config.batlevel_normal_rpt = (uint8_t)param_values[2];
+    gConfigParam.batlevel_config.batlevel_fair_rpt = (uint8_t)param_values[3];
+    gConfigParam.batlevel_config.batlevel_high_rpt = (uint8_t)param_values[4];
+    gConfigParam.batlevel_config.batlevel_full_rpt = (uint8_t)param_values[5];
 
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
     LOG_INF("BATLEVEL: Empty RPT=%d, Low RPT=%d, Normal RPT=%d, Fair RPT=%d, High RPT=%d, Full RPT=%d",
-           g_device_cmd_config.batlevel_empty_rpt, g_device_cmd_config.batlevel_low_rpt,
-           g_device_cmd_config.batlevel_normal_rpt, g_device_cmd_config.batlevel_fair_rpt,
-           g_device_cmd_config.batlevel_high_rpt, g_device_cmd_config.batlevel_full_rpt);
+           gConfigParam.batlevel_config.batlevel_empty_rpt, gConfigParam.batlevel_config.batlevel_low_rpt,
+           gConfigParam.batlevel_config.batlevel_normal_rpt, gConfigParam.batlevel_config.batlevel_fair_rpt,
+           gConfigParam.batlevel_config.batlevel_high_rpt, gConfigParam.batlevel_config.batlevel_full_rpt);
 
     //TODO 具体逻辑处理
 
@@ -1360,13 +1260,13 @@ static int chargesta_cmd_handler(at_cmd_struc* msg)
         LOG_INF("%s=>invalid RPT param: %s", __func__, msg->parm[1]);
         goto param_invalid;
     }
-    g_device_cmd_config.chargesta_report = (uint8_t)report_value;
+    gConfigParam.batlevel_config.chargesta_report = (uint8_t)report_value;
 
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
     /* 所有参数验证通过,生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
-    LOG_INF("CHARGESTA: Report=%d", g_device_cmd_config.chargesta_report);
+    LOG_INF("CHARGESTA: Report=%d", gConfigParam.batlevel_config.chargesta_report);
 
     //TODO 具体逻辑处理
 
@@ -1438,18 +1338,18 @@ static int shockalarm_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
-    g_device_cmd_config.shockalarm_sw = (uint8_t)sw_value;
-    g_device_cmd_config.shockalarm_level = (uint8_t)level_value;
-    g_device_cmd_config.shockalarm_type = (uint8_t)type_value;
+    gConfigParam.shockalarm_config.shockalarm_sw = (uint8_t)sw_value;
+    gConfigParam.shockalarm_config.shockalarm_level = (uint8_t)level_value;
+    gConfigParam.shockalarm_config.shockalarm_type = (uint8_t)type_value;
 
     LOG_INF("%s=>%s,%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3]);
 
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
     LOG_INF("SHOCKALARM: SW=%d, Level=%d, Type=%d",
-           g_device_cmd_config.shockalarm_sw,
-           g_device_cmd_config.shockalarm_level,
-           g_device_cmd_config.shockalarm_type);
+           gConfigParam.shockalarm_config.shockalarm_sw,
+           gConfigParam.shockalarm_config.shockalarm_level,
+           gConfigParam.shockalarm_config.shockalarm_type);
 
     //TODO 具体逻辑处理
 
@@ -1488,7 +1388,7 @@ static int pwsave_cmd_handler(at_cmd_struc* msg)
         /* 解析参数 */
         if (strcmp(msg->parm[1], "ON") == 0)
         {
-            g_device_cmd_config.pwsave_sw = 1;
+            gConfigParam.pwsave_config.pwsave_sw = 1;
             LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
             /* 根据指令说明，立即回复 "Poweroff OK" */
@@ -1535,7 +1435,7 @@ static int startr_cmd_handler(at_cmd_struc* msg)
     {
         /* 查询指令：返回当前状态 */
         LOG_INF("%s=>%s (query)", __func__, msg->parm[0]);
-        if (g_device_cmd_config.startr_sw == 1)
+        if (gConfigParam.startr_config.startr_sw == 1)
         {
             msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN STARTR:ON");
         }
@@ -1559,11 +1459,11 @@ static int startr_cmd_handler(at_cmd_struc* msg)
     /* 解析A参数 */
     if (strcmp(msg->parm[1], "ON") == 0)
     {
-        g_device_cmd_config.startr_sw = 1;
+        gConfigParam.startr_config.startr_sw = 1;
     }
     else if (strcmp(msg->parm[1], "OFF") == 0)
     {
-        g_device_cmd_config.startr_sw = 0;
+        gConfigParam.startr_config.startr_sw = 0;
     }
     else
     {
@@ -1573,7 +1473,7 @@ static int startr_cmd_handler(at_cmd_struc* msg)
 
     /* 所有参数验证通过,生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
-    LOG_INF("STARTR: SW=%d", g_device_cmd_config.startr_sw);
+    LOG_INF("STARTR: SW=%d", gConfigParam.startr_config.startr_sw);
 
     //TODO 具体逻辑处理
 
@@ -1761,10 +1661,10 @@ static int bt_updata_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
-    g_device_cmd_config.bt_updata_mode = (uint8_t)mode_value;
-    g_device_cmd_config.bt_updata_scan_interval = scan_interval_value;
-    g_device_cmd_config.bt_updata_scan_length = scan_length_value;
-    g_device_cmd_config.bt_updata_updata_interval = updata_interval_value;
+    gConfigParam.bt_updata_config.bt_updata_mode = (uint8_t)mode_value;
+    gConfigParam.bt_updata_config.bt_updata_scan_interval = scan_interval_value;
+    gConfigParam.bt_updata_config.bt_updata_scan_length = scan_length_value;
+    gConfigParam.bt_updata_config.bt_updata_updata_interval = updata_interval_value;
 
     LOG_INF("%s=>%s,%s,%s,%s,%s", __func__, msg->parm[0], msg->parm[1],
            msg->parm[2], msg->parm[3], msg->parm[4]);
@@ -1772,10 +1672,10 @@ static int bt_updata_cmd_handler(at_cmd_struc* msg)
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
     LOG_INF("BT_UPDATA: Mode=%d, ScanInterval=%u, ScanLength=%u, UpdataInterval=%u",
-           g_device_cmd_config.bt_updata_mode,
-           g_device_cmd_config.bt_updata_scan_interval,
-           g_device_cmd_config.bt_updata_scan_length,
-           g_device_cmd_config.bt_updata_updata_interval);
+           gConfigParam.bt_updata_config.bt_updata_mode,
+           gConfigParam.bt_updata_config.bt_updata_scan_interval,
+           gConfigParam.bt_updata_config.bt_updata_scan_length,
+           gConfigParam.bt_updata_config.bt_updata_updata_interval);
 
     //TODO 具体逻辑处理
 
@@ -1843,10 +1743,10 @@ static int tag_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
-    g_device_cmd_config.tag_sw = (uint8_t)sw_value;
+    gConfigParam.tag_config.tag_sw = (uint8_t)sw_value;
     if (msg->parm_count == 2)
     {
-        g_device_cmd_config.tag_interval = (uint16_t)interval_value;
+        gConfigParam.tag_config.tag_interval = (uint16_t)interval_value;
     }
 
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
@@ -1857,10 +1757,10 @@ static int tag_cmd_handler(at_cmd_struc* msg)
 
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
-    LOG_INF("TAG: SW=%d, Interval=%u", g_device_cmd_config.tag_sw, g_device_cmd_config.tag_interval);
+    LOG_INF("TAG: SW=%d, Interval=%u", gConfigParam.tag_config.tag_sw, gConfigParam.tag_config.tag_interval);
 
     //更新非连接广播参数，里面会按配置打开或关闭广播，根据tag_sw的值
-    my_ble_updata_adv_param(g_device_cmd_config.tag_interval);
+    my_ble_updata_adv_param(gConfigParam.tag_config.tag_interval);
 
     return BLE_DATA_TYPE_AT_CMD;
 
@@ -1920,13 +1820,13 @@ static int jatag_cmd_handler(at_cmd_struc* msg)
     /* 所有参数验证通过,统一赋值 */
     gConfigParam.adv_valid_value.AppleValid = (uint8_t)sw_value;
     set_adv_valid_status(APPLE_ADV_TYPE, gConfigParam.adv_valid_value.AppleValid);
-    my_no_con_start_adv(g_device_cmd_config.tag_sw);
+    my_no_con_start_adv(gConfigParam.tag_config.tag_sw);
 
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
-    LOG_INF("JATAG: SW=%d, Interval=%u", gConfigParam.adv_valid_value.AppleValid, g_device_cmd_config.tag_interval);
+    LOG_INF("JATAG: SW=%d, Interval=%u", gConfigParam.adv_valid_value.AppleValid, gConfigParam.tag_config.tag_interval);
 
     return BLE_DATA_TYPE_AT_CMD;
 
@@ -1986,13 +1886,13 @@ static int jgtag_cmd_handler(at_cmd_struc* msg)
     /* 所有参数验证通过,统一赋值 */
     gConfigParam.adv_valid_value.GoogleValid = (uint8_t)sw_value;
     set_adv_valid_status(GOOGLE_ADV_TYPE, gConfigParam.adv_valid_value.GoogleValid);
-    my_no_con_start_adv(g_device_cmd_config.tag_sw);
+    my_no_con_start_adv(gConfigParam.tag_config.tag_sw);
 
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
-    LOG_INF("JGTAG: SW=%d, Interval=%u", gConfigParam.adv_valid_value.GoogleValid, g_device_cmd_config.tag_interval);
+    LOG_INF("JGTAG: SW=%d, Interval=%u", gConfigParam.adv_valid_value.GoogleValid, gConfigParam.tag_config.tag_interval);
 
     return BLE_DATA_TYPE_AT_CMD;
 
@@ -2035,13 +1935,13 @@ static int lockcd_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
-    g_device_cmd_config.lockcd_countdown = (uint16_t)countdown_value;
+    gConfigParam.locked_config.lockcd_countdown = (uint16_t)countdown_value;
 
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
-    LOG_INF("LOCKCD: Countdown=%u", g_device_cmd_config.lockcd_countdown);
+    LOG_INF("LOCKCD: Countdown=%u", gConfigParam.locked_config.lockcd_countdown);
 
     //TODO 具体逻辑处理
 
@@ -2097,13 +1997,13 @@ static int led_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
-    g_device_cmd_config.led_display = (uint8_t)display_value;
+    gConfigParam.led_config.led_display = (uint8_t)display_value;
 
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
-    LOG_INF("LED: Display=%d", g_device_cmd_config.led_display);
+    LOG_INF("LED: Display=%d", gConfigParam.led_config.led_display);
 
     //TODO 具体逻辑处理
 
@@ -2154,13 +2054,13 @@ static int buzzer_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
-    g_device_cmd_config.buzzer_operator = (uint8_t)operator_value;
+    gConfigParam.buzzer_config.buzzer_operator = (uint8_t)operator_value;
 
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
-    LOG_INF("BUZZER: Operator=%d", g_device_cmd_config.buzzer_operator);
+    LOG_INF("BUZZER: Operator=%d", gConfigParam.buzzer_config.buzzer_operator);
 
     //TODO 具体逻辑处理
 
@@ -2222,7 +2122,7 @@ static int nfctrig_cmd_handler(at_cmd_struc* msg)
 
         /* 校验NFC NO.参数 */
         nfc_no_len = strlen(msg->parm[2]);
-        if (nfc_no_len == 0 || nfc_no_len >= sizeof(g_device_cmd_config.nfctrig_table.nfctrig_rule[0].nfctrig_nfc_no))
+        if (nfc_no_len == 0 || nfc_no_len >= sizeof(gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[0].nfctrig_nfc_no))
         {
             LOG_INF("%s=>invalid NFC NO. param: %s", __func__, msg->parm[2]);
             goto param_invalid;
@@ -2230,7 +2130,7 @@ static int nfctrig_cmd_handler(at_cmd_struc* msg)
 
         /* 校验Command参数 */
         command_len = strlen(msg->parm[3]);
-        if (command_len == 0 || command_len >= sizeof(g_device_cmd_config.nfctrig_table.nfctrig_rule[0].nfctrig_command))
+        if (command_len == 0 || command_len >= sizeof(gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[0].nfctrig_command))
         {
             LOG_INF("%s=>invalid Command param: %s", __func__, msg->parm[3]);
             goto param_invalid;
@@ -2244,7 +2144,7 @@ static int nfctrig_cmd_handler(at_cmd_struc* msg)
         }
 
         /* 1. 判满 */
-        if (g_device_cmd_config.nfctrig_table.count >= NFCTRIG_MAX_RULES)
+        if (gConfigParam.nfctrig_config.nfctrig_table.count >= NFCTRIG_MAX_RULES)
         {
             LOG_INF("table full");
             msg->resp_length = snprintf(msg->resp_msg, remaining, "Card limit reached. Please delete before adding.");
@@ -2252,10 +2152,10 @@ static int nfctrig_cmd_handler(at_cmd_struc* msg)
         }
 
         /* 2. 查重 */
-        for (i = 0; i < g_device_cmd_config.nfctrig_table.count; i++)
+        for (i = 0; i < gConfigParam.nfctrig_config.nfctrig_table.count; i++)
         {
             //比较卡号
-            if (strcmp((char*)g_device_cmd_config.nfctrig_table.nfctrig_rule[i].nfctrig_nfc_no, msg->parm[2]) == 0)
+            if (strcmp((char*)gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[i].nfctrig_nfc_no, msg->parm[2]) == 0)
             {
                 LOG_INF("The card number already exists.Please delete it before setting again.");
                 msg->resp_length = snprintf(msg->resp_msg, remaining, "The card number already exists.Please delete it before setting again.");
@@ -2263,18 +2163,18 @@ static int nfctrig_cmd_handler(at_cmd_struc* msg)
             }
         }
             /* 3. 插入 */
-        index = g_device_cmd_config.nfctrig_table.count;
+        index = gConfigParam.nfctrig_config.nfctrig_table.count;
 
-        strcpy(g_device_cmd_config.nfctrig_table.nfctrig_rule[index].nfctrig_nfc_no, msg->parm[2]);
-        strcpy(g_device_cmd_config.nfctrig_table.nfctrig_rule[index].nfctrig_command, msg->parm[3]);
-        g_device_cmd_config.nfctrig_table.count++;
+        strcpy(gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[index].nfctrig_nfc_no, msg->parm[2]);
+        strcpy(gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[index].nfctrig_command, msg->parm[3]);
+        gConfigParam.nfctrig_config.nfctrig_table.count++;
 
         LOG_INF("%s=>%s,%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3]);
 
 
         LOG_INF("NFCTRIG_ADD: NFC_NO=%s, Command=%s",
-            g_device_cmd_config.nfctrig_table.nfctrig_rule[index].nfctrig_nfc_no,
-            g_device_cmd_config.nfctrig_table.nfctrig_rule[index].nfctrig_command);
+            gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[index].nfctrig_nfc_no,
+            gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[index].nfctrig_command);
 
         /* 生成成功响应 */
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_%s_OK", msg->parm[0], msg->parm[1]);
@@ -2290,19 +2190,19 @@ static int nfctrig_cmd_handler(at_cmd_struc* msg)
             goto param_invalid;
         }
 
-        for (i = 0; i < g_device_cmd_config.nfctrig_table.count; i++)
+        for (i = 0; i < gConfigParam.nfctrig_config.nfctrig_table.count; i++)
         {
-            if (i == g_device_cmd_config.nfctrig_table.count - 1)
+            if (i == gConfigParam.nfctrig_config.nfctrig_table.count - 1)
             {
                 temp_len += snprintf(temp_buf + temp_len, sizeof(temp_buf) - temp_len,
-                                "%s_%s", g_device_cmd_config.nfctrig_table.nfctrig_rule[i].nfctrig_nfc_no,
-                                g_device_cmd_config.nfctrig_table.nfctrig_rule[i].nfctrig_command);
+                                "%s_%s", gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[i].nfctrig_nfc_no,
+                                gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[i].nfctrig_command);
             }
             else
             {
                 temp_len += snprintf(temp_buf + temp_len, sizeof(temp_buf) - temp_len,
-                                "%s_%s;", g_device_cmd_config.nfctrig_table.nfctrig_rule[i].nfctrig_nfc_no,
-                                g_device_cmd_config.nfctrig_table.nfctrig_rule[i].nfctrig_command);
+                                "%s_%s;", gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[i].nfctrig_nfc_no,
+                                gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[i].nfctrig_command);
             }
             found = 1;
         }
@@ -2311,7 +2211,7 @@ static int nfctrig_cmd_handler(at_cmd_struc* msg)
         {
             //TODO 回传的数据有可能太大返回有问题，后续需要分包回传处理
             msg->resp_length = snprintf(msg->resp_msg, remaining, "%s", temp_buf);
-            LOG_INF("%s=>CHECK,COUNT=%d", __func__, g_device_cmd_config.nfctrig_table.count);
+            LOG_INF("%s=>CHECK,COUNT=%d", __func__, gConfigParam.nfctrig_config.nfctrig_table.count);
             return BLE_DATA_TYPE_AT_CMD;
         }
         else
@@ -2333,8 +2233,8 @@ static int nfctrig_cmd_handler(at_cmd_struc* msg)
         /* 删除所有已授权卡号 */
         if (strcmp(msg->parm[2], "ALL") == 0)
         {
-            memset(g_device_cmd_config.nfctrig_table.nfctrig_rule, 0, sizeof(g_device_cmd_config.nfctrig_table.nfctrig_rule));
-            g_device_cmd_config.nfctrig_table.count = 0;
+            memset(gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule, 0, sizeof(gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule));
+            gConfigParam.nfctrig_config.nfctrig_table.count = 0;
             LOG_INF("%s=>DEL ALL", __func__);
             msg->resp_length = snprintf(msg->resp_msg, remaining, "NFCTRIG Delete ALL Success.");
             return BLE_DATA_TYPE_AT_CMD;
@@ -2342,22 +2242,22 @@ static int nfctrig_cmd_handler(at_cmd_struc* msg)
         /* 删除指定卡号 */
         else
         {
-            for (i = 0; i < g_device_cmd_config.nfctrig_table.count; i++)
+            for (i = 0; i < gConfigParam.nfctrig_config.nfctrig_table.count; i++)
             {
-                if (strcmp(g_device_cmd_config.nfctrig_table.nfctrig_rule[i].nfctrig_nfc_no, msg->parm[2]) == 0)
+                if (strcmp(gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[i].nfctrig_nfc_no, msg->parm[2]) == 0)
                 {
                     found = 1;
                     /* 将后面的卡前移，覆盖被删除的卡 */
-                    for (index = i; index < g_device_cmd_config.nfctrig_table.count - 1; index++)
+                    for (index = i; index < gConfigParam.nfctrig_config.nfctrig_table.count - 1; index++)
                     {
-                        memcpy(&g_device_cmd_config.nfctrig_table.nfctrig_rule[index],
-                               &g_device_cmd_config.nfctrig_table.nfctrig_rule[index + 1],
+                        memcpy(&gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[index],
+                               &gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[index + 1],
                                sizeof(nfctrig_rule_t));
                     }
                     /* 清空最后一个位置 */
-                    memset(&g_device_cmd_config.nfctrig_table.nfctrig_rule[g_device_cmd_config.nfctrig_table.count - 1],
+                    memset(&gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[gConfigParam.nfctrig_config.nfctrig_table.count - 1],
                            0, sizeof(nfctrig_rule_t));
-                    g_device_cmd_config.nfctrig_table.count--;
+                    gConfigParam.nfctrig_config.nfctrig_table.count--;
                     break;
                 }
             }
@@ -2463,7 +2363,7 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
 
         /* NFC卡号参数校验 */
         nfc_no_len = strlen(msg->parm[2]);
-        if (nfc_no_len == 0 || nfc_no_len >= sizeof(g_device_cmd_config.nfcauth_cards[0].nfc_no))
+        if (nfc_no_len == 0 || nfc_no_len >= sizeof(gConfigParam.nfcauth_config.nfcauth_cards[0].nfc_no))
         {
             LOG_INF("%s=>invalid NFC NO. param: %s", __func__, msg->parm[2]);
             goto param_invalid;
@@ -2568,9 +2468,9 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
 
         /* 查找是否已存在该卡号，存在则更新，不存在则新增 */
         found = 0;
-        for (i = 0; i < g_device_cmd_config.nfcauth_card_count; i++)
+        for (i = 0; i < gConfigParam.nfcauth_config.nfcauth_card_count; i++)
         {
-            if (strcmp(g_device_cmd_config.nfcauth_cards[i].nfc_no, msg->parm[2]) == 0)
+            if (strcmp(gConfigParam.nfcauth_config.nfcauth_cards[i].nfc_no, msg->parm[2]) == 0)
             {
                 index = i;
                 found = 1;
@@ -2581,51 +2481,51 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
         /* 新增卡号时检查是否已达到最大数量限制 */
         if (!found)
         {
-            if (g_device_cmd_config.nfcauth_card_count >= 10)
+            if (gConfigParam.nfcauth_config.nfcauth_card_count >= 10)
             {
                 LOG_INF("%s=>card list full", __func__);
                 msg->resp_length = snprintf(msg->resp_msg, remaining, "Card limit reached. Please delete before adding.");
                 return BLE_DATA_TYPE_AT_CMD;
             }
-            index = g_device_cmd_config.nfcauth_card_count;
-            g_device_cmd_config.nfcauth_card_count++;
+            index = gConfigParam.nfcauth_config.nfcauth_card_count;
+            gConfigParam.nfcauth_config.nfcauth_card_count++;
         }
 
         /* 保存卡权限信息 */
-        strcpy(g_device_cmd_config.nfcauth_cards[index].nfc_no, msg->parm[2]);
-        g_device_cmd_config.nfcauth_cards[index].lat = lat_value;
-        g_device_cmd_config.nfcauth_cards[index].lon = lon_value;
+        strcpy(gConfigParam.nfcauth_config.nfcauth_cards[index].nfc_no, msg->parm[2]);
+        gConfigParam.nfcauth_config.nfcauth_cards[index].lat = lat_value;
+        gConfigParam.nfcauth_config.nfcauth_cards[index].lon = lon_value;
         if (lat_valid == 1 && lon_valid == 1)
         {
-            g_device_cmd_config.nfcauth_cards[index].lat_lon_valid = 1;
+            gConfigParam.nfcauth_config.nfcauth_cards[index].lat_lon_valid = 1;
         }
         else
         {
-            g_device_cmd_config.nfcauth_cards[index].lat_lon_valid = 0;
+            gConfigParam.nfcauth_config.nfcauth_cards[index].lat_lon_valid = 0;
         }
-        g_device_cmd_config.nfcauth_cards[index].radius = radius;
-        strcpy(g_device_cmd_config.nfcauth_cards[index].start_time, msg->parm[6]);
-        strcpy(g_device_cmd_config.nfcauth_cards[index].end_time, msg->parm[7]);
+        gConfigParam.nfcauth_config.nfcauth_cards[index].radius = radius;
+        strcpy(gConfigParam.nfcauth_config.nfcauth_cards[index].start_time, msg->parm[6]);
+        strcpy(gConfigParam.nfcauth_config.nfcauth_cards[index].end_time, msg->parm[7]);
         if (starttime_valid == 1 && endtime_valid == 1)
         {
-            g_device_cmd_config.nfcauth_cards[index].time_valid = 1;
+            gConfigParam.nfcauth_config.nfcauth_cards[index].time_valid = 1;
         }
         else
         {
-            g_device_cmd_config.nfcauth_cards[index].time_valid = 0;
+            gConfigParam.nfcauth_config.nfcauth_cards[index].time_valid = 0;
         }
-        g_device_cmd_config.nfcauth_cards[index].unlock_times = unlock_times;
+        gConfigParam.nfcauth_config.nfcauth_cards[index].unlock_times = unlock_times;
 
         LOG_INF("%s=>SET,%s,%d,%d,%d,%u,%s,%s,%d,%u", __func__,
-                g_device_cmd_config.nfcauth_cards[index].nfc_no,
-                g_device_cmd_config.nfcauth_cards[index].lat,
-                g_device_cmd_config.nfcauth_cards[index].lon,
-                g_device_cmd_config.nfcauth_cards[index].lat_lon_valid,
-                g_device_cmd_config.nfcauth_cards[index].radius,
-                g_device_cmd_config.nfcauth_cards[index].start_time,
-                g_device_cmd_config.nfcauth_cards[index].end_time,
-                g_device_cmd_config.nfcauth_cards[index].time_valid,
-                g_device_cmd_config.nfcauth_cards[index].unlock_times);
+                gConfigParam.nfcauth_config.nfcauth_cards[index].nfc_no,
+                gConfigParam.nfcauth_config.nfcauth_cards[index].lat,
+                gConfigParam.nfcauth_config.nfcauth_cards[index].lon,
+                gConfigParam.nfcauth_config.nfcauth_cards[index].lat_lon_valid,
+                gConfigParam.nfcauth_config.nfcauth_cards[index].radius,
+                gConfigParam.nfcauth_config.nfcauth_cards[index].start_time,
+                gConfigParam.nfcauth_config.nfcauth_cards[index].end_time,
+                gConfigParam.nfcauth_config.nfcauth_cards[index].time_valid,
+                gConfigParam.nfcauth_config.nfcauth_cards[index].unlock_times);
 
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
         return BLE_DATA_TYPE_AT_CMD;
@@ -2642,7 +2542,7 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
 
         /* NFC卡号参数校验 */
         nfc_no_len = strlen(msg->parm[2]);
-        if (nfc_no_len == 0 || nfc_no_len >= sizeof(g_device_cmd_config.nfcauth_cards[0].nfc_no))
+        if (nfc_no_len == 0 || nfc_no_len >= sizeof(gConfigParam.nfcauth_config.nfcauth_cards[0].nfc_no))
         {
             LOG_INF("%s=>invalid NFC NO. param: %s", __func__, msg->parm[2]);
             goto param_invalid;
@@ -2650,9 +2550,9 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
 
         /* 查找是否已存在该卡号，存在则更新，不存在则新增 */
         found = 0;
-        for (i = 0; i < g_device_cmd_config.nfcauth_card_count; i++)
+        for (i = 0; i < gConfigParam.nfcauth_config.nfcauth_card_count; i++)
         {
-            if (strcmp(g_device_cmd_config.nfcauth_cards[i].nfc_no, msg->parm[2]) == 0)
+            if (strcmp(gConfigParam.nfcauth_config.nfcauth_cards[i].nfc_no, msg->parm[2]) == 0)
             {
                 index = i;
                 found = 1;
@@ -2663,28 +2563,28 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
         /* 新增卡号时检查是否已达到最大数量限制 */
         if (!found)
         {
-            if (g_device_cmd_config.nfcauth_card_count >= 10)
+            if (gConfigParam.nfcauth_config.nfcauth_card_count >= 10)
             {
                 LOG_INF("%s=>card list full", __func__);
                 msg->resp_length = snprintf(msg->resp_msg, remaining, "Card limit reached. Please delete before adding.");
                 return BLE_DATA_TYPE_AT_CMD;
             }
-            index = g_device_cmd_config.nfcauth_card_count;
-            g_device_cmd_config.nfcauth_card_count++;
+            index = gConfigParam.nfcauth_config.nfcauth_card_count;
+            gConfigParam.nfcauth_config.nfcauth_card_count++;
         }
 
         /* 设置管理员卡权限：所有限制项均设为0 */
-        strcpy(g_device_cmd_config.nfcauth_cards[index].nfc_no, msg->parm[2]);
-        g_device_cmd_config.nfcauth_cards[index].lat = 0;
-        g_device_cmd_config.nfcauth_cards[index].lon = 0;
-        g_device_cmd_config.nfcauth_cards[index].lat_lon_valid = 0;
-        g_device_cmd_config.nfcauth_cards[index].radius = 0;
-        strcpy(g_device_cmd_config.nfcauth_cards[index].start_time, "");
-        strcpy(g_device_cmd_config.nfcauth_cards[index].end_time, "");
-        g_device_cmd_config.nfcauth_cards[index].time_valid = 0;
-        g_device_cmd_config.nfcauth_cards[index].unlock_times = 0;
+        strcpy(gConfigParam.nfcauth_config.nfcauth_cards[index].nfc_no, msg->parm[2]);
+        gConfigParam.nfcauth_config.nfcauth_cards[index].lat = 0;
+        gConfigParam.nfcauth_config.nfcauth_cards[index].lon = 0;
+        gConfigParam.nfcauth_config.nfcauth_cards[index].lat_lon_valid = 0;
+        gConfigParam.nfcauth_config.nfcauth_cards[index].radius = 0;
+        strcpy(gConfigParam.nfcauth_config.nfcauth_cards[index].start_time, "");
+        strcpy(gConfigParam.nfcauth_config.nfcauth_cards[index].end_time, "");
+        gConfigParam.nfcauth_config.nfcauth_cards[index].time_valid = 0;
+        gConfigParam.nfcauth_config.nfcauth_cards[index].unlock_times = 0;
 
-        LOG_INF("%s=>PSET,%s", __func__, g_device_cmd_config.nfcauth_cards[index].nfc_no);
+        LOG_INF("%s=>PSET,%s", __func__, gConfigParam.nfcauth_config.nfcauth_cards[index].nfc_no);
 
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
         return BLE_DATA_TYPE_AT_CMD;
@@ -2702,8 +2602,8 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
         /* 删除所有已授权卡号 */
         if (strcmp(msg->parm[2], "ALL") == 0)
         {
-            memset(g_device_cmd_config.nfcauth_cards, 0, sizeof(g_device_cmd_config.nfcauth_cards));
-            g_device_cmd_config.nfcauth_card_count = 0;
+            memset(gConfigParam.nfcauth_config.nfcauth_cards, 0, sizeof(gConfigParam.nfcauth_config.nfcauth_cards));
+            gConfigParam.nfcauth_config.nfcauth_card_count = 0;
             LOG_INF("%s=>DEL ALL", __func__);
             msg->resp_length = snprintf(msg->resp_msg, remaining, "NFC Delete ALL Success.");
             return BLE_DATA_TYPE_AT_CMD;
@@ -2712,22 +2612,22 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
         else
         {
             found = 0;
-            for (i = 0; i < g_device_cmd_config.nfcauth_card_count; i++)
+            for (i = 0; i < gConfigParam.nfcauth_config.nfcauth_card_count; i++)
             {
-                if (strcmp(g_device_cmd_config.nfcauth_cards[i].nfc_no, msg->parm[2]) == 0)
+                if (strcmp(gConfigParam.nfcauth_config.nfcauth_cards[i].nfc_no, msg->parm[2]) == 0)
                 {
                     found = 1;
                     /* 将后面的卡前移，覆盖被删除的卡 */
-                    for (index = i; index < g_device_cmd_config.nfcauth_card_count - 1; index++)
+                    for (index = i; index < gConfigParam.nfcauth_config.nfcauth_card_count - 1; index++)
                     {
-                        memcpy(&g_device_cmd_config.nfcauth_cards[index],
-                               &g_device_cmd_config.nfcauth_cards[index + 1],
+                        memcpy(&gConfigParam.nfcauth_config.nfcauth_cards[index],
+                               &gConfigParam.nfcauth_config.nfcauth_cards[index + 1],
                                sizeof(NfcAuthCard));
                     }
                     /* 清空最后一个位置 */
-                    memset(&g_device_cmd_config.nfcauth_cards[g_device_cmd_config.nfcauth_card_count - 1],
+                    memset(&gConfigParam.nfcauth_config.nfcauth_cards[gConfigParam.nfcauth_config.nfcauth_card_count - 1],
                            0, sizeof(NfcAuthCard));
-                    g_device_cmd_config.nfcauth_card_count--;
+                    gConfigParam.nfcauth_config.nfcauth_card_count--;
                     break;
                 }
             }
@@ -2751,42 +2651,42 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
         /* 查询所有已设置卡号列表 */
         if (msg->parm_count == 1)
         {
-            for (i = 0; i < g_device_cmd_config.nfcauth_card_count; i++)
+            for (i = 0; i < gConfigParam.nfcauth_config.nfcauth_card_count; i++)
             {
-                if (i == g_device_cmd_config.nfcauth_card_count - 1)
+                if (i == gConfigParam.nfcauth_config.nfcauth_card_count - 1)
                 {
                     temp_len += snprintf(temp_buf + temp_len, sizeof(temp_buf) - temp_len,
-                                    "%s", g_device_cmd_config.nfcauth_cards[i].nfc_no);
+                                    "%s", gConfigParam.nfcauth_config.nfcauth_cards[i].nfc_no);
                 }
                 else
                 {
                     temp_len += snprintf(temp_buf + temp_len, sizeof(temp_buf) - temp_len,
-                                    "%s;", g_device_cmd_config.nfcauth_cards[i].nfc_no);
+                                    "%s;", gConfigParam.nfcauth_config.nfcauth_cards[i].nfc_no);
                 }
             }
 
             msg->resp_length = snprintf(msg->resp_msg, remaining, "%s", temp_buf);
-            LOG_INF("%s=>CHECK,COUNT=%d", __func__, g_device_cmd_config.nfcauth_card_count);
+            LOG_INF("%s=>CHECK,COUNT=%d", __func__, gConfigParam.nfcauth_config.nfcauth_card_count);
             return BLE_DATA_TYPE_AT_CMD;
         }
         /* 查询指定卡号的详细权限信息 */
         else if (msg->parm_count == 2)
         {
             found = 0;
-            for (i = 0; i < g_device_cmd_config.nfcauth_card_count; i++)
+            for (i = 0; i < gConfigParam.nfcauth_config.nfcauth_card_count; i++)
             {
-                if (strcmp(g_device_cmd_config.nfcauth_cards[i].nfc_no, msg->parm[2]) == 0)
+                if (strcmp(gConfigParam.nfcauth_config.nfcauth_cards[i].nfc_no, msg->parm[2]) == 0)
                 {
                     found = 1;
                     msg->resp_length = snprintf(msg->resp_msg, remaining,
                         "RETURN_%s,%d,%d,%u,%s,%s,%u",
-                        g_device_cmd_config.nfcauth_cards[i].nfc_no,
-                        g_device_cmd_config.nfcauth_cards[i].lat,
-                        g_device_cmd_config.nfcauth_cards[i].lon,
-                        g_device_cmd_config.nfcauth_cards[i].radius,
-                        g_device_cmd_config.nfcauth_cards[i].start_time,
-                        g_device_cmd_config.nfcauth_cards[i].end_time,
-                        g_device_cmd_config.nfcauth_cards[i].unlock_times);
+                        gConfigParam.nfcauth_config.nfcauth_cards[i].nfc_no,
+                        gConfigParam.nfcauth_config.nfcauth_cards[i].lat,
+                        gConfigParam.nfcauth_config.nfcauth_cards[i].lon,
+                        gConfigParam.nfcauth_config.nfcauth_cards[i].radius,
+                        gConfigParam.nfcauth_config.nfcauth_cards[i].start_time,
+                        gConfigParam.nfcauth_config.nfcauth_cards[i].end_time,
+                        gConfigParam.nfcauth_config.nfcauth_cards[i].unlock_times);
                     LOG_INF("%s=>CHECK,%s", __func__, msg->parm[2]);
                     return BLE_DATA_TYPE_AT_CMD;
                 }
@@ -2924,7 +2824,7 @@ static int bkey_cmd_handler(at_cmd_struc* msg)
             return BLE_DATA_TYPE_AT_CMD;
         }
 
-        strcpy(g_device_cmd_config.bt_key, default_key);
+        strcpy(gConfigParam.bkey_config.bt_key, default_key);
         LOG_INF("%s=>RESET to default key", __func__);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "Key reset success.");
         return BLE_DATA_TYPE_AT_CMD;
@@ -2967,7 +2867,7 @@ static int bkey_cmd_handler(at_cmd_struc* msg)
         }
 
         /* 验证旧密钥是否正确 */
-        if (strcmp(g_device_cmd_config.bt_key, msg->parm[1]) != 0)
+        if (strcmp(gConfigParam.bkey_config.bt_key, msg->parm[1]) != 0)
         {
             LOG_INF("%s=>old key mismatch", __func__);
             goto invalid_key;
@@ -2982,8 +2882,8 @@ static int bkey_cmd_handler(at_cmd_struc* msg)
         }
 
         /* 更新密钥 */
-        strcpy(g_device_cmd_config.bt_key, msg->parm[2]);
-        LOG_INF("%s=>key updated:%s", __func__, g_device_cmd_config.bt_key);
+        strcpy(gConfigParam.bkey_config.bt_key, msg->parm[2]);
+        LOG_INF("%s=>key updated:%s", __func__, gConfigParam.bkey_config.bt_key);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "Key update success.");
         return BLE_DATA_TYPE_AT_CMD;
     }
@@ -3042,7 +2942,7 @@ static int bunlock_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 验证密钥是否正确 */
-    if (strcmp(g_device_cmd_config.bt_key, msg->parm[1]) != 0)
+    if (strcmp(gConfigParam.bkey_config.bt_key, msg->parm[1]) != 0)
     {
         LOG_INF("%s=>key mismatch", __func__);
         goto key_error;
@@ -3117,7 +3017,7 @@ static int block_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 验证密钥是否正确 */
-    if (strcmp(g_device_cmd_config.bt_key, msg->parm[1]) != 0)
+    if (strcmp(gConfigParam.bkey_config.bt_key, msg->parm[1]) != 0)
     {
         LOG_INF("%s=>key mismatch", __func__);
         goto key_error;
@@ -3277,7 +3177,7 @@ static int modeset_cmd_handler(at_cmd_struc* msg)
         // 解析长续航模式参数
         param_work_mode_config.long_battery.reporting_interval_min = atoi(msg->parm[2]);
         // 设置长续航模式参数
-        if (set_long_battery_params(&g_device_cmd_config.workmode_config,
+        if (set_long_battery_params(&gConfigParam.device_workmode_config.workmode_config,
             param_work_mode_config.long_battery.reporting_interval_min, msg->parm[3]) < 0)
         {
             LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
@@ -3304,7 +3204,7 @@ static int modeset_cmd_handler(at_cmd_struc* msg)
         param_work_mode_config.intelligent.sleep_switch = atoi(msg->parm[6]);                 // 睡眠开关（0-2）
 
         // 设置智能模式参数
-        if (set_intelligent_params(&g_device_cmd_config.workmode_config,
+        if (set_intelligent_params(&gConfigParam.device_workmode_config.workmode_config,
             param_work_mode_config.intelligent.stop_status_interval_sec,
             param_work_mode_config.intelligent.land_status_interval_sec,
             param_work_mode_config.intelligent.land_status_interval_dis,

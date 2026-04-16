@@ -240,7 +240,7 @@ static int cmd_set_time(const struct shell *sh, size_t argc, char **argv)
         return ret;
     }
 
-    if (g_device_cmd_config.workmode_config.current_mode == MY_MODE_LONG_LIFE)
+    if (gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_LONG_LIFE)
     {
         my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_RESET_LTE_TIMER);
     }
@@ -282,7 +282,7 @@ static int cmd_modeset(const struct shell *sh, size_t argc, char **argv)
     uint32_t report_interval, static_int, land_int, land_distance, sea_int;
     uint8_t sleep_sw;
 
-    p_workmode = &g_device_cmd_config.workmode_config;
+    p_workmode = &gConfigParam.device_workmode_config.workmode_config;
 
     /* 第一步：解析模式标识（mode_flag），校验是否为有效数字 */
     mode_flag = strtoul(argv[1], &endptr, 10);
@@ -942,7 +942,7 @@ static int cmd_buzzer_test(const struct shell *sh, size_t argc, char **argv)
 static int cmd_nfctrig_test(const struct shell *sh, size_t argc, char **argv)
 {
     int len;
-    uint8_t card_index = 0; 
+    uint8_t card_index = 0;
     uint16_t ret = 0;
 
     if (argc < 2)
@@ -963,7 +963,7 @@ static int cmd_nfctrig_test(const struct shell *sh, size_t argc, char **argv)
     ret = run_nfc_cmd(argv[1], &card_index);
     if (ret)
     {
-        MY_LOG_INF("Command executed success: cmd_type:%d; command:%s", ret, g_device_cmd_config.nfctrig_table.nfctrig_rule[card_index].nfctrig_command);
+        MY_LOG_INF("Command executed success: cmd_type:%d; command:%s", ret, gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[card_index].nfctrig_command);
     }
     else
     {
@@ -986,7 +986,7 @@ static int cmd_nfctrig_test(const struct shell *sh, size_t argc, char **argv)
 static int cmd_nfc_swip_test(const struct shell *sh, size_t argc, char **argv)
 {
     int len;
-    uint8_t card_index = 0; 
+    uint8_t card_index = 0;
     uint16_t ret = 0;
 
     if (argc < 2)

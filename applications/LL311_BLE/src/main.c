@@ -289,7 +289,7 @@ void switch_work_mode(MY_WORK_MODE mode)
     lte_boot_reason_t boot_reason;
 
     // 当前模式与目标模式相同，无需切换
-    if (g_device_cmd_config.workmode_config.current_mode == mode)
+    if (gConfigParam.device_workmode_config.workmode_config.current_mode == mode)
     {
         return;
     }
@@ -320,14 +320,14 @@ void switch_work_mode(MY_WORK_MODE mode)
     set_lte_boot_reason(boot_reason);
 
     /* 切换工作模式 */
-    g_device_cmd_config.workmode_config.current_mode = mode;
+    gConfigParam.device_workmode_config.workmode_config.current_mode = mode;
     my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_WORK_MODE_SWITCH);
 
     snprintf(buf, sizeof(buf), "%d", mode);
     // 发送工作模式切换命令给LTE模块
     lte_send_command("MODESET", buf);
 
-    MY_LOG_INF("Work mode switch request sent: %d", g_device_cmd_config.workmode_config.current_mode);
+    MY_LOG_INF("Work mode switch request sent: %d", gConfigParam.device_workmode_config.workmode_config.current_mode);
 }
 
 /*********************************************************************
@@ -342,7 +342,7 @@ void switch_work_mode(MY_WORK_MODE mode)
 void awaken_lte_timer_callback(void *timer)
 {
     /* 长续航模式下才需要去重置LTE定时器 */
-    if (g_device_cmd_config.workmode_config.current_mode == MY_MODE_LONG_LIFE)
+    if (gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_LONG_LIFE)
     {
         my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_RESET_LTE_TIMER);
     }
@@ -425,8 +425,8 @@ void set_reset_lte_timer(void)
     current_time = my_get_system_time_sec();
 
     /* timer_interval不可能为0 */
-    timer_interval = calculate_remaining_seconds(g_device_cmd_config.workmode_config.long_battery.start_time,
-                        g_device_cmd_config.workmode_config.long_battery.reporting_interval_min, current_time);
+    timer_interval = calculate_remaining_seconds(gConfigParam.device_workmode_config.workmode_config.long_battery.start_time,
+                        gConfigParam.device_workmode_config.workmode_config.long_battery.reporting_interval_min, current_time);
 
     MY_LOG_INF("current_time:%llu,timer_interval:%d", current_time, timer_interval);
 
@@ -549,17 +549,17 @@ void handle_verify_unlock(ble_rsp_result_t *result)
 
     // 判断是否在允许半径内
     if (!is_point_in_circle(lat_value, lon_value,
-                            g_device_cmd_config.nfcauth_cards[g_nfc_card_index].lat,
-                            g_device_cmd_config.nfcauth_cards[g_nfc_card_index].lon,
-                            g_device_cmd_config.nfcauth_cards[g_nfc_card_index].radius))
+                            gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].lat,
+                            gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].lon,
+                            gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].radius))
     {
         LOG_INF("device is out of allowed area");
         return;
     }
     // 若卡的次数有限,需要消耗次数(-1为无限次数)
-    if (g_device_cmd_config.nfcauth_cards[g_nfc_card_index].unlock_times > 0)
+    if (gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].unlock_times > 0)
     {
-        g_device_cmd_config.nfcauth_cards[g_nfc_card_index].unlock_times--;
+        gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].unlock_times--;
     }
     // 启动开锁操作
     my_send_msg(MOD_MAIN, MOD_CTRL, MY_MSG_CTRL_OPENLOCKING);
@@ -697,11 +697,11 @@ int main(void)
                 break;
 
             case MY_MSG_CTRL_KEY_LONG_PRESS:
-                if (g_device_cmd_config.workmode_config.current_mode == MY_MODE_SHUTDOWN)
+                if (gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_SHUTDOWN)
                 {
                     /* 关机模式下长按唤醒 */
                     MY_LOG_INF("KEY EVENT: Long press detected in SHUTDOWN mode, waking up...");
-                    g_device_cmd_config.workmode_config.current_mode = MY_MODE_SMART;
+                    gConfigParam.device_workmode_config.workmode_config.current_mode = MY_MODE_SMART;
                     MY_LOG_INF("System waken up, entering SMART mode");
                     handle_smart_mode();
                 }
@@ -714,13 +714,13 @@ int main(void)
             case MY_MSG_CTRL_SHUTDOWN_REQUEST:
                 MY_LOG_INF("Shutdown request received, entering SHUTDOWN mode");
                 /* 切换到关机模式 */
-                g_device_cmd_config.workmode_config.current_mode = MY_MODE_SHUTDOWN;
+                gConfigParam.device_workmode_config.workmode_config.current_mode = MY_MODE_SHUTDOWN;
                 MY_LOG_INF("System shutdown complete. Press FUN_KEY for 2s to wakeup.");
                 break;
 
             case MY_MSG_WORK_MODE_SWITCH:
                 /* 根据当前切换的模式处理对应的逻辑 */
-                switch (g_device_cmd_config.workmode_config.current_mode)
+                switch (gConfigParam.device_workmode_config.workmode_config.current_mode)
                 {
                     case MY_MODE_LONG_LIFE:
                         MY_LOG_INF("Switched to LONG_LIFE mode");
@@ -780,9 +780,9 @@ int main(void)
                 }
                 break;
             case MY_MSG_SHUTDOWN:
-                if (g_device_cmd_config.pwsave_sw == 1)
+                if (gConfigParam.pwsave_config.pwsave_sw == 1)
                 {
-                    g_device_cmd_config.pwsave_sw = 0; // 低功耗运输状态关闭
+                    gConfigParam.pwsave_config.pwsave_sw = 0; // 低功耗运输状态关闭
                     switch_work_mode(MY_MODE_SHUTDOWN); // 切换到关机模式
                 }
                 break;

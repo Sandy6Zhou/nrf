@@ -909,7 +909,7 @@ void my_ble_updata_adv_param(uint16_t ms_data)
     bt_le_ext_adv_update_param(no_con_adv_obj_hdl[GOOGLE_ADV_TYPE].handle, &new_param);
 
     // 重新启动非连接广告,使用设备命令配置中的tag_sw值
-    my_no_con_start_adv(g_device_cmd_config.tag_sw);
+    my_no_con_start_adv(gConfigParam.tag_config.tag_sw);
 }
 
 /********************************************************************
@@ -1174,7 +1174,7 @@ int my_ble_core_start(void)
     if (err) return err;
 
     // 初始状态：根据tag_sw判断是否开启不可连接广播
-    my_no_con_start_adv(g_device_cmd_config.tag_sw);
+    my_no_con_start_adv(gConfigParam.tag_config.tag_sw);
 
     start_adv(&con_adv_obj_hdl, true);
 

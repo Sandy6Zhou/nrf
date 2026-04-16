@@ -1138,7 +1138,7 @@ static int my_lte_handle_cmd(char *data)
     msg.pData = resp_msg;
     msg.DataLen = len;
     my_send_msg_data(MOD_LTE,MOD_LTE, &msg);
-    
+
     return 0;
 }
 
@@ -1225,7 +1225,7 @@ out:
 **函数名称:  my_lte_handle_location_rsp
 **入口参数:  result   --- 接收应答结构体
 **出口参数:  无
-**函数功能:  发送消息给MAIN线程去处理开锁相关规则：     
+**函数功能:  发送消息给MAIN线程去处理开锁相关规则：
 **返 回 值:  0      --- 处理完成
 *********************************************************************/
 //处理获取经纬度
@@ -1261,7 +1261,7 @@ static int my_lte_handle_location_rsp(ble_rsp_result_t *result)
 **返 回 值:  0 表示解析成功，-1 表示解析失败
 **示例:
 **   输入: "LOCATION=OK,seq,N22345678,E113456789"
-**   输出: type=BLE_RSP_LOCATION,cmd_name="LOCATION", 
+**   输出: type=BLE_RSP_LOCATION,cmd_name="LOCATION",
 **         params="OK,seq,N22345678,E113456789", param_count=4
 *********************************************************************/
 int ble_rsp_parse(char *rsp_str, ble_rsp_result_t *result)
@@ -1320,7 +1320,7 @@ int ble_rsp_parse(char *rsp_str, ble_rsp_result_t *result)
     {
         result->param_count = 0;
     }
-    else 
+    else
     {
         result->param_count = 1;
 
@@ -1370,7 +1370,7 @@ static int my_ble_handle(char *data)
         case BLE_RSP_LOCATION:
             ret = my_lte_handle_location_rsp(&rsp_result);
             break;
-            
+
         case BLE_RSP_LED:
             break;
 
@@ -1439,14 +1439,14 @@ void my_verify_openlock(void)
     {
         //再验证是否在电子围栏范围内
         if (is_point_in_circle(g_location_point.lat, g_location_point.lon,
-            g_device_cmd_config.nfcauth_cards[g_nfc_card_index].lat,
-            g_device_cmd_config.nfcauth_cards[g_nfc_card_index].lon,
-            g_device_cmd_config.nfcauth_cards[g_nfc_card_index].radius))
+            gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].lat,
+            gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].lon,
+            gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].radius))
         {
             // 若卡的次数有限,需要消耗次数(-1为无限次数)
-            if (g_device_cmd_config.nfcauth_cards[g_nfc_card_index].unlock_times > 0)
+            if (gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].unlock_times > 0)
             {
-                g_device_cmd_config.nfcauth_cards[g_nfc_card_index].unlock_times--;
+                gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].unlock_times--;
             }
             // 启动开锁操作
             my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_OPENLOCKING);

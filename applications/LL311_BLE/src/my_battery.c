@@ -263,7 +263,7 @@ void my_battery_show_chgled()
 
         my_battery_update_state();      // 更新电池状态
         // 检查 LED 显示功能是否启用
-        if (g_device_cmd_config.led_display == 1)
+        if (gConfigParam.led_config.led_display == 1)
         {
             g_chg_led_ctrl.time_count = 0;  // 重置充电LED控制定时器的时间计数
             // 启动充电LED控制定时器，立即执行一次，然后以 CHG_CTRL_LED_MS 为周期重复执行
@@ -768,7 +768,7 @@ void my_battery_show()
     }
 
     // 检查 LED 显示功能是否启用
-    if (g_device_cmd_config.led_display == 1)
+    if (gConfigParam.led_config.led_display == 1)
     {
         //当按键重复按下时，重新开始定时器
         g_batt_led_ctrl.time_count = 0;  // 重置时间计数器
