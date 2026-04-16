@@ -61,7 +61,7 @@ typedef struct /* 存储的IMEI信息 */
 typedef struct /* 存储的蓝牙发射功率参数 */
 {
     uint8_t flag;    /* 参数有效标志 */
-    int8_t tx_power; /* 发射功率(dBm)，范围: -8 ~ +8 */
+    int8_t tx_power; /* 发射功率(dBm)，范围: -10 ~ +7(NRF54L15 QFN封装) */
 } BleTxPower_t;
 
 /* 蓝牙日志模块ID定义 */

@@ -1670,20 +1670,20 @@ static int bt_crfpwr_cmd_handler(at_cmd_struc* msg)
     /* 解析A参数 */
     a_value = atoi(msg->parm[1]);
     if (a_value != -8 && a_value != -4 && a_value != 0 && a_value != 3
-        && a_value != 5 && a_value != 7 && a_value != 12)
+        && a_value != 5 && a_value != 7)
     {
         LOG_INF("%s=>invalid A param: %s", __func__, msg->parm[1]);
         goto param_invalid;
     }
-    g_device_cmd_config.bt_crfpwr = (int8_t)a_value;
+
+    gConfigParam.ble_tx_power.tx_power = (int8_t)a_value;
+    ble_set_tx_power(gConfigParam.ble_tx_power.tx_power);
 
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
     /* 所有参数验证通过,生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
     LOG_INF("BT_CRFPWR: A=%d", g_device_cmd_config.bt_crfpwr);
-
-    //TODO 具体逻辑处理
 
     return BLE_DATA_TYPE_AT_CMD;
 

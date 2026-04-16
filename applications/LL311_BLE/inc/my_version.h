@@ -12,7 +12,14 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260410"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260413"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.13
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:        增加蓝牙功率设置指令的功能逻辑实现
+***/
+
+//#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260410"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.10
 ** 作    者:        吴楚庆 (wuchuqing@jimiiot.com)

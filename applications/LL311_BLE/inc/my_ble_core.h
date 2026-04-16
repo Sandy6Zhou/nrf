@@ -97,7 +97,7 @@ bool ble_is_connected(void);
 bool ble_is_data_channel_ready(void);
 /********************************************************************
 **函数名称:  ble_set_tx_power
-**入口参数:  tx_power ---        发射功率(dBm)，范围: -40 ~ +8
+**入口参数:  tx_power ---        发射功率(dBm)，范围: -10 ~ +7(NRF54L15 QFN封装)
 **出口参数:  无
 **函数功能:  设置蓝牙发射功率
 **返 回 值:  0表示成功，负值表示失败

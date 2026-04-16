@@ -301,7 +301,7 @@ const uint8_t *bt_get_mac_addr(void)
 
 /********************************************************************
 **函数名称:  ble_set_tx_power
-**入口参数:  tx_power ---        发射功率(dBm)，范围: -40 ~ +8
+**入口参数:  tx_power ---        发射功率(dBm)，范围: -10 ~ +7(NRF54L15 QFN封装)
 **出口参数:  无
 **函数功能:  设置蓝牙发射功率
 **返 回 值:  0表示成功，负值表示失败
@@ -313,20 +313,21 @@ int ble_set_tx_power(int8_t tx_power)
     struct net_buf *buf, *rsp = NULL;
 
     /* 限制功率范围: nRF54L15 支持 -40 ~ +8 dBm */
-    if (tx_power < -40)
+    if (tx_power < -10)
     {
-        tx_power = -40;
+        tx_power = -10;
     }
-    else if (tx_power > 8)
+    else if (tx_power > 7)
     {
-        tx_power = 8;
+        tx_power = 7;
     }
 
     /* 使用 Nordic VS HCI 命令设置发射功率
      * Opcode: 0xFC0F (VS_WRITE_TX_POWER_LEVEL)
      * 参数: handle_type(1B) + handle(2B) + tx_power_level(1B)
+     * bt_hci_cmd_create(0xFC0F, 4)函数已弃用。替换为bt_hci_cmd_alloc(K_FOREVER)
      */
-    buf = bt_hci_cmd_create(0xFC0F, 4);
+    buf = bt_hci_cmd_alloc(K_FOREVER);
     if (!buf)
     {
         LOG_ERR("Failed to create HCI command buffer");
