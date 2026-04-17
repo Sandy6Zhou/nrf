@@ -25,6 +25,8 @@
 #define UUID_MAX_LEN                16      // UUID最大存储长度
 #define ADV_CACHE_MAX_NUM           10      // ADV数据缓存最大数量
 #define TAG_RESULT_MAX_NUM          50      // 最大存储结果数量,后续根据实际情况调整
+#define TRAN_MAC_ADV_DATA_MAX_LEN   31      // 蓝牙广播数据最大长度（Legacy ADV）
+#define TRAN_MAC_MAX_NUM            20      // 透传MAC地址最大数量
 
 /* 扫描工作模式枚举 */
 typedef enum
@@ -105,6 +107,29 @@ typedef struct
     tag_scan_result_t result;
 } tag_scan_process_msg_t;
 
+/* 透传MAC扫描结果项 */
+typedef struct
+{
+    bt_addr_le_t addr;
+    uint8_t adv_data[TRAN_MAC_ADV_DATA_MAX_LEN];
+    uint8_t adv_data_len;
+} tran_mac_result_item_t;
+
+/* 透传MAC扫描结果表 */
+typedef struct
+{
+    tran_mac_result_item_t items[TRAN_MAC_MAX_NUM];
+    uint8_t count;
+} tran_mac_result_table_t;
+
+/* 透传MAC处理消息结构 */
+typedef struct
+{
+    bt_addr_le_t addr;
+    uint8_t adv_data[TRAN_MAC_ADV_DATA_MAX_LEN];
+    uint8_t adv_data_len;
+} tran_mac_process_msg_t;
+
 /********************************************************************
 **函数名称:  my_scan_init
 **入口参数:  无
@@ -157,5 +182,41 @@ int my_tag_prefix_add(const char *prefix);
 **注意事项:  此函数必须在BLE线程的消息处理循环中调用
 *********************************************************************/
 void my_scan_msg_handler(MSG_S *msg_ptr);
+
+/********************************************************************
+**函数名称:  my_tran_mac_check
+**入口参数:  addr          ---        待检查的蓝牙地址指针
+**出口参数:  无
+**函数功能:  检查指定蓝牙地址是否在透传MAC地址列表中
+**返 回 值:  true表示匹配成功，false表示不匹配
+*********************************************************************/
+bool my_tran_mac_check(const bt_addr_le_t *addr);
+
+/********************************************************************
+**函数名称:  my_tran_mac_add
+**入口参数:  addr          ---        要添加的蓝牙地址指针
+**出口参数:  无
+**函数功能:  添加透传MAC地址到列表
+**返 回 值:  0表示成功，-EEXIST表示已存在,-ENOMEM表示没有空间
+*********************************************************************/
+int my_tran_mac_add(const bt_addr_le_t *addr);
+
+/********************************************************************
+**函数名称:  my_tran_mac_del
+**入口参数:  addr          ---        要删除的蓝牙地址指针
+**出口参数:  无
+**函数功能:  从列表中删除指定透传MAC地址
+**返 回 值:  0表示成功，-ENOENT表示未找到
+*********************************************************************/
+int my_tran_mac_del(const bt_addr_le_t *addr);
+
+/********************************************************************
+**函数名称:  my_tran_mac_del_all
+**入口参数:  无
+**出口参数:  无
+**函数功能:  清空所有透传MAC地址
+**返 回 值:  无
+*********************************************************************/
+void my_tran_mac_del_all(void);
 
 #endif /* _MY_BLE_SCAN_H_ */

@@ -244,6 +244,7 @@ typedef enum
 
     /* 扫描处理程序消息 */
     MY_MSG_TAG_SCAN_PROCESS,    /* TAG扫描数据处理消息 */
+    MY_MSG_TRAN_MAC_PROCESS,    /* 透传MAC扫描数据处理消息 */
     MY_MSG_SCAN_INTERVAL,       /* 周期扫描定时器消息 */
     MY_MSG_SCAN_LENGTH,         /* 单次扫描时长定时器消息 */
     MY_MSG_SCAN_UPLOAD,         /* 上报间隔定时器消息 */
@@ -264,12 +265,12 @@ typedef enum
 #include "my_battery.h"
 // #include "my_wdt.h"
 #include "my_tool.h"
-#include "my_zms_param.h"
 #include "my_ble_app.h"
 #include "my_cmd_setting.h"
 #include "my_dfu_jimi.h"
 #include "my_ble_log.h"
 #include "my_pm.h"
 #include "my_ble_scan.h"
+#include "my_zms_param.h"
 
 #endif /* _MY_COMMON_H_ */

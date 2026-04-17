@@ -15,6 +15,16 @@
 #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260417"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.17
+** 作    者:       周森达 (zhousenda@jimiiot.com)
+** 修改内容:        1.新增BT_PARMAC指令，支持透传MAC的添加、删除、清空和查询
+**                 2.新增BLE透传MAC功能，支持按配置的MAC地址筛选目标设备广播数据
+**                 3.在扫描回调中增加透传MAC匹配逻辑，将匹配设备的原始ADV数据缓存并通过BLE线程异步处理
+**                 4.新增透传结果表管理与MACINFO上报机制
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260417"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.17
 ** 作    者:        曹阳 (caoyang@jimiiot.com)
 ** 修改内容:        1.增加BLE启动向4G拿UTC时间串口指令
 **                  2.增加4G通过串口发送进入升级的指令给蓝牙

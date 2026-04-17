@@ -66,6 +66,7 @@ static int version_cmd_handler(at_cmd_struc* msg);
 static int modeset_cmd_handler(at_cmd_struc* msg);
 static int cunlock_cmd_handler(at_cmd_struc* msg);
 static int clock_cmd_handler(at_cmd_struc* msg);
+static int bt_parmac_cmd_handler(at_cmd_struc* msg);
 
 static const at_cmd_attr_t at_cmd_attr_table[] =
 {
@@ -100,6 +101,7 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"MODESET",        modeset_cmd_handler},
     {"CUNLOCK",        cunlock_cmd_handler},
     {"CLOCK",          clock_cmd_handler},
+    {"BT_PARMAC",      bt_parmac_cmd_handler},
 };
 
 static const char* lte_cmd_attr_table[] =
@@ -3663,4 +3665,165 @@ static int clock_cmd_handler(at_cmd_struc *msg)
 
     // 需要异步回复
     return 2;
+}
+
+/********************************************************************
+**函数名称:  bt_parmac_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针
+**出口参数:  无
+**函数功能:  处理透传MAC地址管理指令
+**           支持：ADD/DEL/CHECK
+**指令格式:  BT_PARMAC,ADD,[MAC1]...[MAC6]#
+**           BT_PARMAC,DEL,[MAC]#
+**           BT_PARMAC,DEL,ALL#
+**           BT_PARMAC,CHECK#
+**参数说明:  [MAC1]...[MAC6] - 待添加的MAC地址，支持同时添加1~6个
+**           [MAC]           - 待删除的指定MAC地址
+**           ALL             - 删除全部已配置MAC地址
+**返 回 值:  BLE_DATA_TYPE_AT_CMD
+*********************************************************************/
+static int bt_parmac_cmd_handler(at_cmd_struc* msg)
+{
+    uint16_t remaining;
+    uint8_t hex_buf[6];
+    uint8_t reversed_buf[6];
+    char mac_str[13];
+    bt_addr_le_t temp_addr;
+    int i, add_count;
+
+    remaining = sizeof(msg->resp_msg);
+
+    if (msg->parm_count < 1)
+    {
+        goto param_invalid;
+    }
+
+    // BT_PARMAC,ADD,[MAC1],[MAC2]...[MAC6]#
+    if (strcmp(msg->parm[1], "ADD") == 0)
+    {
+        add_count = msg->parm_count - 1;  // 减去"ADD"自身
+        if (add_count < 1 || add_count > 6)
+        {
+            goto param_invalid;
+        }
+
+        // 检查总容量是否足够
+        if (gConfigParam.bparmac_config.bt_parmac_mac_count + add_count > TRAN_MAC_MAX_NUM)
+        {
+            LOG_INF("max count exceeded, current=%d, add=%d",
+                    gConfigParam.bparmac_config.bt_parmac_mac_count, add_count);
+            goto param_invalid;
+        }
+
+        for (i = 0; i < add_count; i++)
+        {
+            // 将MAC字符串转换为HEX数组
+            if (!macstr_to_hex(msg->parm[2 + i], hex_buf))
+            {
+                LOG_INF("invalid MAC: %s", msg->parm[2 + i]);
+                goto param_invalid;
+            }
+            // 字节序反转（大端转小端）
+            char_array_reverse(hex_buf, sizeof(hex_buf), reversed_buf, sizeof(reversed_buf));
+            memset(&temp_addr, 0, sizeof(temp_addr));
+            temp_addr.type = BT_ADDR_LE_PUBLIC;
+            memcpy(temp_addr.a.val, reversed_buf, 6);
+
+            if (my_tran_mac_add(&temp_addr) != 0)
+            {
+                LOG_WRN("duplicate mac or not enough space");
+            }
+        }
+
+        LOG_INF("ADD %d MACs, total: %d", add_count, gConfigParam.bparmac_config.bt_parmac_mac_count);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_ADD_OK", msg->parm[0]);
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+    else if (strcmp(msg->parm[1], "DEL") == 0)
+    {
+        if (msg->parm_count != 2)
+        {
+            goto param_invalid;
+        }
+
+        // BT_PARMAC,DEL,ALL#
+        if (strcmp(msg->parm[2], "ALL") == 0)
+        {
+            my_tran_mac_del_all();
+            LOG_INF("DEL ALL");
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_DEL_ALL_OK", msg->parm[0]);
+            return BLE_DATA_TYPE_AT_CMD;
+        }
+        // BT_PARMAC,DEL,[MAC]#
+        else
+        {
+            if (!macstr_to_hex(msg->parm[2], hex_buf))
+            {
+                goto param_invalid;
+            }
+            char_array_reverse(hex_buf, 6, reversed_buf, 6);
+            memset(&temp_addr, 0, sizeof(temp_addr));
+            temp_addr.type = BT_ADDR_LE_PUBLIC;
+            memcpy(temp_addr.a.val, reversed_buf, 6);
+
+            if (my_tran_mac_del(&temp_addr) == 0)
+            {
+                LOG_INF("DEL MAC success");
+                msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_DEL_OK", msg->parm[0]);
+                return BLE_DATA_TYPE_AT_CMD;
+            }
+            else
+            {
+                LOG_INF("DEL MAC not found");
+                goto param_invalid;
+            }
+        }
+    }
+    else if (strcmp(msg->parm[1], "CHECK") == 0)
+    {
+        // BT_PARMAC,CHECK#
+        if (msg->parm_count != 1)
+        {
+            goto param_invalid;
+        }
+
+        for (i = 0; i < gConfigParam.bparmac_config.bt_parmac_mac_count; i++)
+        {
+            snprintf(mac_str, sizeof(mac_str), "%02X%02X%02X%02X%02X%02X",
+                     gConfigParam.bparmac_config.bt_parmac_macs[i].a.val[5],
+                     gConfigParam.bparmac_config.bt_parmac_macs[i].a.val[4],
+                     gConfigParam.bparmac_config.bt_parmac_macs[i].a.val[3],
+                     gConfigParam.bparmac_config.bt_parmac_macs[i].a.val[2],
+                     gConfigParam.bparmac_config.bt_parmac_macs[i].a.val[1],
+                     gConfigParam.bparmac_config.bt_parmac_macs[i].a.val[0]);
+
+            if (i < gConfigParam.bparmac_config.bt_parmac_mac_count - 1)
+            {
+                msg->resp_length += snprintf(msg->resp_msg + msg->resp_length,
+                    RESP_STRING_LENGTH_MAX - msg->resp_length, "%s;", mac_str);
+            }
+            else
+            {
+                msg->resp_length += snprintf(msg->resp_msg + msg->resp_length,
+                    RESP_STRING_LENGTH_MAX - msg->resp_length, "%s", mac_str);
+            }
+        }
+
+        if (i == 0)
+        {
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "check not find any mac.");
+        }
+
+        LOG_INF("CHECK, count=%d", gConfigParam.bparmac_config.bt_parmac_mac_count);
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+    else
+    {
+        goto param_invalid;
+    }
+
+param_invalid:
+    LOG_INF("%s=>%s, param error or set fail", __func__, msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    return BLE_DATA_TYPE_AT_CMD;
 }

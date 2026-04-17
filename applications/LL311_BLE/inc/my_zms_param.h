@@ -262,6 +262,13 @@ typedef struct
     bool ble_ota_reboot;                  // 蓝牙OTA升级成功重启设备标志位
 } OtaConfig_t;
 
+typedef struct                              // 存储的透传mac地址配置数据
+{
+    uint8_t flag;                                   // 参数有效标志
+    bt_addr_le_t bt_parmac_macs[TRAN_MAC_MAX_NUM];  // 透传MAC地址列表，最多20个
+    uint8_t      bt_parmac_mac_count;               // 已配置MAC数量
+} BparmacConfig_t;
+
 typedef struct
 {
     lic_ff_struct               lic_ff;                     // 存储的LICENSE FF信息
@@ -292,6 +299,7 @@ typedef struct
     NfcauthConfig_t             nfcauth_config;             // NFC卡权限配置
     BkeyConfig_t                bkey_config;                // 蓝牙解锁密钥配置
     OtaConfig_t                 ota_config;                 // OTA升级相关配置
+    BparmacConfig_t             bparmac_config;             // 透传mac地址配置
 } ConfigParamStruct;
 
 extern ConfigParamStruct    gConfigParam;

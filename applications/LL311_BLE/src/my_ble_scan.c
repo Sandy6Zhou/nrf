@@ -29,6 +29,10 @@ static uint32_t s_cache_seq_counter;
 
 K_MSGQ_DEFINE(s_tag_scan_process_msgq, sizeof(tag_scan_process_msg_t), 16, 4);
 
+/* 透传MAC扫描结果表和消息队列 */
+static tran_mac_result_table_t s_tran_mac_result_table;
+K_MSGQ_DEFINE(s_tran_mac_process_msgq, sizeof(tran_mac_process_msg_t), 16, 4);
+
 /* 扫描参数（主动扫描模式）
  * 将 interval 设大、window 设小，可以大幅降低功耗
  */
@@ -42,8 +46,6 @@ static struct bt_le_scan_param s_scan_param = {
 
 /* 扫描回调结构 */
 static struct bt_le_scan_cb s_scan_cb;
-
-static void scan_trigger_upload(void);
 
 /********************************************************************
 **函数名称:  parse_scan_rsp_name
@@ -405,6 +407,7 @@ static void scan_recv_cb(const struct bt_le_scan_recv_info *info_ptr,
     uint8_t ff_temp[TAG_FF_DATA_MAX_LEN];
     uint8_t ff_len;
     tag_scan_process_msg_t process_msg;
+    tran_mac_process_msg_t tmac_msg;
     int err;
 
     // 只处理广播包和扫描响应包
@@ -424,13 +427,38 @@ static void scan_recv_cb(const struct bt_le_scan_recv_info *info_ptr,
     {
         // 处理广播包(ADV_IND)，解析厂商自定义FF数据
         ff_len = 0;
-        if (!parse_ff_data(buf_ptr, ff_temp, sizeof(ff_temp), &ff_len))
+        if (parse_ff_data(buf_ptr, ff_temp, sizeof(ff_temp), &ff_len))
         {
-            return;
+            memcpy(process_msg.result.ff_data, ff_temp, ff_len);
+            process_msg.result.ff_data_len = ff_len;
+
+            // 将处理后的消息放入消息队列，使用非阻塞方式
+            err = k_msgq_put(&s_tag_scan_process_msgq, &process_msg, K_NO_WAIT);
+            if (err)
+            {
+                // 消息队列已满或其他错误，直接返回
+                return;
+            }
+
+            // 发送消息到BLE线程处理
+            my_send_msg(MOD_BLE, MOD_BLE, MY_MSG_TAG_SCAN_PROCESS);
         }
 
-        memcpy(process_msg.result.ff_data, ff_temp, ff_len);
-        process_msg.result.ff_data_len = ff_len;
+        // 透传MAC功能：检查MAC是否匹配，匹配则复制广播数据入队
+        if (my_tran_mac_check(info_ptr->addr))
+        {
+            memset(&tmac_msg, 0, sizeof(tran_mac_process_msg_t));
+            bt_addr_le_copy(&tmac_msg.addr, info_ptr->addr);
+            // 复制广播数据（不含字节序翻转，按原始buf_ptr拷贝）
+            tmac_msg.adv_data_len = MIN(buf_ptr->len, TRAN_MAC_ADV_DATA_MAX_LEN);
+            memcpy(tmac_msg.adv_data, buf_ptr->data, tmac_msg.adv_data_len);
+
+            err = k_msgq_put(&s_tran_mac_process_msgq, &tmac_msg, K_NO_WAIT);
+            if (!err)
+            {
+                my_send_msg(MOD_BLE, MOD_BLE, MY_MSG_TRAN_MAC_PROCESS);
+            }
+        }
     }
     else
     {
@@ -445,19 +473,17 @@ static void scan_recv_cb(const struct bt_le_scan_recv_info *info_ptr,
                 sizeof(process_msg.result.name) - 1);
         // 解析扫描响应载荷数据
         parse_scan_rsp_payload(buf_ptr, &process_msg.result);
-    }
 
-    // 将处理后的消息放入消息队列，使用非阻塞方式
-    err = k_msgq_put(&s_tag_scan_process_msgq, &process_msg, K_NO_WAIT);
-    if (err)
-    {
-        // 消息队列已满或其他错误，直接返回
-        // LOG_INF("TAG scan msgq full, drop msg");
-        return;
-    }
+        // 将处理后的消息放入消息队列，使用非阻塞方式
+        err = k_msgq_put(&s_tag_scan_process_msgq, &process_msg, K_NO_WAIT);
+        if (err)
+        {
+            return;
+        }
 
-    // 发送消息到BLE线程处理
-    my_send_msg(MOD_BLE, MOD_BLE, MY_MSG_TAG_SCAN_PROCESS);
+        // 发送消息到BLE线程处理
+        my_send_msg(MOD_BLE, MOD_BLE, MY_MSG_TAG_SCAN_PROCESS);
+    }
 }
 
 /********************************************************************
@@ -762,6 +788,7 @@ static void scan_set_config_internal(uint8_t mode, uint32_t scan_interval,
 
     // 清空数据
     memset(&s_result_table, 0, sizeof(s_result_table));
+    memset(&s_tran_mac_result_table, 0, sizeof(s_tran_mac_result_table));
 
     // 更新配置
     s_scan_config.mode = (scan_mode_t)mode;
@@ -931,6 +958,97 @@ static void tag_scan_upload_data(void)
 }
 
 /********************************************************************
+**函数名称:  tran_mac_data_handle
+**入口参数:  msg_ptr       ---        透传MAC处理消息指针
+**出口参数:  无
+**函数功能:  处理透传MAC扫描数据，更新或添加到结果表
+**返 回 值:  无
+*********************************************************************/
+static void tran_mac_data_handle(tran_mac_process_msg_t *msg_ptr)
+{
+    uint8_t i;
+    tran_mac_result_item_t *item_ptr;
+
+    if (msg_ptr == NULL || msg_ptr->adv_data_len == 0)
+    {
+        return;
+    }
+
+    // 查找已存在的相同MAC，更新数据（取最新广播包）
+    for (i = 0; i < s_tran_mac_result_table.count; i++)
+    {
+        if (bt_addr_le_cmp(&s_tran_mac_result_table.items[i].addr, &msg_ptr->addr) == 0)
+        {
+            memcpy(s_tran_mac_result_table.items[i].adv_data, msg_ptr->adv_data, msg_ptr->adv_data_len);
+            s_tran_mac_result_table.items[i].adv_data_len = msg_ptr->adv_data_len;
+            return;
+        }
+    }
+
+    // 新增条目,s_tran_mac_result_table.count是永远小于TRAN_MAC_MAX_NUM,不存在溢出的情况
+    if (s_tran_mac_result_table.count < TRAN_MAC_MAX_NUM)
+    {
+        item_ptr = &s_tran_mac_result_table.items[s_tran_mac_result_table.count];
+        bt_addr_le_copy(&item_ptr->addr, &msg_ptr->addr);
+        memcpy(item_ptr->adv_data, msg_ptr->adv_data, msg_ptr->adv_data_len);
+        item_ptr->adv_data_len = msg_ptr->adv_data_len;
+        s_tran_mac_result_table.count++;
+    }
+}
+
+/********************************************************************
+**函数名称:  tran_mac_upload_data
+**入口参数:  无
+**出口参数:  无
+**函数功能:  上报透传MAC扫描数据到LTE模块，组包格式：MAC,数据长度,HEX
+**返 回 值:  无
+*********************************************************************/
+static void tran_mac_upload_data(void)
+{
+    uint8_t i, j;
+    int offset;
+    char mac_str[13];
+    char upload_msg[128] = {0};
+    tran_mac_result_item_t *item_ptr;
+
+    if (s_tran_mac_result_table.count == 0)
+    {
+        return;
+    }
+
+    for (i = 0; i < s_tran_mac_result_table.count; i++)
+    {
+        item_ptr = &s_tran_mac_result_table.items[i];
+        offset = 0;
+        memset(upload_msg, 0, sizeof(upload_msg));
+
+        // 将MAC地址转换为字符串格式
+        snprintf(mac_str, sizeof(mac_str), "%02X%02X%02X%02X%02X%02X",
+                 item_ptr->addr.a.val[5], item_ptr->addr.a.val[4],
+                 item_ptr->addr.a.val[3], item_ptr->addr.a.val[2],
+                 item_ptr->addr.a.val[1], item_ptr->addr.a.val[0]);
+
+        // 先拼接MAC和广播数据长度字段
+        offset += snprintf(upload_msg + offset, sizeof(upload_msg) - offset, "%s,%d,",
+                           mac_str, item_ptr->adv_data_len);
+
+        // 将广播数据逐字节转换为HEX字符串并拼接到消息尾部
+        for (j = 0; j < item_ptr->adv_data_len; j++)
+        {
+            offset += snprintf(upload_msg + offset, sizeof(upload_msg) - offset, "%02X",
+                               item_ptr->adv_data[j]);
+        }
+
+        lte_send_command("MACINFO", upload_msg);
+    }
+
+    LOG_INF("TRAN_MAC uploaded, count: %d", s_tran_mac_result_table.count);
+
+    // 上报完成后清空结果表
+    memset(&s_tran_mac_result_table, 0, sizeof(s_tran_mac_result_table));
+}
+
+/********************************************************************
 **函数名称:  scan_trigger_upload
 **入口参数:  无
 **出口参数:  无
@@ -961,6 +1079,9 @@ static void scan_trigger_upload(void)
 
     // 上报数据（lte_send_command会自动唤醒LTE）
     tag_scan_upload_data();
+
+    // 上报透传MAC数据
+    tran_mac_upload_data();
 }
 
 /********************************************************************
@@ -988,6 +1109,9 @@ int my_scan_init(void)
     memset(&s_result_table, 0, sizeof(s_result_table));
     memset(&s_adv_cache_table, 0, sizeof(s_adv_cache_table));
     s_cache_seq_counter = 0;
+
+    // 清空透传MAC结果表
+    memset(&s_tran_mac_result_table, 0, sizeof(s_tran_mac_result_table));
 
     // 注册扫描回调
     s_scan_cb.recv = scan_recv_cb;
@@ -1085,6 +1209,7 @@ int my_tag_prefix_add(const char *prefix)
 void my_scan_msg_handler(MSG_S *msg)
 {
     tag_scan_process_msg_t process_msg;
+    tran_mac_process_msg_t tmac_msg;
     uint16_t process_count;
 
     if (msg == NULL)
@@ -1108,6 +1233,20 @@ void my_scan_msg_handler(MSG_S *msg)
             }
             break;
 
+        case MY_MSG_TRAN_MAC_PROCESS:
+            // 从内部消息队列取出透传MAC数据，更新到结果表
+            process_count = 0;
+            while (k_msgq_get(&s_tran_mac_process_msgq, &tmac_msg, K_NO_WAIT) == 0)
+            {
+                tran_mac_data_handle(&tmac_msg);
+                process_count++;
+            }
+            if (process_count > 1)
+            {
+                LOG_INF("TRAN_MAC process drain count: %d", process_count);
+            }
+            break;
+
         case MY_MSG_SCAN_INTERVAL:
             // 周期扫描定时器消息
             if ((s_scan_config.mode == SCAN_MODE_PERIOD_CACHE ||
@@ -1128,6 +1267,9 @@ void my_scan_msg_handler(MSG_S *msg)
                 {
                     LOG_INF("Mode 1: Trigger data upload after scan");
                     tag_scan_upload_data();
+
+                    // 上报透传MAC数据
+                    tran_mac_upload_data();
                 }
                 s_scan_config.state = SCAN_STATE_IDLE;
             }
@@ -1172,6 +1314,9 @@ void my_scan_msg_handler(MSG_S *msg)
                             scan_stop_internal();
                         }
                         tag_scan_upload_data();
+
+                        // 上报透传MAC数据
+                        tran_mac_upload_data();
                     }
                     break;
 
@@ -1183,4 +1328,96 @@ void my_scan_msg_handler(MSG_S *msg)
         default:
             break;
     }
+}
+
+/********************************************************************
+**函数名称:  my_tran_mac_check
+**入口参数:  addr          ---        待检查的蓝牙地址指针
+**出口参数:  无
+**函数功能:  检查指定蓝牙地址是否在透传MAC地址列表中
+**返 回 值:  true表示匹配成功，false表示不匹配
+*********************************************************************/
+bool my_tran_mac_check(const bt_addr_le_t *addr)
+{
+    uint8_t i;
+
+    for (i = 0; i < gConfigParam.bparmac_config.bt_parmac_mac_count; i++)
+    {
+        if (bt_addr_le_cmp(&gConfigParam.bparmac_config.bt_parmac_macs[i], addr) == 0)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+/********************************************************************
+**函数名称:  my_tran_mac_add
+**入口参数:  addr          ---        要添加的蓝牙地址指针
+**出口参数:  无
+**函数功能:  添加透传MAC地址到列表
+**返 回 值:  0表示成功，-EEXIST表示已存在,-ENOMEM表示没有空间
+*********************************************************************/
+int my_tran_mac_add(const bt_addr_le_t *addr)
+{
+    if (gConfigParam.bparmac_config.bt_parmac_mac_count >= TRAN_MAC_MAX_NUM)
+    {
+        return -ENOMEM;
+    }
+
+    if (my_tran_mac_check(addr))
+    {
+        return -EEXIST;
+    }
+
+    bt_addr_le_copy(&gConfigParam.bparmac_config.bt_parmac_macs[gConfigParam.bparmac_config.bt_parmac_mac_count], addr);
+    gConfigParam.bparmac_config.bt_parmac_mac_count++;
+
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  my_tran_mac_del
+**入口参数:  addr          ---        要删除的蓝牙地址指针
+**出口参数:  无
+**函数功能:  从列表中删除指定透传MAC地址
+**返 回 值:  0表示成功，-ENOENT表示未找到
+*********************************************************************/
+int my_tran_mac_del(const bt_addr_le_t *addr)
+{
+    uint8_t i, j;
+
+    for (i = 0; i < gConfigParam.bparmac_config.bt_parmac_mac_count; i++)
+    {
+        if (bt_addr_le_cmp(&gConfigParam.bparmac_config.bt_parmac_macs[i], addr) == 0)
+        {
+            // 将后续元素前移
+            for (j = i; j < gConfigParam.bparmac_config.bt_parmac_mac_count - 1; j++)
+            {
+                memcpy(&gConfigParam.bparmac_config.bt_parmac_macs[j],
+                       &gConfigParam.bparmac_config.bt_parmac_macs[j + 1],
+                       sizeof(bt_addr_le_t));
+            }
+            // 清空最后一个元素
+            memset(&gConfigParam.bparmac_config.bt_parmac_macs[gConfigParam.bparmac_config.bt_parmac_mac_count - 1],
+                   0, sizeof(bt_addr_le_t));
+            gConfigParam.bparmac_config.bt_parmac_mac_count--;
+            return 0;
+        }
+    }
+
+    return -ENOENT;
+}
+
+/********************************************************************
+**函数名称:  my_tran_mac_del_all
+**入口参数:  无
+**出口参数:  无
+**函数功能:  清空所有透传MAC地址
+**返 回 值:  无
+*********************************************************************/
+void my_tran_mac_del_all(void)
+{
+    memset(gConfigParam.bparmac_config.bt_parmac_macs, 0, sizeof(gConfigParam.bparmac_config.bt_parmac_macs));
+    gConfigParam.bparmac_config.bt_parmac_mac_count = 0;
 }
