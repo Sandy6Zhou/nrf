@@ -59,9 +59,11 @@ typedef struct
 
 typedef struct
 {
+    char start[16];             //记录开始时间用于查询
+    uint16_t delay;             //记录窗口时间（用于查询）
     struct k_timer start_timer; // 网络开锁开始倒计时定时器
     struct k_timer delay_timer; // 网络开锁成功之后窗口期倒计时定时器
-    uint16_t delay_sec;         // 窗口期时长（秒）
+    uint16_t delay_sec;         // 窗口期时长（秒）（delay_timer定时器时长）
     uint8_t netunlock_flag;     // 在窗口期时长内开锁标志
     uint8_t start_timer_flag;   // 开始定时器开启过标志位（开启了start定时器意味着不需要回复）
 } net_unlock_ctrl_t;

@@ -787,6 +787,17 @@ static int remalm_cmd_handler(at_cmd_struc* msg)
 
     remaining = sizeof(msg->resp_msg);
 
+    //无参数即查询
+    if (msg->parm_count == 0)
+    {
+        // 根据 remalm_sw 的值选择 "ON" 或 "OFF"
+        const char* state_str = gConfigParam.remalm_config.remalm_sw ? "ON" : "OFF";
+
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%s,%d", msg->parm[0],
+                                    state_str, gConfigParam.remalm_config.remalm_mode);
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+
     /* 检查参数数量 */
     if (msg->parm_count != 2)
     {
@@ -860,6 +871,14 @@ static int lockpincyt_cmd_handler(at_cmd_struc* msg)
 
     remaining = sizeof(msg->resp_msg);
 
+    //无参数即查询
+    if (msg->parm_count == 0)
+    {
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%d,%d", msg->parm[0],
+                            gConfigParam.lockpincyt_config.lockpincyt_report, gConfigParam.lockpincyt_config.lockpincyt_buzzer);
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+
     /* 检查参数数量 */
     if (msg->parm_count != 2)
     {
@@ -927,6 +946,14 @@ static int lockerr_cmd_handler(at_cmd_struc* msg)
     int buzzer_value;
 
     remaining = sizeof(msg->resp_msg);
+
+    //无参数即查询
+    if (msg->parm_count == 0)
+    {
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%d,%d", msg->parm[0],
+                            gConfigParam.lockerr_config.lockerr_report, gConfigParam.lockerr_config.lockerr_buzzer);
+        return BLE_DATA_TYPE_AT_CMD;
+    }
 
     /* 检查参数数量 */
     if (msg->parm_count != 2)
@@ -996,6 +1023,14 @@ static int pinstat_cmd_handler(at_cmd_struc* msg)
 
     remaining = sizeof(msg->resp_msg);
 
+    //无参数即查询
+    if (msg->parm_count == 0)
+    {
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%d,%d", msg->parm[0],
+                            gConfigParam.pinstat_config.pinstat_report, gConfigParam.pinstat_config.pinstat_trigger);
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+
     /* 检查参数数量 */
     if (msg->parm_count != 2)
     {
@@ -1063,6 +1098,14 @@ static int lockstat_cmd_handler(at_cmd_struc* msg)
     int trigger_value;
 
     remaining = sizeof(msg->resp_msg);
+
+    //无参数即查询
+    if (msg->parm_count == 0)
+    {
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%d,%d", msg->parm[0],
+                            gConfigParam.lockstat_config.lockstat_report, gConfigParam.lockstat_config.lockstat_trigger);
+        return BLE_DATA_TYPE_AT_CMD;
+    }
 
     /* 检查参数数量 */
     if (msg->parm_count != 2)
@@ -1137,6 +1180,19 @@ static int motdet_cmd_handler(at_cmd_struc* msg)
     int report_type_value;
 
     remaining = sizeof(msg->resp_msg);
+
+    //无参数即查询
+    if (msg->parm_count == 0)
+    {
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%d,%d,%d,%d,%d",
+                            msg->parm[0],
+                            gConfigParam.motdet_config.motdet_static_g,
+                            gConfigParam.motdet_config.motdet_land_g,
+                            gConfigParam.motdet_config.motdet_static_land_length,
+                            gConfigParam.motdet_config.motdet_sea_transport_time,
+                            gConfigParam.motdet_config.motdet_report_type);
+        return BLE_DATA_TYPE_AT_CMD;
+    }
 
     /* 检查参数数量 */
     if (msg->parm_count != 5)
@@ -1238,6 +1294,20 @@ static int batlevel_cmd_handler(at_cmd_struc* msg)
 
     remaining = sizeof(msg->resp_msg);
 
+    //无参数即查询
+    if (msg->parm_count == 0)
+    {
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%d,%d,%d,%d,%d,%d",
+                            msg->parm[0],
+                            gConfigParam.batlevel_config.batlevel_empty_rpt,
+                            gConfigParam.batlevel_config.batlevel_low_rpt,
+                            gConfigParam.batlevel_config.batlevel_normal_rpt,
+                            gConfigParam.batlevel_config.batlevel_fair_rpt,
+                            gConfigParam.batlevel_config.batlevel_high_rpt,
+                            gConfigParam.batlevel_config.batlevel_full_rpt);
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+
     /* 检查参数数量 */
     if (msg->parm_count != 6)
     {
@@ -1301,6 +1371,15 @@ static int chargesta_cmd_handler(at_cmd_struc* msg)
 
     remaining = sizeof(msg->resp_msg);
 
+    //无参数即查询
+    if (msg->parm_count == 0)
+    {
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%d",
+                            msg->parm[0],
+                            gConfigParam.batlevel_config.chargesta_report);
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+
     /* 检查参数数量 */
     if (msg->parm_count != 1)
     {
@@ -1359,6 +1438,20 @@ static int shockalarm_cmd_handler(at_cmd_struc* msg)
     int sw_value;
 
     remaining = sizeof(msg->resp_msg);
+
+    //无参数即查询
+    if (msg->parm_count == 0)
+    {
+        // 根据 shockalarm_sw 的值选择 "ON" 或 "OFF"
+        const char* state_str = gConfigParam.shockalarm_config.shockalarm_sw ? "ON" : "OFF";
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%d,%d,%d",
+                            msg->parm[0],
+                            state_str,
+                            gConfigParam.shockalarm_config.shockalarm_level,
+                            gConfigParam.shockalarm_config.shockalarm_type
+        );
+        return BLE_DATA_TYPE_AT_CMD;
+    }
 
     /* 检查参数数量 */
     if (msg->parm_count != 3)
@@ -1447,6 +1540,15 @@ static int pwsave_cmd_handler(at_cmd_struc* msg)
     uint16_t remaining;
 
     remaining = sizeof(msg->resp_msg);
+
+    // 无参数即查询
+    if (msg->parm_count == 0)
+    {
+        // 根据 pwsave_sw 的值选择 "ON" 或 "OFF"
+        const char* state_str = gConfigParam.pwsave_config.pwsave_sw ? "ON" : "OFF";
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%s", msg->parm[0]);
+        return BLE_DATA_TYPE_AT_CMD;
+    }
 
     /* 检查参数数量 (应为1，指令格式为PWRSAVE,ON#) */
     if (msg->parm_count == 1)
@@ -1630,6 +1732,14 @@ static int bt_crfpwr_cmd_handler(at_cmd_struc* msg)
 
     remaining = sizeof(msg->resp_msg);
 
+    // 无参数即查询
+    if (msg->parm_count == 0)
+    {
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%d", msg->parm[0],
+                                    gConfigParam.ble_tx_power.tx_power);
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+
     /* 检查参数数量 */
     if (msg->parm_count != 1)
     {
@@ -1694,6 +1804,19 @@ static int bt_updata_cmd_handler(at_cmd_struc* msg)
     uint32_t updata_interval_value;
 
     remaining = sizeof(msg->resp_msg);
+
+    // 无参数即查询
+    if (msg->parm_count == 0)
+    {
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%d,%d,%d,%d",
+                                    msg->parm[0],
+                                    gConfigParam.bt_updata_config.bt_updata_mode,
+                                    gConfigParam.bt_updata_config.bt_updata_scan_interval,
+                                    gConfigParam.bt_updata_config.bt_updata_scan_length,
+                                    gConfigParam.bt_updata_config.bt_updata_updata_interval
+        );
+        return BLE_DATA_TYPE_AT_CMD;
+    }
 
     /* 检查参数数量 */
     if (msg->parm_count != 4)
@@ -1806,6 +1929,20 @@ static int tag_cmd_handler(at_cmd_struc* msg)
 
     remaining = sizeof(msg->resp_msg);
 
+    // 无参数即查询
+    if (msg->parm_count == 0)
+    {
+        // 根据 tag_sw 的值选择 "ON" 或 "OFF"
+        const char* state_str = gConfigParam.tag_config.tag_sw ? "ON" : "OFF";
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%d,%d",
+                                    msg->parm[0],
+                                    state_str,
+                                    gConfigParam.tag_config.tag_interval
+        );
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+
+
     /* 检查参数数量：支持1个参数(TAG,ON)或2个参数(TAG,SW,Interval) */
     if (msg->parm_count != 1 && msg->parm_count != 2)
     {
@@ -1891,6 +2028,17 @@ static int jatag_cmd_handler(at_cmd_struc* msg)
 
     remaining = sizeof(msg->resp_msg);
 
+    // 无参数即查询
+    if (msg->parm_count == 0)
+    {
+        const char* state_str = gConfigParam.adv_valid_value.AppleValid ? "ON" : "OFF";
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%d",
+                                    msg->parm[0],
+                                    state_str
+        );
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+
     /* 检查参数数量：支持1个参数(JATAG,ON)*/
     if (msg->parm_count != 1)
     {
@@ -1961,6 +2109,17 @@ static int jgtag_cmd_handler(at_cmd_struc* msg)
 
     remaining = sizeof(msg->resp_msg);
 
+    // 无参数即查询
+    if (msg->parm_count == 0)
+    {
+        const char* state_str = gConfigParam.adv_valid_value.GoogleValid ? "ON" : "OFF";
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%d",
+                                    msg->parm[0],
+                                    state_str
+        );
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+
     /* 检查参数数量：支持1个参数(JGTAG,ON)*/
     if (msg->parm_count != 1)
     {
@@ -2028,6 +2187,16 @@ static int lockcd_cmd_handler(at_cmd_struc* msg)
 
     remaining = sizeof(msg->resp_msg);
 
+    // 无参数即查询
+    if (msg->parm_count == 0)
+    {
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%d",
+                                    msg->parm[0],
+                                    gConfigParam.locked_config.lockcd_countdown
+        );
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+
     /* 检查参数数量 */
     if (msg->parm_count != 1)
     {
@@ -2082,6 +2251,17 @@ static int led_cmd_handler(at_cmd_struc* msg)
     int display_value;
 
     remaining = sizeof(msg->resp_msg);
+
+    // 无参数即查询
+    if (msg->parm_count == 0)
+    {
+        const char* state_str = gConfigParam.led_config.led_display ? "ON" : "OFF";
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%d",
+                                    msg->parm[0],
+                                    state_str
+        );
+        return BLE_DATA_TYPE_AT_CMD;
+    }
 
     /* 检查参数数量 */
     if (msg->parm_count != 1)
@@ -2166,6 +2346,16 @@ static int buzzer_cmd_handler(at_cmd_struc* msg)
     int operator_value;
 
     remaining = sizeof(msg->resp_msg);
+
+    // 无参数即查询
+    if (msg->parm_count == 0)
+    {
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%d",
+                                    msg->parm[0],
+                                    gConfigParam.buzzer_config.buzzer_operator
+        );
+        return BLE_DATA_TYPE_AT_CMD;
+    }
 
     /* 检查参数数量 */
     if (msg->parm_count != 1)
@@ -3475,6 +3665,24 @@ static int cunlock_cmd_handler(at_cmd_struc* msg)
         return 0;
     }
 
+    // 无参数即查询
+    if (msg->parm_count == 0)
+    {
+        if (g_net_unlock.start == NULL)
+        {
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:0,0", msg->parm[0]);
+        }
+        else
+        {
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%s,%d",
+                                        msg->parm[0],
+                                        g_net_unlock.start,
+                                        g_net_unlock.delay
+            );
+        }
+        return 1;
+    }
+
     // 参数数量基础校验
     if (msg->parm_count != 2)
     {
@@ -3523,6 +3731,9 @@ static int cunlock_cmd_handler(at_cmd_struc* msg)
 
 
     g_net_unlock.delay_sec = delay_time;
+    //用于查询使用
+    strcpy(g_net_unlock.start, msg->parm[1]);
+    g_net_unlock.delay = delay_time;
 
     // 取前10个字符
     strncpy(buf, msg->parm[1], 10);

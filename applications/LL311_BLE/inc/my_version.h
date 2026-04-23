@@ -12,7 +12,14 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260420"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260423"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.23
+** 作    者:        吴楚庆 (wuchuqing@jimiiot.com)
+** 修改内容:       1.对可设置的指令增加不带参数查询功能
+***/
+
+//#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260420"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.20
 ** 作    者:        曹阳 (caoyang@jimiiot.com)
