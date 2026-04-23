@@ -15,6 +15,15 @@
 #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260423"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.23
+** 作    者:        周森达 (zhousenda@jimiiot.com)
+** 修改内容:        1.新增单包/分包传输协议(0xFF01/0xFF02),根据MTU自动选择单包/分包
+**                 2.支持APP逐包ACK确认、超时重传(2s超时,最多3次重试)
+**                 3.更新UUID为0xFEE5(支持单包/分包)
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260423"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.23
 ** 作    者:        吴楚庆 (wuchuqing@jimiiot.com)
 ** 修改内容:        1.串口重传增加特殊指令处理
 **                 2.根据新的指令形式，改进TAG、MACINFO的串口指令发送流程

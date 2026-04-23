@@ -37,6 +37,19 @@
 #define BLE_DATA_TYPE_SET_IMEI                  0x5707          //设置IMEI号
 #define BLE_DATA_TYPE_AT_CMD                    0x5808          //用户指令
 
+/* 单模块回复传输（0xFF 0x01 / 0xFF 0x02）
+ * 用于大数据量返回，如NFCTRIG CHECK返回结果
+ * 1. 可单包发送时走 FF01：payload 格式为 len(Varint, 0-512) + Module id(Varint,固定0x08) + Module len(Varint) + data
+ *    APP 回复解密后 payload 固定为 0x00
+ * 2. 需分包发送时走 FF02：payload 格式为 Len(Varint, 0-512) + Seq(1B) + [首包附带 Module id + Module len] + data
+ *    APP 回复格式为 52 54 FF 02，解密后 payload 为 len(Varint) + 包序号
+ */
+#define BLE_DATA_TYPE_PACKET_SINGLE             0xFF01          //单包传输数据类型
+#define BLE_DATA_TYPE_PACKET_MULTIPLE           0xFF02          //分包传输数据类型
+
+#define BLE_PACKET_TRANS_MODULE_ID              0x08            //模块ID(RSP_ASCII)
+#define BLE_PACKET_TRANS_SEQ_LAST               0xFF            //最后一包序号标记
+
 /* 日志指令透传数据（LOG_DATA）
  * 指令格式：
  * +--------+--------+--------+--------+
@@ -209,6 +222,47 @@ void ble_log_connect_init(void);
 **注意事项:  根据AT命令处理结果决定是否发送响应数据
 *********************************************************************/
 void ble_comu_at_cmd_handle(const uint8_t *data, uint16_t len);
+
+/********************************************************************
+**函数名称:  ble_packet_trans_send
+**入口参数:  data          ---        待发送的实际数据指针
+**         :  len           ---        待发送的实际数据长度
+**出口参数:  无
+**函数功能:  使用分包传输机制（0xFF 0x02）发送大数据到APP
+**返回值:    无
+**注意事项:  1.数据会被自动分包，每包等待APP确认后再发下一包
+**           2.分包大小根据MTU自动计算
+**           3.数据内容会被扩展到16字节倍数后加密发送
+**           4.最后一包实际数据使用0xFF作为序号
+*********************************************************************/
+void ble_packet_trans_send(uint8_t *data, uint16_t len);
+
+/*********************************************************************
+**函数名称:  ble_packet_trans_init
+**入口参数:  无
+**出口参数:  无
+**函数功能:  初始化BLE单包/分包回复超时与重发模块
+**返 回 值:  无
+*********************************************************************/
+void ble_packet_trans_init(void);
+
+/*********************************************************************
+**函数名称:  ble_packet_trans_timeout_handler
+**入口参数:  无
+**出口参数:  无
+**函数功能:  BLE 分包传输应答超时处理，在 BLE 线程上下文执行
+**返 回 值:  无
+*********************************************************************/
+void ble_packet_trans_timeout_handler(void);
+
+/*********************************************************************
+**函数名称:  ble_packet_trans_disconnect_cleanup
+**入口参数:  无
+**出口参数:  无
+**函数功能:  蓝牙断开时清理BLE单包/分包回复状态
+**返 回 值:  无
+*********************************************************************/
+void ble_packet_trans_disconnect_cleanup(void);
 
 /********************************************************************
 **函数名称:  ble_comu_response_or_expansion_cmd

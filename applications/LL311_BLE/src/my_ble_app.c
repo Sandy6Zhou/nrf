@@ -18,6 +18,52 @@
 
 LOG_MODULE_REGISTER(my_ble_app, LOG_LEVEL_INF);
 
+/* 重试的最大次数 */
+#define BLE_PACKET_TRANS_MAX_RETRY      3
+/* 回复超时时间(ms) */
+#define BLE_PACKET_RSP_TIMEOUT_MS       2000
+/* 单包回复数据类型（0xFF 0x01） */
+#define BLE_PACKET_PROTO_SINGLE         0x01
+/* 分包回复数据类型（0xFF 0x02） */
+#define BLE_PACKET_PROTO_MULTIPLE       0x02
+/* Varint 编码辅助宏：判断值是否需要2字节（>127） */
+#define VARINT_IS_2BYTE(val)            ((val) > 127)
+/* Varint 编码辅助宏：编码高字节（当值>127时） */
+#define VARINT_HIGH_BYTE(val)           (((val) >> 7) & 0x7F)
+/* Varint 编码辅助宏：编码低字节（带延续位标记） */
+#define VARINT_LOW_BYTE(val)            (((val) & 0x7F) | 0x80)
+
+/* 单/多包传输状态结构 */
+typedef struct
+{
+    uint8_t data[RESP_STRING_LENGTH_MAX];   /* 原始数据 */
+    uint16_t total_len;                     /* 原始数据总长度 */
+    uint16_t sent_offset;                   /* 已发送数据偏移 */
+    uint16_t last_offset;                   /* 最近发送包的数据偏移 */
+    uint16_t last_len;                      /* 最近发送包的数据长度 */
+    uint8_t next_seq;                       /* 下一个包序号 */
+    uint8_t retry_cnt;                      /* 当前重试次数 */
+    uint8_t last_seq;                       /* 最近发送包序号 */
+    uint8_t last_proto_type;                /* 最近发送协议类型 */
+    bool waiting_ack;                       /* 是否正在等待APP回复 */
+    bool is_busy;                           /* 传输是否进行中 */
+} packet_trans_t;
+
+/* 等待传输的请求（当传输忙时，新请求存入此处） */
+typedef struct
+{
+    uint8_t data[RESP_STRING_LENGTH_MAX];   /* 等待发送的数据 */
+    uint16_t len;                           /* 数据长度 */
+    bool pending;                           /* 是否有等待的请求 */
+} packet_trans_wait_t;
+
+/* 单/多包传输数据集 */
+static packet_trans_t s_packet_trans_data = {0};
+/* 等待传输请求数据集 */
+static packet_trans_wait_t s_packet_trans_wait = {0};
+/* BLE单/分包回复超时定时器 */
+static struct k_timer s_ble_packet_rsp_timer;
+
 static uint8_t rx_ble_buf[BLE_SVC_RX_MAX_LEN];
 static uint16_t rx_ble_buf_index = 0;
 
@@ -89,6 +135,43 @@ void ble_log_connect_init(void)
 
     /* 日志输出要用 LOG_DBG 而不是 MY_LOG_DBG 防止递归调用 */
     LOG_DBG("BLE log disconnect pending flag cleared");
+}
+
+/********************************************************************
+**函数名称:  ble_packet_trans_rsp_timeout_cb
+**入口参数:  timer         ---        回复等待定时器对象
+**出口参数:  无
+**函数功能:  回复等待超时回调，提交工作项到线程上下文处理
+**返 回 值:  无
+*********************************************************************/
+static void ble_packet_trans_rsp_timeout_cb(struct k_timer *timer)
+{
+    ARG_UNUSED(timer);
+    my_send_msg(MOD_BLE, MOD_BLE, MY_MSG_BLE_PACKET_TIMEOUT);
+}
+
+/********************************************************************
+**函数名称:  ble_packet_trans_stop_rsp_timer
+**入口参数:  无
+**出口参数:  无
+**函数功能:  停止BLE回复等待定时器
+**返 回 值:  无
+*********************************************************************/
+static void ble_packet_trans_stop_rsp_timer(void)
+{
+    k_timer_stop(&s_ble_packet_rsp_timer);
+}
+
+/********************************************************************
+**函数名称:  ble_packet_trans_start_rsp_timer
+**入口参数:  无
+**出口参数:  无
+**函数功能:  启动BLE回复等待定时器
+**返 回 值:  无
+*********************************************************************/
+static void ble_packet_trans_start_rsp_timer(void)
+{
+    k_timer_start(&s_ble_packet_rsp_timer, K_MSEC(BLE_PACKET_RSP_TIMEOUT_MS), K_NO_WAIT);
 }
 
 /*********************************************************************
@@ -417,7 +500,10 @@ static void ble_comu_send_packet(uint16_t type, uint8_t *data, uint16_t len)
     ble_tx_buf[3] = type & 0xFF;
 
     memcpy(&ble_tx_buf[4], data, len);
-
+#if 0
+    LOG_INF("ble_comu_send_packet:%d", len);
+    LOG_HEXDUMP_INF(ble_tx_buf, len + 4, "BLE TX (before encrypt):");
+#endif
     // 密钥交换和蓝牙日志不需要加密
     if (type == BLE_DATA_TYPE_PKEY || type == BLE_DATA_TYPE_BT_LOG)
     {
@@ -595,6 +681,565 @@ void ble_comu_response_or_expansion_cmd(uint16_t type, uint8_t *str_data, uint8_
         send_len += 16;
 
     ble_comu_send_packet(type, ble_rsp_buf, send_len);
+}
+
+/********************************************************************
+**函数名称:  ble_packet_trans_record_last_packet
+**入口参数:  proto_type    ---        当前协议类型（FF01/FF02）
+**         :  seq           ---        当前包序号
+**         :  offset        ---        当前包数据偏移
+**         :  len           ---        当前包数据长度
+**出口参数:  无
+**函数功能:  记录最近一次发送包信息，用于超时或错误回复时重发
+**返 回 值:  无
+*********************************************************************/
+static void ble_packet_trans_record_last_packet(uint8_t proto_type, uint8_t seq, uint16_t offset, uint16_t len)
+{
+    s_packet_trans_data.last_proto_type = proto_type;
+    s_packet_trans_data.last_seq = seq;
+    s_packet_trans_data.last_offset = offset;
+    s_packet_trans_data.last_len = len;
+    s_packet_trans_data.waiting_ack = true;
+}
+
+/********************************************************************
+**函数名称:  ble_packet_trans_reset_state
+**入口参数:  b_clear_pending ---        是否同时清空等待队列
+**出口参数:  无
+**函数功能:  复位当前回复传输状态
+**返 回 值:  无
+*********************************************************************/
+static void ble_packet_trans_reset_state(bool b_clear_pending)
+{
+    ble_packet_trans_stop_rsp_timer();
+    memset(&s_packet_trans_data, 0, sizeof(s_packet_trans_data));
+    if (b_clear_pending)
+    {
+        memset(&s_packet_trans_wait, 0, sizeof(s_packet_trans_wait));
+    }
+}
+
+/********************************************************************
+**函数名称:  ble_packet_trans_try_start_pending
+**入口参数:  无
+**出口参数:  无
+**函数功能:  尝试启动等待中的最新一条回复请求
+**返 回 值:  无
+*********************************************************************/
+static void ble_packet_trans_try_start_pending(void)
+{
+    if (s_packet_trans_wait.pending)
+    {
+        s_packet_trans_wait.pending = false;
+        ble_packet_trans_send(s_packet_trans_wait.data, s_packet_trans_wait.len);
+    }
+}
+
+/********************************************************************
+**函数名称:  ble_packet_trans_complete_current
+**入口参数:  无
+**出口参数:  无
+**函数功能:  完成当前回复传输并拉起等待请求
+**返 回 值:  无
+*********************************************************************/
+static void ble_packet_trans_complete_current(void)
+{
+    ble_packet_trans_reset_state(false);
+    ble_packet_trans_try_start_pending();
+}
+
+/********************************************************************
+**函数名称:  ble_packet_trans_abort_current
+**入口参数:  无
+**出口参数:  无
+**函数功能:  中止当前回复传输并拉起等待请求
+**返 回 值:  无
+*********************************************************************/
+static void ble_packet_trans_abort_current(void)
+{
+    ble_packet_trans_reset_state(false);
+    ble_packet_trans_try_start_pending();
+}
+
+/********************************************************************
+**函数名称:  ble_single_packet_can_send
+**入口参数:  len           ---        原始数据长度
+**出口参数:  无
+**函数功能:  判断当前数据是否可以使用FF01单包协议发送
+**返 回 值:  true=可单包发送，false=需要分包
+*********************************************************************/
+static bool ble_single_packet_can_send(uint16_t len)
+{
+    uint16_t module_len_bytes;
+    uint16_t content_len;
+    uint16_t content_len_bytes;
+    uint16_t payload_len;
+    uint16_t encrypt_len;
+    uint16_t max_encrypt_len;
+
+    // data长度>127时Module len占2字节，否则1字节
+    module_len_bytes = VARINT_IS_2BYTE(len) ? 2 : 1;
+
+    // content_len = Module id + Module len + data
+    content_len = 1 + module_len_bytes + len;
+
+    // len字段本身占用字节数（根据content_len决定，>127时需要2字节）
+    content_len_bytes = VARINT_IS_2BYTE(content_len) ? 2 : 1;
+
+    // payload部分长度 = len字段 + content_len（即ble_comu_send_packet传入的data长度）
+    payload_len = content_len_bytes + content_len;
+
+    // 按16字节对齐计算加密后长度（只对payload对齐，与ble_comu_response_or_expansion_cmd一致）
+    encrypt_len = (payload_len / BLE_CMD_DATA_LEN_UNIT) * BLE_CMD_DATA_LEN_UNIT;
+    if (payload_len % BLE_CMD_DATA_LEN_UNIT)
+    {
+        encrypt_len += BLE_CMD_DATA_LEN_UNIT;
+    }
+
+    // 最大允许的加密payload长度（扣除外层4字节head+type、预留16padding填充）
+    max_encrypt_len = ((BLE_SERVER_MAX_DATA_LEN - 4) / BLE_CMD_DATA_LEN_UNIT) * BLE_CMD_DATA_LEN_UNIT - 16;
+
+    // 加密后payload长度不超过MTU限制
+    return (encrypt_len <= max_encrypt_len);
+}
+
+/********************************************************************
+**函数名称:  ble_single_packet_send
+**入口参数:  data          ---        待发送数据指针
+**         :  len           ---        待发送数据长度
+**出口参数:  无
+**函数功能:  使用FF01协议发送单包回复并进入等待回复状态
+**返 回 值:  无
+**注意事项:  FF01发送payload格式为 len(Varint, 0-512) + Module id(Varint) + Module len(Varint) + data
+*********************************************************************/
+static void ble_single_packet_send(uint8_t *data, uint16_t len)
+{
+    uint16_t encrypt_len;
+    uint8_t *p_buf;
+    uint8_t module_len_bytes;
+    uint16_t content_len;
+
+    if (data == NULL || len == 0)
+    {
+        return;
+    }
+
+    memset(ble_rsp_buf, 0, sizeof(ble_rsp_buf));
+    p_buf = ble_rsp_buf;
+    module_len_bytes = VARINT_IS_2BYTE(len) ? 2 : 1;
+    content_len = 1 + module_len_bytes + len;
+
+    /* len字段动态Varint编码（0-127用1字节，128-512用2字节） */
+    if (VARINT_IS_2BYTE(content_len))
+    {
+        *p_buf++ = VARINT_LOW_BYTE(content_len);
+        *p_buf++ = VARINT_HIGH_BYTE(content_len);
+    }
+    else
+    {
+        *p_buf++ = (uint8_t)content_len;
+    }
+    *p_buf++ = BLE_PACKET_TRANS_MODULE_ID;
+
+    if (module_len_bytes == 2)
+    {
+        *p_buf++ = VARINT_LOW_BYTE(len);
+        *p_buf++ = VARINT_HIGH_BYTE(len);
+    }
+    else
+    {
+        *p_buf++ = (uint8_t)len;
+    }
+
+    memcpy(p_buf, data, len);
+    encrypt_len = (uint16_t)(p_buf - ble_rsp_buf) + len;
+    if (encrypt_len % BLE_CMD_DATA_LEN_UNIT)
+    {
+        encrypt_len += BLE_CMD_DATA_LEN_UNIT - (encrypt_len % BLE_CMD_DATA_LEN_UNIT);
+    }
+
+    // 记录本次发送的包信息，用于超时重发时恢复状态
+    ble_packet_trans_record_last_packet(BLE_PACKET_PROTO_SINGLE, 0, 0, len);
+    // 发送加密后的单包数据（含包头0xFF01）
+    ble_comu_send_packet(BLE_DATA_TYPE_PACKET_SINGLE, ble_rsp_buf, encrypt_len);
+    // 启动应答超时定时器，等待APP回复确认（超时后自动重发）
+    ble_packet_trans_start_rsp_timer();
+}
+
+/********************************************************************
+**函数名称:  ble_multiple_packet_send
+**入口参数:  seq           ---        包序号(0表示首包,0xFF表示最后一包)
+**         :  data          ---        本包数据指针
+**         :  len           ---        本包数据长度
+**         :  is_first      ---        是否为第一包(true表示第一包,包含Module字段)
+**出口参数:  无
+**函数功能:  封装并发送单个分包，同时进入等待ACK状态
+**返 回 值:  无
+**注意事项:  FF02发送payload格式为 Len(Varint, 0-512) + Seq(1B) + [首包附带Module id + Module len] + data
+*********************************************************************/
+static void ble_multiple_packet_send(uint8_t seq, uint8_t *data, uint16_t len, bool is_first)
+{
+    uint8_t *p_buf;
+    uint16_t encrypt_len;
+    uint16_t content_len;
+    uint16_t offset;
+
+    if (data == NULL || len == 0)
+    {
+        LOG_WRN("Invalid param: data=%p, len=%d", data, len);
+        return;
+    }
+
+    content_len = 1 + len;
+    if (is_first)
+    {
+        content_len += 1;
+        content_len += VARINT_IS_2BYTE(s_packet_trans_data.total_len) ? 2 : 1;
+    }
+
+    memset(ble_rsp_buf, 0, sizeof(ble_rsp_buf));
+    p_buf = ble_rsp_buf;
+
+    if (VARINT_IS_2BYTE(content_len))
+    {
+        *p_buf++ = VARINT_LOW_BYTE(content_len);
+        *p_buf++ = VARINT_HIGH_BYTE(content_len);
+    }
+    else
+    {
+        *p_buf++ = (uint8_t)content_len;
+    }
+
+    *p_buf++ = seq;
+
+    if (is_first)
+    {
+        *p_buf++ = BLE_PACKET_TRANS_MODULE_ID;
+        if (VARINT_IS_2BYTE(s_packet_trans_data.total_len))
+        {
+            *p_buf++ = VARINT_LOW_BYTE(s_packet_trans_data.total_len);
+            *p_buf++ = VARINT_HIGH_BYTE(s_packet_trans_data.total_len);
+        }
+        else
+        {
+            *p_buf++ = (uint8_t)s_packet_trans_data.total_len;
+        }
+    }
+
+    memcpy(p_buf, data, len);
+    encrypt_len = (uint16_t)(p_buf - ble_rsp_buf) + len;
+    if (encrypt_len % BLE_CMD_DATA_LEN_UNIT)
+    {
+        encrypt_len += BLE_CMD_DATA_LEN_UNIT - (encrypt_len % BLE_CMD_DATA_LEN_UNIT);
+    }
+
+    if (encrypt_len > sizeof(ble_rsp_buf))
+    {
+        LOG_ERR("Packet too large: encrypt_len=%d", encrypt_len);
+        return;
+    }
+
+    // 计算当前数据在原始数据缓冲区中的偏移，用于超时重发定位
+    offset = (uint16_t)(data - s_packet_trans_data.data);
+    // 记录本次分包发送信息（协议类型、序号、偏移、长度），用于超时重发
+    ble_packet_trans_record_last_packet(BLE_PACKET_PROTO_MULTIPLE, seq, offset, len);
+    // 发送加密后的分包数据（含包头0xFF02）
+    ble_comu_send_packet(BLE_DATA_TYPE_PACKET_MULTIPLE, ble_rsp_buf, encrypt_len);
+    // 启动应答超时定时器，等待APP回复ACK（超时后按记录的包信息重发）
+    ble_packet_trans_start_rsp_timer();
+}
+
+/********************************************************************
+**函数名称:  ble_multiple_packet_continue
+**入口参数:  ack_seq       ---        APP确认的包序号
+**出口参数:  无
+**函数功能:  ACK匹配后继续发送下一包
+**返 回 值:  无
+*********************************************************************/
+static void ble_multiple_packet_continue(uint8_t ack_seq)
+{
+    uint16_t remaining;
+    uint16_t pkt_len;
+    uint16_t max_encrypt_len;
+    uint16_t header_len;
+    uint8_t seq_to_send;
+
+    if (!s_packet_trans_data.is_busy || !s_packet_trans_data.waiting_ack)
+    {
+        return;
+    }
+
+    if (ack_seq != s_packet_trans_data.last_seq)
+    {
+        LOG_WRN("Ack mismatch: expect=%d, got=%d", s_packet_trans_data.last_seq, ack_seq);
+        return;
+    }
+
+    ble_packet_trans_stop_rsp_timer();
+    s_packet_trans_data.waiting_ack = false;
+    s_packet_trans_data.retry_cnt = 0;
+
+    remaining = s_packet_trans_data.total_len - s_packet_trans_data.sent_offset;
+    if (remaining == 0)
+    {
+        LOG_INF("Packet trans complete");
+        ble_packet_trans_complete_current();
+        return;
+    }
+
+    max_encrypt_len = ((BLE_SERVER_MAX_DATA_LEN - 4) / BLE_CMD_DATA_LEN_UNIT) * BLE_CMD_DATA_LEN_UNIT;
+
+    /* FF02后续包header = Len(Varint) + Seq(1B)
+     * content_len = Seq(1B) + data_len
+     * 根据content_len决定Len字段字节数 */
+    header_len = VARINT_IS_2BYTE(1 + remaining) ? 2 : 1;
+    header_len += 1;  // + Seq(1B)
+
+    /* 后续包最大数据长度，预留16字节padding（PKCS7最坏情况） */
+    pkt_len = max_encrypt_len - header_len - 16;
+
+    if (pkt_len > remaining)
+    {
+        pkt_len = remaining;
+    }
+
+    if (s_packet_trans_data.sent_offset + pkt_len >= s_packet_trans_data.total_len)
+    {
+        seq_to_send = BLE_PACKET_TRANS_SEQ_LAST;
+        s_packet_trans_data.next_seq = 0;
+    }
+    else
+    {
+        seq_to_send = s_packet_trans_data.next_seq;
+        s_packet_trans_data.next_seq++;
+    }
+
+    ble_multiple_packet_send(seq_to_send,
+                             s_packet_trans_data.data + s_packet_trans_data.sent_offset,
+                             pkt_len,
+                             false);
+    s_packet_trans_data.sent_offset += pkt_len;
+}
+
+/********************************************************************
+**函数名称:  ble_single_packet_rsp_handle
+**入口参数:  data          ---        APP回复数据指针（解密后payload）
+**         :  len           ---        数据长度
+**出口参数:  无
+**函数功能:  处理FF01单包回复确认，payload 固定为 0x00
+**返 回 值:  无
+*********************************************************************/
+static void ble_single_packet_rsp_handle(const uint8_t *data, uint16_t len)
+{
+    if (data == NULL || len < 1)
+    {
+        return;
+    }
+
+    if (!s_packet_trans_data.is_busy || !s_packet_trans_data.waiting_ack ||
+        s_packet_trans_data.last_proto_type != BLE_PACKET_PROTO_SINGLE)
+    {
+        return;
+    }
+
+    ble_packet_trans_stop_rsp_timer();
+    s_packet_trans_data.waiting_ack = false;
+    s_packet_trans_data.retry_cnt = 0;
+    ble_packet_trans_complete_current();
+}
+
+/********************************************************************
+**函数名称:  ble_multiple_packet_ack_handle
+**入口参数:  data          ---        APP回复数据指针（解密后payload）
+**         :  len           ---        数据长度
+**出口参数:  无
+**函数功能:  处理FF02分包确认回复，payload 格式为 len(Varint, 0-512) + 包序号
+**返 回 值:  无
+*********************************************************************/
+static void ble_multiple_packet_ack_handle(const uint8_t *data, uint16_t len)
+{
+    uint8_t ack_seq;
+    uint16_t ack_len;
+    uint8_t seq_pos;
+
+    if (data == NULL || len < 2)
+    {
+        return;
+    }
+
+    if (!s_packet_trans_data.is_busy || !s_packet_trans_data.waiting_ack ||
+        s_packet_trans_data.last_proto_type != BLE_PACKET_PROTO_MULTIPLE)
+    {
+        return;
+    }
+
+    if (data[0] & 0x80)
+    {
+        if (len < 3)
+        {
+            LOG_WRN("FF02 ack len invalid");
+            return;
+        }
+
+        ack_len = (uint16_t)(data[0] & 0x7F);
+        ack_len |= ((uint16_t)data[1] << 7);
+        seq_pos = 2;
+    }
+    else
+    {
+        ack_len = data[0];
+        seq_pos = 1;
+    }
+
+    if (len < (uint16_t)(seq_pos + ack_len))
+    {
+        LOG_WRN("FF02 ack payload invalid");
+        return;
+    }
+
+    ack_seq = data[seq_pos];
+
+    LOG_INF("Ack received: seq=%d", ack_seq);
+    ble_multiple_packet_continue(ack_seq);
+}
+
+/********************************************************************
+**函数名称:  ble_packet_trans_timeout_handler
+**入口参数:  无
+**出口参数:  无
+**函数功能:  BLE 分包传输应答超时处理，在 BLE 线程上下文执行
+**返 回 值:  无
+*********************************************************************/
+void ble_packet_trans_timeout_handler(void)
+{
+    if (!s_packet_trans_data.is_busy || !s_packet_trans_data.waiting_ack)
+    {
+        return;
+    }
+
+    if (!ble_is_data_channel_ready())
+    {
+        ble_packet_trans_abort_current();
+        return;
+    }
+
+    if (s_packet_trans_data.retry_cnt >= BLE_PACKET_TRANS_MAX_RETRY)
+    {
+        LOG_ERR("BLE packet rsp timeout, abort current trans");
+        ble_packet_trans_abort_current();
+        return;
+    }
+
+    s_packet_trans_data.retry_cnt++;
+
+    if (s_packet_trans_data.last_proto_type == BLE_PACKET_PROTO_SINGLE)
+    {
+        ble_single_packet_send(s_packet_trans_data.data, s_packet_trans_data.total_len);
+    }
+    else if (s_packet_trans_data.last_proto_type == BLE_PACKET_PROTO_MULTIPLE)
+    {
+        ble_multiple_packet_send(s_packet_trans_data.last_seq,
+                                 s_packet_trans_data.data + s_packet_trans_data.last_offset,
+                                 s_packet_trans_data.last_len,
+                                 (s_packet_trans_data.last_offset == 0));
+    }
+}
+
+/********************************************************************
+**函数名称:  ble_packet_trans_send
+**入口参数:  data          ---        待发送的实际数据指针
+**         :  len           ---        待发送的实际数据长度
+**出口参数:  无
+**函数功能:  根据数据长度自动选择FF01或FF02协议发送回复
+**返 回 值:  无
+*********************************************************************/
+void ble_packet_trans_send(uint8_t *data, uint16_t len)
+{
+    uint16_t max_encrypt_len;
+    uint16_t first_pkt_max;
+    uint16_t pkt_len;
+    uint16_t header_len;
+    uint16_t module_len_bytes;
+    uint16_t content_len;
+    uint16_t len_field_bytes;
+    uint8_t first_seq;
+
+    if (data == NULL || len == 0)
+    {
+        LOG_WRN("Invalid param: data=%p, len=%d", (void *)data, len);
+        return;
+    }
+
+    if (len > RESP_STRING_LENGTH_MAX)
+    {
+        LOG_WRN("Wait data too large: %d, truncate to %d", len, RESP_STRING_LENGTH_MAX);
+        len = RESP_STRING_LENGTH_MAX;
+    }
+
+    if (s_packet_trans_data.is_busy)
+    {
+        memcpy(s_packet_trans_wait.data, data, len);
+        s_packet_trans_wait.len = len;
+        s_packet_trans_wait.pending = true;
+        LOG_INF("Packet trans busy, queued new request: len=%d", len);
+        return;
+    }
+
+    memset(&s_packet_trans_data, 0, sizeof(s_packet_trans_data));
+    memcpy(s_packet_trans_data.data, data, len);
+    s_packet_trans_data.total_len = len;
+    s_packet_trans_data.is_busy = true;
+
+    if (ble_single_packet_can_send(len))
+    {
+        ble_single_packet_send(s_packet_trans_data.data, len);
+        return;
+    }
+
+    max_encrypt_len = ((BLE_SERVER_MAX_DATA_LEN - 4) / BLE_CMD_DATA_LEN_UNIT) * BLE_CMD_DATA_LEN_UNIT;
+
+    /* FF02首包header = Len(Varint) + Seq(1B) + Module_id(1B) + Module_len(Varint)
+     * content_len = Seq + Module_id + Module_len + data_len */
+    module_len_bytes = VARINT_IS_2BYTE(len) ? 2 : 1;
+    content_len = 1 + 1 + module_len_bytes + len;  // content_len 包括: Seq + Module_id + Module_len + data
+    len_field_bytes = VARINT_IS_2BYTE(content_len) ? 2 : 1;
+    header_len = len_field_bytes + 1 + 1 + module_len_bytes;
+
+    /* 首包最大数据长度，预留16字节padding（PKCS7最坏情况） */
+    first_pkt_max = max_encrypt_len - header_len - 16;
+
+    pkt_len = (len > first_pkt_max) ? first_pkt_max : len;
+
+    first_seq = 0;
+    s_packet_trans_data.next_seq = 1;
+
+    ble_multiple_packet_send(first_seq, s_packet_trans_data.data, pkt_len, true);
+    s_packet_trans_data.sent_offset = pkt_len;
+}
+
+/********************************************************************
+**函数名称:  ble_packet_trans_init
+**入口参数:  无
+**出口参数:  无
+**函数功能:  初始化BLE单包/分包回复超时与重发模块
+**返 回 值:  无
+*********************************************************************/
+void ble_packet_trans_init(void)
+{
+    k_timer_init(&s_ble_packet_rsp_timer, ble_packet_trans_rsp_timeout_cb, NULL);
+    ble_packet_trans_reset_state(true);
+}
+
+/********************************************************************
+**函数名称:  ble_packet_trans_disconnect_cleanup
+**入口参数:  无
+**出口参数:  无
+**函数功能:  蓝牙断开时清理BLE单包/分包回复状态
+**返 回 值:  无
+*********************************************************************/
+void ble_packet_trans_disconnect_cleanup(void)
+{
+    ble_packet_trans_reset_state(true);
 }
 
 /********************************************************************
@@ -801,22 +1446,26 @@ void ble_log_send(uint8_t *data, uint8_t len)
 void ble_comu_at_cmd_handle(const uint8_t *data, uint16_t len)
 {
     at_cmd_struc ble_at_msg = {0};
-    uint16_t cmd_type = 0;
+    static char s_resp_buf[RESP_STRING_LENGTH_MAX];// 用于存储整包返回的数据内容
 
 #if 0
     LOG_INF("ble_comu_at_cmd_handle:%s, len=%d", data, len);
     LOG_HEXDUMP_INF(data, len, "hex data:");
 #endif
 
+    /* 使用静态缓冲区存储响应数据，避免栈溢出 */
+    ble_at_msg.resp_msg = s_resp_buf;
+
     ble_at_msg.rcv_length = len;
     memcpy(ble_at_msg.rcv_msg, data, len);
 
-    cmd_type = at_recv_cmd_handler(&ble_at_msg);
+    /* 调用命令处理函数，返回类型不再使用 */
+    (void)at_recv_cmd_handler(&ble_at_msg);
 
-    // BLE_SERVER_MAX_DATA_LEN - 4这里的4是因为包头占用了4个字节
-    if (ble_at_msg.resp_length > 0 && ble_at_msg.resp_length <= (BLE_SERVER_MAX_DATA_LEN - 4))
+    /* 响应数据根据大小自动选择单包(FF 01)还是分包(FF 02) */
+    if (ble_at_msg.resp_length > 0)
     {
-        ble_comu_response_or_expansion_cmd(cmd_type, (uint8_t*)ble_at_msg.resp_msg, ble_at_msg.resp_length);
+        ble_packet_trans_send((uint8_t *)ble_at_msg.resp_msg, ble_at_msg.resp_length);
     }
 }
 
@@ -872,6 +1521,14 @@ static void ble_comu_app_handle(uint32_t type, const uint8_t *data, uint16_t len
 
                 case BLE_DATA_TYPE_AT_CMD:      //用户指令
                     ble_comu_at_cmd_handle(ble_decrypt_buffer, len);
+                    break;
+
+                case BLE_DATA_TYPE_PACKET_SINGLE:  //单包回复确认
+                    ble_single_packet_rsp_handle(ble_decrypt_buffer, len);
+                    break;
+
+                case BLE_DATA_TYPE_PACKET_MULTIPLE:  //分包传输确认
+                    ble_multiple_packet_ack_handle(ble_decrypt_buffer, len);
                     break;
 
                 default:

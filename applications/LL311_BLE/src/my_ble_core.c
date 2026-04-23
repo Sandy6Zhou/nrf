@@ -40,7 +40,7 @@ static struct k_thread my_ble_task_data;
 #define NON_CONNECTABLE_APPLE_ADV_IDX   2
 #define NON_CONNECTABLE_GOOGLE_ADV_IDX  3
 
-#define DEV_CUST_UUID                   0xFEE9  // 自定义UUID
+#define DEV_CUST_UUID                   0xFEE5  // 自定义UUID
 #define FLAG_TYPE_VALUE                 0x06    // google的flag值
 #define CON_ADV_OBJ_MAX_NUM             2       // 0:GOOGLE, 1:APPLE
 #define ADV_INTERVAL                    3200    // 3200*0.625ms=2000ms
@@ -687,6 +687,9 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
     /* 清理日志互斥锁，防止死锁
      * 场景：日志发送任务持有锁时蓝牙断开，其他任务阻塞等待 */
     ble_log_disconnect_cleanup();
+
+    /* 清理BLE单包/分包回复状态，避免断链后busy残留 */
+    ble_packet_trans_disconnect_cleanup();
 }
 
 /********************************************************************
@@ -755,7 +758,7 @@ void ble_server_send_notification(uint8_t *data, uint16_t tx_len)
 
     if (ble_data_send_enable[GOOGLE_ADV_TYPE] || ble_data_send_enable[APPLE_ADV_TYPE])
     {
-        LOG_HEXDUMP_INF(uart_ble_server_buf, _tx_len, "bt_gatt_notify:");
+        // LOG_HEXDUMP_INF(uart_ble_server_buf, _tx_len, "bt_gatt_notify:");
 
         // my_gatt_svc.attrs[4]对应notify特征值
         err = bt_gatt_notify(current_conn, &my_gatt_svc.attrs[4], uart_ble_server_buf, _tx_len);
@@ -1202,6 +1205,9 @@ static void my_ble_task(void *p1, void *p2, void *p3)
     /* 初始化蓝牙日志模块 */
     ble_log_init();
 
+    /* 初始化BLE单包/分包回复超时重发模块 */
+    ble_packet_trans_init();
+
     /* 初始化扫描模块 */
     my_scan_init();
 
@@ -1222,7 +1228,13 @@ static void my_ble_task(void *p1, void *p2, void *p3)
 
             /* 蓝牙开/关锁结果通知 */
             case MY_MSG_BLE_LOCK_RESULT:
-                ble_comu_response_or_expansion_cmd(BLE_DATA_TYPE_AT_CMD, msg.pData, msg.DataLen);
+                /* 根据数据大小动态使用单包或分包 */
+                ble_packet_trans_send(msg.pData, msg.DataLen);
+                break;
+
+            /* BLE包传输应答超时处理 */
+            case MY_MSG_BLE_PACKET_TIMEOUT:
+                ble_packet_trans_timeout_handler();
                 break;
 
             //LTE+CMD数据透传指令

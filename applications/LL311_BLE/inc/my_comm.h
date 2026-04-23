@@ -247,6 +247,7 @@ typedef enum
     MY_MSG_BLE_LOCK_RESULT,     /* 蓝牙开/关锁结果通知消息 */
 
     MY_MSG_LTE_BLE_DATA,        /* 蓝牙指令数据 */
+    MY_MSG_BLE_PACKET_TIMEOUT,  /* BLE包传输应答超时 */
 
     MY_MSG_SHUTDOWN,            /* 关机消息 */
 

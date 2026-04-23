@@ -13,7 +13,7 @@
 #define AT_CMD_TABLE_TOTAL (sizeof(at_cmd_attr_table)/sizeof(at_cmd_attr_t))
 #define LTE_CMD_TABLE_TOTAL (sizeof(lte_cmd_attr_table)/sizeof(char*))
 
-#define RESP_STRING_LENGTH_MAX              BLE_SVC_RX_MAX_LEN
+#define RESP_STRING_LENGTH_MAX              1024                //应答缓冲区大小
 #define CMD_STRING_LENGTH_MAX               128                 //暂定可接收cmd缓冲区大小
 
 typedef enum
@@ -48,7 +48,7 @@ typedef struct {
     char rcv_msg[CMD_STRING_LENGTH_MAX];            //接收到的数据
     uint16_t rcv_length;
 
-    char resp_msg[RESP_STRING_LENGTH_MAX];          //应答数据
+    char *resp_msg;                                 //应答数据指针（指向静态缓冲区）
     uint16_t resp_length;
 } at_cmd_struc;
 

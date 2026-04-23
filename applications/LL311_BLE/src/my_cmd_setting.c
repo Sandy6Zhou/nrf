@@ -263,7 +263,7 @@ static bool validate_lte_cmd_params(at_cmd_struc* msg)
 **入口参数:  msg     --  AT命令消息结构体指针
 **出口参数:  无
 **函数功能:  LTE透传命令处理
-**返 回 值:  BLE_DATA_TYPE_AT_CMD 表示返回AT命令类型的数据
+**返 回 值:  BLE_DATA_TYPE_PACKET_MULTIPLE 表示返回分包传输类型的数据
 *********************************************************************/
 static int lte_cmd_handler(at_cmd_struc* msg)
 {
@@ -280,7 +280,7 @@ static int lte_cmd_handler(at_cmd_struc* msg)
         return -1;  // 退出函数
     }
 
-    remaining = sizeof(msg->resp_msg);  // 计算响应消息缓冲区的大小
+    remaining = RESP_STRING_LENGTH_MAX;  // 计算响应消息缓冲区的大小
 
     LOG_INF("%s=>%s", __func__, msg->parm[0]);  // 输出函数名和命令名
 
@@ -295,7 +295,7 @@ static int lte_cmd_handler(at_cmd_struc* msg)
             msg->resp_length = ret;
         }
         LOG_INF("LTE command parameter validation failed");
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 #endif
 
@@ -330,7 +330,7 @@ static int lte_cmd_handler(at_cmd_struc* msg)
     {
         LOG_ERR("Failed to allocate memory for LTE command message");
         snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     // 生成成功响应消息
@@ -344,7 +344,7 @@ static int lte_cmd_handler(at_cmd_struc* msg)
     }
 
     // TODO: 后续修改回传数据
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /*********************************************************************
@@ -785,7 +785,7 @@ static int remalm_cmd_handler(at_cmd_struc* msg)
     int m_value;
     int sw_value;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     //无参数即查询
     if (msg->parm_count == 0)
@@ -795,7 +795,7 @@ static int remalm_cmd_handler(at_cmd_struc* msg)
 
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%s,%d", msg->parm[0],
                                     state_str, gConfigParam.remalm_config.remalm_mode);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 检查参数数量 */
@@ -803,7 +803,7 @@ static int remalm_cmd_handler(at_cmd_struc* msg)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 解析SW参数 */
@@ -845,11 +845,11 @@ static int remalm_cmd_handler(at_cmd_struc* msg)
 
     //TODO 具体逻辑处理
 
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /********************************************************************
@@ -869,14 +869,14 @@ static int lockpincyt_cmd_handler(at_cmd_struc* msg)
     int report_value;
     int buzzer_value;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     //无参数即查询
     if (msg->parm_count == 0)
     {
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%d,%d", msg->parm[0],
                             gConfigParam.lockpincyt_config.lockpincyt_report, gConfigParam.lockpincyt_config.lockpincyt_buzzer);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 检查参数数量 */
@@ -884,7 +884,7 @@ static int lockpincyt_cmd_handler(at_cmd_struc* msg)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 解析Report参数 */
@@ -921,11 +921,11 @@ static int lockpincyt_cmd_handler(at_cmd_struc* msg)
 
     //TODO 具体逻辑处理
 
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /********************************************************************
@@ -945,14 +945,14 @@ static int lockerr_cmd_handler(at_cmd_struc* msg)
     int report_value;
     int buzzer_value;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     //无参数即查询
     if (msg->parm_count == 0)
     {
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%d,%d", msg->parm[0],
                             gConfigParam.lockerr_config.lockerr_report, gConfigParam.lockerr_config.lockerr_buzzer);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 检查参数数量 */
@@ -960,7 +960,7 @@ static int lockerr_cmd_handler(at_cmd_struc* msg)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 解析Report参数 */
@@ -997,11 +997,11 @@ static int lockerr_cmd_handler(at_cmd_struc* msg)
 
     //TODO 具体逻辑处理
 
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /********************************************************************
@@ -1021,14 +1021,14 @@ static int pinstat_cmd_handler(at_cmd_struc* msg)
     int report_value;
     int trigger_value;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     //无参数即查询
     if (msg->parm_count == 0)
     {
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%d,%d", msg->parm[0],
                             gConfigParam.pinstat_config.pinstat_report, gConfigParam.pinstat_config.pinstat_trigger);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 检查参数数量 */
@@ -1036,7 +1036,7 @@ static int pinstat_cmd_handler(at_cmd_struc* msg)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 解析Report参数 */
@@ -1073,11 +1073,11 @@ static int pinstat_cmd_handler(at_cmd_struc* msg)
 
     //TODO 具体逻辑处理
 
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /********************************************************************
@@ -1097,14 +1097,14 @@ static int lockstat_cmd_handler(at_cmd_struc* msg)
     int report_value;
     int trigger_value;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     //无参数即查询
     if (msg->parm_count == 0)
     {
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%d,%d", msg->parm[0],
                             gConfigParam.lockstat_config.lockstat_report, gConfigParam.lockstat_config.lockstat_trigger);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 检查参数数量 */
@@ -1112,7 +1112,7 @@ static int lockstat_cmd_handler(at_cmd_struc* msg)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 解析Report参数 */
@@ -1149,11 +1149,11 @@ static int lockstat_cmd_handler(at_cmd_struc* msg)
 
     //TODO 具体逻辑处理
 
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /********************************************************************
@@ -1179,7 +1179,7 @@ static int motdet_cmd_handler(at_cmd_struc* msg)
     int sea_transport_time_value;
     int report_type_value;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     //无参数即查询
     if (msg->parm_count == 0)
@@ -1191,7 +1191,7 @@ static int motdet_cmd_handler(at_cmd_struc* msg)
                             gConfigParam.motdet_config.motdet_static_land_length,
                             gConfigParam.motdet_config.motdet_sea_transport_time,
                             gConfigParam.motdet_config.motdet_report_type);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 检查参数数量 */
@@ -1199,7 +1199,7 @@ static int motdet_cmd_handler(at_cmd_struc* msg)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 解析Static G参数 */
@@ -1267,11 +1267,11 @@ static int motdet_cmd_handler(at_cmd_struc* msg)
 
     //TODO 具体逻辑处理
 
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /********************************************************************
@@ -1292,7 +1292,7 @@ static int batlevel_cmd_handler(at_cmd_struc* msg)
     int param_values[6];
     int i;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     //无参数即查询
     if (msg->parm_count == 0)
@@ -1305,7 +1305,7 @@ static int batlevel_cmd_handler(at_cmd_struc* msg)
                             gConfigParam.batlevel_config.batlevel_fair_rpt,
                             gConfigParam.batlevel_config.batlevel_high_rpt,
                             gConfigParam.batlevel_config.batlevel_full_rpt);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 检查参数数量 */
@@ -1347,11 +1347,11 @@ static int batlevel_cmd_handler(at_cmd_struc* msg)
 
     //TODO 具体逻辑处理
 
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /********************************************************************
@@ -1369,7 +1369,7 @@ static int chargesta_cmd_handler(at_cmd_struc* msg)
     uint16_t remaining;
     int report_value;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     //无参数即查询
     if (msg->parm_count == 0)
@@ -1377,7 +1377,7 @@ static int chargesta_cmd_handler(at_cmd_struc* msg)
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%d",
                             msg->parm[0],
                             gConfigParam.batlevel_config.chargesta_report);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 检查参数数量 */
@@ -1385,7 +1385,7 @@ static int chargesta_cmd_handler(at_cmd_struc* msg)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 解析RPT参数 */
@@ -1411,11 +1411,11 @@ static int chargesta_cmd_handler(at_cmd_struc* msg)
 
     //TODO 具体逻辑处理
 
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /********************************************************************
@@ -1437,7 +1437,7 @@ static int shockalarm_cmd_handler(at_cmd_struc* msg)
     int type_value;
     int sw_value;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     //无参数即查询
     if (msg->parm_count == 0)
@@ -1450,7 +1450,7 @@ static int shockalarm_cmd_handler(at_cmd_struc* msg)
                             gConfigParam.shockalarm_config.shockalarm_level,
                             gConfigParam.shockalarm_config.shockalarm_type
         );
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 检查参数数量 */
@@ -1458,7 +1458,7 @@ static int shockalarm_cmd_handler(at_cmd_struc* msg)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 解析SW参数 */
@@ -1512,11 +1512,11 @@ static int shockalarm_cmd_handler(at_cmd_struc* msg)
 
     //TODO 具体逻辑处理
 
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 void shutdown_timeout_timer(void *param)
@@ -1539,7 +1539,7 @@ static int pwsave_cmd_handler(at_cmd_struc* msg)
 {
     uint16_t remaining;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     // 无参数即查询
     if (msg->parm_count == 0)
@@ -1547,7 +1547,7 @@ static int pwsave_cmd_handler(at_cmd_struc* msg)
         // 根据 pwsave_sw 的值选择 "ON" 或 "OFF"
         const char* state_str = gConfigParam.pwsave_config.pwsave_sw ? "ON" : "OFF";
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%s", msg->parm[0]);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 检查参数数量 (应为1，指令格式为PWRSAVE,ON#) */
@@ -1578,7 +1578,7 @@ static int pwsave_cmd_handler(at_cmd_struc* msg)
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
     }
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /********************************************************************
@@ -1596,7 +1596,7 @@ static int startr_cmd_handler(at_cmd_struc* msg)
 {
     uint16_t remaining;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     /* 检查参数数量：0表示查询，1表示设置 */
     if (msg->parm_count == 0)
@@ -1611,14 +1611,14 @@ static int startr_cmd_handler(at_cmd_struc* msg)
         {
             msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN STARTR:OFF");
         }
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     if (msg->parm_count != 1)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 设置指令 */
@@ -1649,11 +1649,11 @@ static int startr_cmd_handler(at_cmd_struc* msg)
 
     //TODO 具体逻辑处理
 
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /********************************************************************
@@ -1676,7 +1676,7 @@ static int cbmt_cmd_handler(at_cmd_struc* msg)
     const char* charge_status;
     int ret;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     /* 检查参数数量：应为0 */
     if (msg->parm_count == 0)
@@ -1712,7 +1712,7 @@ static int cbmt_cmd_handler(at_cmd_struc* msg)
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
     }
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /********************************************************************
@@ -1730,14 +1730,14 @@ static int bt_crfpwr_cmd_handler(at_cmd_struc* msg)
     uint16_t remaining;
     int a_value;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     // 无参数即查询
     if (msg->parm_count == 0)
     {
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:%d", msg->parm[0],
                                     gConfigParam.ble_tx_power.tx_power);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 检查参数数量 */
@@ -1745,7 +1745,7 @@ static int bt_crfpwr_cmd_handler(at_cmd_struc* msg)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 解析A参数 */
@@ -1771,11 +1771,11 @@ static int bt_crfpwr_cmd_handler(at_cmd_struc* msg)
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
     LOG_INF("BT_CRFPWR: A=%d",gConfigParam.ble_tx_power.tx_power);
 
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /********************************************************************
@@ -1803,7 +1803,7 @@ static int bt_updata_cmd_handler(at_cmd_struc* msg)
     uint32_t scan_length_value;
     uint32_t updata_interval_value;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     // 无参数即查询
     if (msg->parm_count == 0)
@@ -1815,7 +1815,7 @@ static int bt_updata_cmd_handler(at_cmd_struc* msg)
                                     gConfigParam.bt_updata_config.bt_updata_scan_length,
                                     gConfigParam.bt_updata_config.bt_updata_updata_interval
         );
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 检查参数数量 */
@@ -1823,7 +1823,7 @@ static int bt_updata_cmd_handler(at_cmd_struc* msg)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 解析Mode参数 */
@@ -1900,11 +1900,11 @@ static int bt_updata_cmd_handler(at_cmd_struc* msg)
                            gConfigParam.bt_updata_config.bt_updata_scan_length,
                            gConfigParam.bt_updata_config.bt_updata_updata_interval);
 
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /********************************************************************
@@ -1927,7 +1927,7 @@ static int tag_cmd_handler(at_cmd_struc* msg)
     int interval_value;
     int sw_value;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     // 无参数即查询
     if (msg->parm_count == 0)
@@ -1939,7 +1939,7 @@ static int tag_cmd_handler(at_cmd_struc* msg)
                                     state_str,
                                     gConfigParam.tag_config.tag_interval
         );
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
 
@@ -1948,7 +1948,7 @@ static int tag_cmd_handler(at_cmd_struc* msg)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 解析SW参数 */
@@ -2001,11 +2001,11 @@ static int tag_cmd_handler(at_cmd_struc* msg)
     //更新非连接广播参数，里面会按配置打开或关闭广播，根据tag_sw的值
     my_ble_updata_adv_param(gConfigParam.tag_config.tag_interval);
 
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /********************************************************************
@@ -2026,7 +2026,7 @@ static int jatag_cmd_handler(at_cmd_struc* msg)
     uint16_t remaining;
     int sw_value;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     // 无参数即查询
     if (msg->parm_count == 0)
@@ -2036,7 +2036,7 @@ static int jatag_cmd_handler(at_cmd_struc* msg)
                                     msg->parm[0],
                                     state_str
         );
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 检查参数数量：支持1个参数(JATAG,ON)*/
@@ -2044,7 +2044,7 @@ static int jatag_cmd_handler(at_cmd_struc* msg)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 解析SW参数 */
@@ -2082,11 +2082,11 @@ static int jatag_cmd_handler(at_cmd_struc* msg)
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
     LOG_INF("JATAG: SW=%d, Interval=%u", gConfigParam.adv_valid_value.AppleValid, gConfigParam.tag_config.tag_interval);
 
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /********************************************************************
@@ -2107,7 +2107,7 @@ static int jgtag_cmd_handler(at_cmd_struc* msg)
     uint16_t remaining;
     int sw_value;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     // 无参数即查询
     if (msg->parm_count == 0)
@@ -2117,7 +2117,7 @@ static int jgtag_cmd_handler(at_cmd_struc* msg)
                                     msg->parm[0],
                                     state_str
         );
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 检查参数数量：支持1个参数(JGTAG,ON)*/
@@ -2125,7 +2125,7 @@ static int jgtag_cmd_handler(at_cmd_struc* msg)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 解析SW参数 */
@@ -2163,11 +2163,11 @@ static int jgtag_cmd_handler(at_cmd_struc* msg)
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
     LOG_INF("JGTAG: SW=%d, Interval=%u", gConfigParam.adv_valid_value.GoogleValid, gConfigParam.tag_config.tag_interval);
 
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /********************************************************************
@@ -2185,7 +2185,7 @@ static int lockcd_cmd_handler(at_cmd_struc* msg)
     uint16_t remaining;
     int countdown_value;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     // 无参数即查询
     if (msg->parm_count == 0)
@@ -2194,7 +2194,7 @@ static int lockcd_cmd_handler(at_cmd_struc* msg)
                                     msg->parm[0],
                                     gConfigParam.locked_config.lockcd_countdown
         );
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 检查参数数量 */
@@ -2202,7 +2202,7 @@ static int lockcd_cmd_handler(at_cmd_struc* msg)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 解析Count down time参数 */
@@ -2228,11 +2228,11 @@ static int lockcd_cmd_handler(at_cmd_struc* msg)
 
     //TODO 具体逻辑处理
 
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /********************************************************************
@@ -2250,7 +2250,7 @@ static int led_cmd_handler(at_cmd_struc* msg)
     uint16_t remaining;
     int display_value;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     // 无参数即查询
     if (msg->parm_count == 0)
@@ -2260,7 +2260,7 @@ static int led_cmd_handler(at_cmd_struc* msg)
                                     msg->parm[0],
                                     state_str
         );
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 检查参数数量 */
@@ -2268,7 +2268,7 @@ static int led_cmd_handler(at_cmd_struc* msg)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 解析A参数 */
@@ -2317,11 +2317,11 @@ static int led_cmd_handler(at_cmd_struc* msg)
 
     //TODO 具体逻辑处理
 
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /********************************************************************
@@ -2345,7 +2345,7 @@ static int buzzer_cmd_handler(at_cmd_struc* msg)
     uint16_t remaining;
     int operator_value;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     // 无参数即查询
     if (msg->parm_count == 0)
@@ -2354,7 +2354,7 @@ static int buzzer_cmd_handler(at_cmd_struc* msg)
                                     msg->parm[0],
                                     gConfigParam.buzzer_config.buzzer_operator
         );
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 检查参数数量 */
@@ -2362,7 +2362,7 @@ static int buzzer_cmd_handler(at_cmd_struc* msg)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 解析Operater参数 */
@@ -2388,11 +2388,11 @@ static int buzzer_cmd_handler(at_cmd_struc* msg)
 
     //TODO 具体逻辑处理
 
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /********************************************************************
@@ -2426,7 +2426,7 @@ static int nfctrig_cmd_handler(at_cmd_struc* msg)
     char temp_buf[256];
     int temp_len = 0;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     /* 参数数量基础校验 */
     if (msg->parm_count < 1)
@@ -2472,7 +2472,7 @@ static int nfctrig_cmd_handler(at_cmd_struc* msg)
         {
             LOG_INF("table full");
             msg->resp_length = snprintf(msg->resp_msg, remaining, "Card limit reached. Please delete before adding.");
-            return BLE_DATA_TYPE_AT_CMD;
+            return BLE_DATA_TYPE_PACKET_MULTIPLE;
         }
 
         /* 2. 查重 */
@@ -2483,7 +2483,7 @@ static int nfctrig_cmd_handler(at_cmd_struc* msg)
             {
                 LOG_INF("The card number already exists.Please delete it before setting again.");
                 msg->resp_length = snprintf(msg->resp_msg, remaining, "The card number already exists.Please delete it before setting again.");
-                return BLE_DATA_TYPE_AT_CMD;
+                return BLE_DATA_TYPE_PACKET_MULTIPLE;
             }
         }
             /* 3. 插入 */
@@ -2506,7 +2506,7 @@ static int nfctrig_cmd_handler(at_cmd_struc* msg)
 
         /* 生成成功响应 */
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_%s_OK", msg->parm[0], msg->parm[1]);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
     }
     else if (strcmp(msg->parm[1], "CHECK") == 0)
@@ -2522,32 +2522,31 @@ static int nfctrig_cmd_handler(at_cmd_struc* msg)
         {
             if (i == gConfigParam.nfctrig_config.nfctrig_table.count - 1)
             {
-                temp_len += snprintf(temp_buf + temp_len, sizeof(temp_buf) - temp_len,
-                                "%s_%s", gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[i].nfctrig_nfc_no,
-                                gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[i].nfctrig_command);
+                msg->resp_length += snprintf(msg->resp_msg + msg->resp_length, RESP_STRING_LENGTH_MAX - msg->resp_length,
+                                 "%s_%s", gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[i].nfctrig_nfc_no,
+                                 gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[i].nfctrig_command);
             }
             else
             {
-                temp_len += snprintf(temp_buf + temp_len, sizeof(temp_buf) - temp_len,
-                                "%s_%s;", gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[i].nfctrig_nfc_no,
-                                gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[i].nfctrig_command);
+                msg->resp_length += snprintf(msg->resp_msg + msg->resp_length, RESP_STRING_LENGTH_MAX - msg->resp_length,
+                                 "%s_%s;", gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[i].nfctrig_nfc_no,
+                                 gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[i].nfctrig_command);
             }
             found = 1;
         }
 
         if (found)
         {
-            //TODO 回传的数据有可能太大返回有问题，后续需要分包回传处理
-            msg->resp_length = snprintf(msg->resp_msg, remaining, "%s", temp_buf);
-            LOG_INF("%s=>CHECK,COUNT=%d", __func__, gConfigParam.nfctrig_config.nfctrig_table.count);
-            return BLE_DATA_TYPE_AT_CMD;
+            LOG_INF("%s=>CHECK,COUNT=%d, using packet trans",
+                    __func__, gConfigParam.nfctrig_config.nfctrig_table.count);
         }
         else
         {
-            LOG_INF("%s=>CHECK not found", __func__);
-            goto param_invalid;
+            msg->resp_length += snprintf(msg->resp_msg + msg->resp_length, RESP_STRING_LENGTH_MAX - msg->resp_length,
+                                    "check count is null");
         }
-
+        /* 返回分包传输类型，目前没什么意义 */
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
     else if (strcmp(msg->parm[1], "DEL") == 0)
     {
@@ -2571,7 +2570,7 @@ static int nfctrig_cmd_handler(at_cmd_struc* msg)
             LOG_INF("%s=>DEL ALL", __func__);
             msg->resp_length = snprintf(msg->resp_msg, remaining, "NFCTRIG Delete ALL Success.");
 
-            return BLE_DATA_TYPE_AT_CMD;
+            return BLE_DATA_TYPE_PACKET_MULTIPLE;
         }
         /* 删除指定卡号 */
         else
@@ -2604,7 +2603,7 @@ static int nfctrig_cmd_handler(at_cmd_struc* msg)
                 LOG_INF("%s=>DEL,%s", __func__, msg->parm[2]);
                 msg->resp_length = snprintf(msg->resp_msg, remaining, "NFCTRIG %s Delete Success.", msg->parm[2]);
 
-                return BLE_DATA_TYPE_AT_CMD;
+                return BLE_DATA_TYPE_PACKET_MULTIPLE;
             }
             else
             {
@@ -2630,7 +2629,7 @@ param_invalid:
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
     }
 
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /********************************************************************
@@ -2674,7 +2673,7 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
     char temp_buf[256];
     int temp_len;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
 #if 0
     for(int j = 0; j < msg->parm_count + 1; j++)
@@ -2824,7 +2823,7 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
             {
                 LOG_INF("%s=>card list full", __func__);
                 msg->resp_length = snprintf(msg->resp_msg, remaining, "Card limit reached. Please delete before adding.");
-                return BLE_DATA_TYPE_AT_CMD;
+                return BLE_DATA_TYPE_PACKET_MULTIPLE;
             }
             index = gConfigParam.nfcauth_config.nfcauth_card_count;
             gConfigParam.nfcauth_config.nfcauth_card_count++;
@@ -2871,7 +2870,7 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
                 gConfigParam.nfcauth_config.nfcauth_cards[index].unlock_times);
 
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
     /* 处理PSET指令：快速设置管理员卡（任意地点、时间、不限次数） */
     else if (strcmp(msg->parm[1], "PSET") == 0)
@@ -2910,7 +2909,7 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
             {
                 LOG_INF("%s=>card list full", __func__);
                 msg->resp_length = snprintf(msg->resp_msg, remaining, "Card limit reached. Please delete before adding.");
-                return BLE_DATA_TYPE_AT_CMD;
+                return BLE_DATA_TYPE_PACKET_MULTIPLE;
             }
             index = gConfigParam.nfcauth_config.nfcauth_card_count;
             gConfigParam.nfcauth_config.nfcauth_card_count++;
@@ -2934,7 +2933,7 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
         LOG_INF("%s=>PSET,%s", __func__, gConfigParam.nfcauth_config.nfcauth_cards[index].nfc_no);
 
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
     /* 处理DEL指令：删除已授权卡号 */
     else if (strcmp(msg->parm[1], "DEL") == 0)
@@ -2957,7 +2956,7 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
 
             LOG_INF("%s=>DEL ALL", __func__);
             msg->resp_length = snprintf(msg->resp_msg, remaining, "NFC Delete ALL Success.");
-            return BLE_DATA_TYPE_AT_CMD;
+            return BLE_DATA_TYPE_PACKET_MULTIPLE;
         }
         /* 删除指定卡号 */
         else
@@ -2992,7 +2991,7 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
                 LOG_INF("%s=>DEL,%s", __func__, msg->parm[2]);
                 msg->resp_length = snprintf(msg->resp_msg, remaining, "NFC %s Delete Success.", msg->parm[2]);
 
-                return BLE_DATA_TYPE_AT_CMD;
+                return BLE_DATA_TYPE_PACKET_MULTIPLE;
             }
             else
             {
@@ -3007,23 +3006,34 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
         /* 查询所有已设置卡号列表 */
         if (msg->parm_count == 1)
         {
+            found = 0;
             for (i = 0; i < gConfigParam.nfcauth_config.nfcauth_card_count; i++)
             {
                 if (i == gConfigParam.nfcauth_config.nfcauth_card_count - 1)
                 {
-                    temp_len += snprintf(temp_buf + temp_len, sizeof(temp_buf) - temp_len,
+                    msg->resp_length += snprintf(msg->resp_msg + msg->resp_length, RESP_STRING_LENGTH_MAX - msg->resp_length,
                                     "%s", gConfigParam.nfcauth_config.nfcauth_cards[i].nfc_no);
                 }
                 else
                 {
-                    temp_len += snprintf(temp_buf + temp_len, sizeof(temp_buf) - temp_len,
+                    msg->resp_length += snprintf(msg->resp_msg + msg->resp_length, RESP_STRING_LENGTH_MAX - msg->resp_length,
                                     "%s;", gConfigParam.nfcauth_config.nfcauth_cards[i].nfc_no);
                 }
+                found = 1;
             }
 
-            msg->resp_length = snprintf(msg->resp_msg, remaining, "%s", temp_buf);
-            LOG_INF("%s=>CHECK,COUNT=%d", __func__, gConfigParam.nfcauth_config.nfcauth_card_count);
-            return BLE_DATA_TYPE_AT_CMD;
+            if (found)
+            {
+                LOG_INF("%s=>CHECK,COUNT=%d, using packet trans",
+                        __func__, gConfigParam.nfcauth_config.nfcauth_card_count);
+            }
+            else
+            {
+                msg->resp_length += snprintf(msg->resp_msg + msg->resp_length, RESP_STRING_LENGTH_MAX - msg->resp_length,
+                                    "check count is null");
+            }
+            /* 返回分包传输类型，目前没什么意义 */
+            return BLE_DATA_TYPE_PACKET_MULTIPLE;
         }
         /* 查询指定卡号的详细权限信息 */
         else if (msg->parm_count == 2)
@@ -3044,7 +3054,7 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
                         gConfigParam.nfcauth_config.nfcauth_cards[i].end_time,
                         gConfigParam.nfcauth_config.nfcauth_cards[i].unlock_times);
                     LOG_INF("%s=>CHECK,%s", __func__, msg->parm[2]);
-                    return BLE_DATA_TYPE_AT_CMD;
+                    return BLE_DATA_TYPE_PACKET_MULTIPLE;
                 }
             }
 
@@ -3070,7 +3080,7 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
 /* 参数错误统一处理 */
 param_invalid:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /*********************************************************************
@@ -3092,7 +3102,7 @@ static int btlog_cmd_handler(at_cmd_struc* msg)
     uint16_t remaining;
     BleLogConfig_t *config;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
     config = my_param_get_ble_log_config();
 
     /* 无参数 - 查询状态 */
@@ -3100,7 +3110,7 @@ static int btlog_cmd_handler(at_cmd_struc* msg)
     {
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_BTLOG_%s",
                                     config->global_en ? "ON" : "OFF");
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 有参数 - 设置状态 */
@@ -3118,7 +3128,7 @@ static int btlog_cmd_handler(at_cmd_struc* msg)
             {
                 msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_BTLOG_ON_FAIL");
             }
-            return BLE_DATA_TYPE_AT_CMD;
+            return BLE_DATA_TYPE_PACKET_MULTIPLE;
         }
         else if (strcmp(msg->parm[1], "OFF") == 0)
         {
@@ -3132,7 +3142,7 @@ static int btlog_cmd_handler(at_cmd_struc* msg)
             {
                 msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_BTLOG_OFF_FAIL");
             }
-            return BLE_DATA_TYPE_AT_CMD;
+            return BLE_DATA_TYPE_PACKET_MULTIPLE;
         }
         else
         {
@@ -3146,7 +3156,7 @@ static int btlog_cmd_handler(at_cmd_struc* msg)
 
 param_invalid:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_BTLOG_FAIL");
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /*********************************************************************
@@ -3167,7 +3177,7 @@ static int bkey_cmd_handler(at_cmd_struc* msg)
     uint8_t digit_len;
     const char *default_key = "000000";
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     /* 判断指令类型 */
     if (strcmp(msg->parm[0], "BKEY_RESET") == 0)
@@ -3177,7 +3187,7 @@ static int bkey_cmd_handler(at_cmd_struc* msg)
         {
             LOG_INF("%s=>BKEY_RESET param count error: %d", __func__, msg->parm_count);
             msg->resp_length = snprintf(msg->resp_msg, remaining, "Key reset failed. Invalid param.");
-            return BLE_DATA_TYPE_AT_CMD;
+            return BLE_DATA_TYPE_PACKET_MULTIPLE;
         }
 
         strcpy(gConfigParam.bkey_config.bt_key, default_key);
@@ -3187,7 +3197,7 @@ static int bkey_cmd_handler(at_cmd_struc* msg)
 
         LOG_INF("%s=>RESET to default key", __func__);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "Key reset success.");
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
     else if (strcmp(msg->parm[0], "BKEY_SET") == 0)
     {
@@ -3196,7 +3206,7 @@ static int bkey_cmd_handler(at_cmd_struc* msg)
         {
             LOG_INF("%s=>param count error: %d", __func__, msg->parm_count);
             msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_BKEY_SET_FAIL");
-            return BLE_DATA_TYPE_AT_CMD;
+            return BLE_DATA_TYPE_PACKET_MULTIPLE;
         }
 
         /* 验证旧密钥长度是否为6位数字 */
@@ -3238,7 +3248,7 @@ static int bkey_cmd_handler(at_cmd_struc* msg)
         {
             LOG_INF("%s=>new key same as old key", __func__);
             msg->resp_length = snprintf(msg->resp_msg, remaining, "Key update failed. New key must be different.");
-            return BLE_DATA_TYPE_AT_CMD;
+            return BLE_DATA_TYPE_PACKET_MULTIPLE;
         }
 
         /* 更新密钥 */
@@ -3250,20 +3260,20 @@ static int bkey_cmd_handler(at_cmd_struc* msg)
 
         LOG_INF("%s=>key updated:%s", __func__, gConfigParam.bkey_config.bt_key);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "Key update success.");
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 无效指令 */
     LOG_INF("%s=>invalid cmd: %s", __func__, msg->parm[0]);
 
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_BKEY_FAIL");
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 invalid_key:
     /* 蜂鸣器未授权提示音 (异常提示音)*/
     my_set_buzzer_mode(BUZZER_ERROR_TONE);
     msg->resp_length = snprintf(msg->resp_msg, remaining, "Key update failed. Invalid key.");
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /*********************************************************************
@@ -3282,14 +3292,14 @@ static int bunlock_cmd_handler(at_cmd_struc* msg)
     bool already_unlocked;
     uint8_t digit_len;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     /* 检查参数数量 */
     if (msg->parm_count != 1)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "Unlock failed. Invalid param.");
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     // 检查是否已有网络锁/蓝牙锁操作在进行中
@@ -3297,7 +3307,7 @@ static int bunlock_cmd_handler(at_cmd_struc* msg)
     {
         MY_LOG_INF("lock operation already in progress, state=%d", g_netLockState);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "lock operation already in progress");
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 验证密钥长度是否为6位数字 */
@@ -3327,7 +3337,7 @@ static int bunlock_cmd_handler(at_cmd_struc* msg)
     {
         LOG_INF("%s=>already in unlock state", __func__);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "Unlock failed. Device already in unlock state.");
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 执行开锁动作，开锁模块会在完成或超时后通过ble_comu_response_or_expansion_cmd回复结果 */
@@ -3339,13 +3349,13 @@ static int bunlock_cmd_handler(at_cmd_struc* msg)
 
     /* 不返回响应消息，由ble模块异步回复 */
     msg->resp_length = 0;
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 key_error:
     // Buzzer 未授权提示
     my_set_buzzer_mode(BUZZER_ERROR_TONE);
     msg->resp_length = snprintf(msg->resp_msg, remaining, "Unlock failed. Unlock key error");
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /*********************************************************************
@@ -3365,14 +3375,14 @@ static int block_cmd_handler(at_cmd_struc* msg)
     bool pin_inserted;
     uint8_t digit_len;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     /* 检查参数数量 */
     if (msg->parm_count != 1)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "Lock failed. Invalid param.");
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     // 检查是否已有网络锁/蓝牙锁操作在进行中
@@ -3380,7 +3390,7 @@ static int block_cmd_handler(at_cmd_struc* msg)
     {
         MY_LOG_INF("lock operation already in progress, state=%d", g_netLockState);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "lock operation already in progress");
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 验证密钥长度是否为6位数字 */
@@ -3412,7 +3422,7 @@ static int block_cmd_handler(at_cmd_struc* msg)
         // Buzzer 上锁失败提示
         my_set_buzzer_mode(BUZZER_EVENT_LOCK_FAIL);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "Lock failed. Lock pin not detected.");
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 检查当前锁状态：通过关锁限位判断是否已上锁 */
@@ -3423,7 +3433,7 @@ static int block_cmd_handler(at_cmd_struc* msg)
         //Buzzer 上锁失败提示
         my_set_buzzer_mode(BUZZER_EVENT_LOCK_FAIL);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "Lock failed. Device already in lock state.");
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 执行上锁动作，上锁模块会在完成或超时后通过ble_comu_response_or_expansion_cmd回复结果 */
@@ -3435,13 +3445,13 @@ static int block_cmd_handler(at_cmd_struc* msg)
 
     /* 不返回响应消息，由ble模块异步回复 */
     msg->resp_length = 0;
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 key_error:
     //Buzzer 未授权提示
     my_set_buzzer_mode(BUZZER_ERROR_TONE);
     msg->resp_length = snprintf(msg->resp_msg, remaining, "Lock failed. key error");
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /********************************************************************
@@ -3458,7 +3468,7 @@ static int version_cmd_handler(at_cmd_struc* msg)
     uint16_t remaining;  // 响应消息缓冲区的剩余空间
     int ret;             // snprintf 函数的返回值
 
-    remaining = sizeof(msg->resp_msg);  // 计算响应消息缓冲区的大小
+    remaining = RESP_STRING_LENGTH_MAX;  // 计算响应消息缓冲区的大小
 
     /* 检查参数数量：应为0 */
     if (msg->parm_count == 0)  // 检查命令是否有参数
@@ -3486,7 +3496,7 @@ static int version_cmd_handler(at_cmd_struc* msg)
         // 生成失败响应消息
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
     }
-    return BLE_DATA_TYPE_AT_CMD;  // 返回 BLE 数据类型
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;  // 返回 BLE 数据类型
 }
 
 /********************************************************************
@@ -3506,7 +3516,7 @@ static int modeset_cmd_handler(at_cmd_struc* msg)
     uint16_t remaining;  // 响应消息缓冲区的剩余空间
     DeviceWorkModeConfig param_work_mode_config;  // 工作模式配置结构体
 
-    remaining = sizeof(msg->resp_msg);  // 计算响应消息缓冲区的大小
+    remaining = RESP_STRING_LENGTH_MAX;  // 计算响应消息缓冲区的大小
 
     if(msg->parm_count == 0)
     {
@@ -3535,7 +3545,7 @@ static int modeset_cmd_handler(at_cmd_struc* msg)
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
         LOG_INF("MODESET: current_mode:%d", param_work_mode_config.current_mode);
 
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     // 连续模式处理
@@ -3618,12 +3628,12 @@ static int modeset_cmd_handler(at_cmd_struc* msg)
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
     LOG_INF("MODESET: current_mode:%d", param_work_mode_config.current_mode);
 
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
     // 生成失败响应
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
 /********************************************************************
@@ -3657,7 +3667,7 @@ static int cunlock_cmd_handler(at_cmd_struc* msg)
     char buf[12] = {0};
     uint8_t sec = 0;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     // 此指令不允许蓝牙发
     if (!g_lte_cmdSource)
@@ -3856,7 +3866,7 @@ static int clock_cmd_handler(at_cmd_struc *msg)
     uint16_t remaining;
     bool pin_inserted;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     // 此指令不允许蓝牙发
     if (!g_lte_cmdSource)
@@ -3934,7 +3944,7 @@ static int bt_parmac_cmd_handler(at_cmd_struc* msg)
     bt_addr_le_t temp_addr;
     int i, add_count;
 
-    remaining = sizeof(msg->resp_msg);
+    remaining = RESP_STRING_LENGTH_MAX;
 
     if (msg->parm_count < 1)
     {
@@ -3985,7 +3995,7 @@ static int bt_parmac_cmd_handler(at_cmd_struc* msg)
 
         LOG_INF("ADD %d MACs, total: %d", add_count, gConfigParam.bparmac_config.bt_parmac_mac_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_ADD_OK", msg->parm[0]);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
     else if (strcmp(msg->parm[1], "DEL") == 0)
     {
@@ -4004,7 +4014,7 @@ static int bt_parmac_cmd_handler(at_cmd_struc* msg)
             gConfigParam.bparmac_config.flag = FLAG_VALID;
             // 保存配置参数到flash
             my_user_data_write(ZMS_ID_BT_PARMAC_CONFIG, &gConfigParam.bparmac_config, sizeof(BparmacConfig_t));
-            return BLE_DATA_TYPE_AT_CMD;
+            return BLE_DATA_TYPE_PACKET_MULTIPLE;
         }
         // BT_PARMAC,DEL,[MAC]#
         else
@@ -4022,7 +4032,7 @@ static int bt_parmac_cmd_handler(at_cmd_struc* msg)
             {
                 LOG_INF("DEL MAC success");
                 msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_DEL_OK", msg->parm[0]);
-                return BLE_DATA_TYPE_AT_CMD;
+                return BLE_DATA_TYPE_PACKET_MULTIPLE;
             }
             else
             {
@@ -4071,7 +4081,7 @@ static int bt_parmac_cmd_handler(at_cmd_struc* msg)
         }
 
         LOG_INF("CHECK, count=%d", gConfigParam.bparmac_config.bt_parmac_mac_count);
-        return BLE_DATA_TYPE_AT_CMD;
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
     else
     {
@@ -4081,5 +4091,5 @@ static int bt_parmac_cmd_handler(at_cmd_struc* msg)
 param_invalid:
     LOG_INF("%s=>%s, param error or set fail", __func__, msg->parm[0]);
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-    return BLE_DATA_TYPE_AT_CMD;
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
