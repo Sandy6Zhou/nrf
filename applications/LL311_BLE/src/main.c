@@ -412,6 +412,9 @@ void handle_long_life_mode(void)
 
     /* 开启LTE */
     my_send_msg(MOD_MAIN, MOD_LTE, MY_MSG_LTE_PWRON);
+
+    // 开启LTE定时器
+    my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_RESET_LTE_TIMER);
 }
 
 /*********************************************************************
@@ -541,22 +544,33 @@ void handle_verify_unlock(ble_rsp_result_t *result)
     uint8_t seq[8] = {0};
     bool ret;
 
-    if (result->param_count != 4)
+    //只有一个参数
+    if (result->param_count < 1)
     {
         MY_LOG_ERR("param count error");
         return;
     }
 
     ret = my_get_str_at_pos(result->params, 0, ',', is_ok, sizeof(is_ok));
-    if (strcmp(is_ok, "OK") != 0)
+    if (strcmp(is_ok, "FAIL") == 0)
     {
-        MY_LOG_ERR("location response not OK");
+        MY_LOG_ERR("location response FAIL");
+
+        //NFC解锁失败提示音
+        my_set_buzzer_mode(BUZZER_ERROR_TONE);
         return;
     }
 
     //后续无参数，说明只是应答，无需处理
     if (!ret)
     {
+        return;
+    }
+
+    //下面解析处理必须要4个参数
+    if (result->param_count != 4)
+    {
+        MY_LOG_ERR("param count error");
         return;
     }
 

@@ -36,6 +36,10 @@ LOG_MODULE_REGISTER(my_cmd_setting, LOG_LEVEL_INF);
 
 // 标记lte_cmd来的,用于区分蓝牙下发的还是lte过来的(某些指令只能网络发蓝牙不能执行)
 uint8_t g_lte_cmdSource;
+
+// 用于存储整包返回的数据内容(仅在蓝牙线程使用)
+char g_resp_buf[RESP_STRING_LENGTH_MAX];
+
 static int remalm_cmd_handler(at_cmd_struc* msg);
 static int lockpincyt_cmd_handler(at_cmd_struc* msg);
 static int lockerr_cmd_handler(at_cmd_struc* msg);
@@ -692,6 +696,7 @@ uint16_t at_recv_cmd_handler(at_cmd_struc *at_cmd_msg)
     return cmd_type;
 }
 
+//注：由于共用一个回复空间，调用at_recv_cmd_handler需要到蓝牙线程处理
 /********************************************************************
 **函数名称:  run_nfc_cmd
 **入口参数:  card_id      ---      输入，NFC卡号指针
@@ -707,6 +712,12 @@ uint16_t run_nfc_cmd(char *card_id, uint8_t *index)
     uint16_t cmd_type = 0;
     int i = 0;
     uint8_t found = 0;
+
+    if (card_id == NULL)
+    {
+        MY_LOG_ERR("Error: card_id is NULL");
+        return 0;
+    }
 
     //遍历匹配卡号
     for (i = 0; i < gConfigParam.nfctrig_config.nfctrig_table.count; i++)
@@ -727,6 +738,9 @@ uint16_t run_nfc_cmd(char *card_id, uint8_t *index)
 
         MY_LOG_INF("at_cmd_msg.rcv_msg:%s", at_cmd_msg.rcv_msg);
         MY_LOG_INF("at_cmd_msg.rcv_msglen:%d", strlen(at_cmd_msg.rcv_msg));
+
+        //指向全局回复区域
+        at_cmd_msg.resp_msg = g_resp_buf;
         cmd_type = at_recv_cmd_handler(&at_cmd_msg);
     }
 
@@ -2394,6 +2408,7 @@ static int buzzer_cmd_handler(at_cmd_struc* msg)
     LOG_INF("BUZZER: Operator=%d", gConfigParam.buzzer_config.buzzer_operator);
 
     //TODO 具体逻辑处理
+    my_set_buzzer_mode(operator_value);
 
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
@@ -3625,6 +3640,8 @@ static int modeset_cmd_handler(at_cmd_struc* msg)
         {
             // 切换到长续航模式
             send_work_mode_command(param_work_mode_config.current_mode);
+            //重新开启LTE定时器
+            my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_RESET_LTE_TIMER);
         }
 
         LOG_INF("%s,%s,%s,%s#", msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3]);
@@ -3666,6 +3683,8 @@ static int modeset_cmd_handler(at_cmd_struc* msg)
         {
             // 切换到智能模式
             send_work_mode_command(param_work_mode_config.current_mode);
+            //根据gsensor状态更新参数
+            my_send_msg(MOD_BLE, MOD_GSENSOR, MY_MSG_MODESET_UPDATE);
         }
 
         LOG_INF("%s,%s,%s,%s,%s,%s,%s#", msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3], msg->parm[4], msg->parm[5], msg->parm[6]);
@@ -3725,7 +3744,7 @@ static int cunlock_cmd_handler(at_cmd_struc* msg)
     // 无参数即查询
     if (msg->parm_count == 0)
     {
-        if (g_net_unlock.start == NULL)
+        if (g_net_unlock.start[0] == '\0')
         {
             msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s:0,0", msg->parm[0]);
         }

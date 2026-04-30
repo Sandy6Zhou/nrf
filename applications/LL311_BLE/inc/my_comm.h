@@ -212,6 +212,7 @@ typedef enum
     MY_MSG_GSENSOR_PWROFF,
     MY_MSG_GSENSOR_READ, /* G-Sensor 读取六轴数据 */
     MY_MSG_GSENSOR_WAKEUP_INT, /* G-Sensor 唤醒中断消息 */
+    MY_MSG_MODESET_UPDATE,  // 处理智能模式下参数设置更新
 
     /* NFC处理程序消息 */
     MY_MSG_NFC_START_POLL,   /* 启动NFC轮询 */
@@ -235,6 +236,7 @@ typedef enum
     // 处理4G过来LTE+CMD数据透传
     MY_MSG_LTE_CMD_RX,
     MY_MSG_LTE_CMD_ASYNC_RESP,
+    MY_MSG_BLE_NFCTRIG_EVENT,  // 处理NFC联动指令
 
     //处理透传mac和tag数据传输（单条上报)
     MY_MSG_UPLOAD_TAG_AND_MAC,

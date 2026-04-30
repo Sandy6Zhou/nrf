@@ -76,6 +76,12 @@ typedef enum
     LOCK_LED_UNLOCK,             /**< 已解锁模式，LED 以 500ms 亮、1000ms 灭的频率闪烁，持续 18 秒 */
 } MY_LOCK_LED_MODE;
 
+// 用于刷卡执行联调指令（申请空间到蓝牙线程处理）
+typedef struct {
+    char card_id[32];
+    uint8_t card_index; // 匹配到刷卡的索引（仅打印）
+} nfctrig_cmd_t;
+
 /* --- 接口函数 --- */
 
 /********************************************************************

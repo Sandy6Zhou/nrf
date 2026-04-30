@@ -15,6 +15,16 @@
 #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260428"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.28
+** 作    者:        吴楚庆 (wuchuqing@jimiiot.com)
+** 修改内容:       1.将NFC联动指令执行移到蓝牙线程
+**                 2.MODESET指令处理函数加入当前模式下更新LTE唤醒定时器时间参数
+**                 3.部分回复4G的代码从动态申请空间改为直接回复
+**                 4.并根据需求，调整了BLE+LOCATION应答处理(增加提示音)
+***/
+
+//#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260428"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.28
 ** 作    者:        曹阳 (caoyang@jimiiot.com)
 ** 修改内容:       1.增加接收LTE+LOCATION指令后面携带GPS速度参数，用来区分静止和运动状态。
 **                 2.增加接收LTE+NET指令，保存网络状态，判断是否在海中。

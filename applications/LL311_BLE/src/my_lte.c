@@ -27,7 +27,6 @@ char LTE_BTSET[] = "LTE+BTSET=";
 char LTE_NTCSET[] = "LTE+NTCSET=";
 char LTE_TIME[] = "LTE+TIME=";
 char LTE_TRANSMIT[] = "LTE+TRANSMIT=";
-char LTE_LOCK[] = "LTE+LOCK=";
 char LTE_FOTA[] = "LTE+FOTA=";
 char LTE_STATE[] = "LTE+STATE=";
 char LTE_CMD[] = "LTE+CMD=";
@@ -174,7 +173,7 @@ CMD_STRUC AT_CMD_INNER[] = {
 static void send_lte_pulse(void);
 
 // 网络解锁全局变量
-net_unlock_ctrl_t g_net_unlock;
+net_unlock_ctrl_t g_net_unlock = {0};
 
 // 脉冲消息计数器
 static uint16_t g_lte_pulse_count = 0;
@@ -1852,8 +1851,6 @@ int my_lte_handle_cmd(char *data)
     at_cmd_struc at_cmd_msg = {0};
     int len = 0;
     char id[16] = {0};
-    MSG_S msg;
-    char *resp_msg;
     int ret = 0;
 
     memset(g_lte_cmd_resp_buf, 0, sizeof(g_lte_cmd_resp_buf));
@@ -1864,6 +1861,9 @@ int my_lte_handle_cmd(char *data)
         MY_LOG_INF("data: %s;len: %d", data, strlen(data));
         //指向command部分的起始位置
         strcpy(at_cmd_msg.rcv_msg, data + strlen(id) + 1); // +1跳过逗号
+
+        //指向全局回复区域
+        at_cmd_msg.resp_msg = g_resp_buf;
 
         //执行指令内容
         ret = run_lte_cmd(&at_cmd_msg);
@@ -1887,23 +1887,9 @@ int my_lte_handle_cmd(char *data)
 
     MY_LOG_INF("lte handle cmd resp: %s", g_lte_cmd_resp_buf);
 
-    // 动态分配内存存储回复消息
+    //直接回复
     len = strlen(g_lte_cmd_resp_buf);
-    MY_MALLOC_BUFFER(resp_msg, len + 1);
-    if(resp_msg == NULL)
-    {
-        MY_LOG_ERR("resp_msg malloc failed");
-        return 0;
-    }
-
-    memcpy(resp_msg, g_lte_cmd_resp_buf, len);
-    resp_msg[len] = '\0';  // 确保字符串终止
-
-    // 构建消息结构体并发送给LTE模块
-    msg.msgID = MY_MSG_LTE_BLE_DATA;
-    msg.pData = resp_msg;
-    msg.DataLen = len;
-    my_send_msg_data(MOD_LTE,MOD_LTE, &msg);
+    my_lte_send_msg(g_lte_cmd_resp_buf, len);
 
     return 0;
 }
@@ -1933,8 +1919,6 @@ static int my_lte_handle_location(char *data)
     char *resp_data;
     char resp_str[32] = "LTE+LOCATION=FAIL\r\n"; // 默认失败
     int ret = -1;
-    int len;
-    MSG_S msg;
 
     my_get_str_at_pos(data, 0, ',', lat, sizeof(lat));
     my_get_str_at_pos(data, 1, ',', lon, sizeof(lon));
@@ -1984,24 +1968,8 @@ static int my_lte_handle_location(char *data)
     ret = 0;
 
 out:
-    // 统一回复逻辑
-    MY_MALLOC_BUFFER(resp_data, strlen(resp_str) + 1);
-    if (resp_data == NULL)
-    {
-        MY_LOG_ERR("resp_data malloc failed");
-        ret = -1;
-        return ret;
-    }
 
-    strcpy(resp_data, resp_str);
-    len = strlen(resp_data);
-
-    // 构建消息结构体并发送给LTE模块
-    msg.msgID = MY_MSG_LTE_BLE_DATA;
-    msg.pData = resp_data;
-    msg.DataLen = len;
-
-    my_send_msg_data(MOD_LTE, MOD_LTE, &msg);
+    my_lte_send_msg(resp_str, strlen(resp_str));
 
     return ret;
 }
@@ -2142,7 +2110,6 @@ static int my_ble_handle(char *data)
     ble_rsp_result_t rsp_result;
     int ret = 0;
     int i = 0;
-    char is_ok[8] = {0};
     char subcmd[16] = {0};
     char cmd_name[32];
     bool need_subcmd = false;
@@ -2153,14 +2120,6 @@ static int my_ble_handle(char *data)
     {
         MY_LOG_ERR("Failed to parse BLE response: %s", data);
         return -1;
-    }
-
-    // 检查应答
-    my_get_str_at_pos(rsp_result.params, 0, ',', is_ok, sizeof(is_ok));
-    //应答不为OK,返回不走处理逻辑
-    if (strcmp(is_ok, "OK") != 0)
-    {
-        return 0;
     }
 
     // 查找是否有特殊指令
@@ -2228,9 +2187,7 @@ static int my_lte_handle_factory(char *data)
 {
     char result[16] = {0};
     bool ret = false;
-    MSG_S msg;
     char resp_buf[24] = "LTE+FACTORY=FAIL\r\n";
-    char *resp;
 
     ret = my_get_str_at_pos(data, 0, ',', result, sizeof(result));
 

@@ -96,7 +96,7 @@ typedef struct {
 /* NFC卡权限结构体 */
 typedef struct
 {
-    char     nfc_no[16];           /* NFC卡号 */
+    char     nfc_no[32];           /* NFC卡号 */
     int32_t  lat;                  /* 纬度，单位：微度 */
     int32_t  lon;                  /* 经度，单位：微度 */
     uint8_t  lat_lon_valid;        /* 经纬度有效标志: 0-不限制, 1-有效 */
@@ -153,7 +153,7 @@ typedef enum
 //NFC触发规则项结构体，用于存储单个NFC卡号与指令的关联关系
 typedef struct
 {
-    char  nfctrig_nfc_no[16];       /* 联动的NFC卡号 */
+    char  nfctrig_nfc_no[32];       /* 联动的NFC卡号 */
     char     nfctrig_command[128];      /* 需要执行的完整可执行指令 */
 } nfctrig_rule_t;
 

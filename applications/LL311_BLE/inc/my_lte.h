@@ -206,4 +206,13 @@ int my_lte_handle_cmd(char *data);
 ********************************************************************/
 void lte_send_cmd_with_retry(const char *cmd_name, const char *param);
 
+/********************************************************************
+**函数名称:  async_match_and_resp
+**入口参数:  data      ---        数据（格式：指令头,回复内容）如CUNLOCK,Unlock failed. No unlock state detected.
+**出口参数:  无
+**函数功能:  解析数据头，在队列中查找匹配项；若匹配成功，将元素前移并发送响应给LTE
+**返 回 值:  0表示匹配成功并发送，-1表示未匹配到对应指令
+********************************************************************/
+int async_match_and_resp(char *data);
+
 #endif /* _MY_LTE_H_ */

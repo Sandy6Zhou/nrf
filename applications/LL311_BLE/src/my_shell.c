@@ -188,6 +188,11 @@ static int cmd_switch_mode(const struct shell *sh, size_t argc, char **argv)
 
     /* 调用实际的业务函数去切换模式/状态 */
     switch_work_mode(current_workmode);
+    if (current_workmode == MY_MODE_SMART)
+    {
+        //TODO 测试调用，后续补充完gsensor完删掉此处
+        my_send_msg(MOD_GSENSOR, MOD_GSENSOR, MY_MSG_MODESET_UPDATE);
+    }
 
     shell_print(sh, "Switch mode OK:");
     shell_print(sh, "  mode  = %s", mode_str);
@@ -981,8 +986,22 @@ static int cmd_nfctrig_test(const struct shell *sh, size_t argc, char **argv)
 static int cmd_nfc_swip_test(const struct shell *sh, size_t argc, char **argv)
 {
     int len;
-    uint8_t card_index = 0;
-    uint16_t ret = 0;
+    uint8_t select = 0;
+    // 定义 10 个测试二进制卡号
+    uint8_t test_data[10][7] = {
+        {0x88, 0x04, 0x0F, 0xBE, 0x99, 0x05, 0x0B}, // 1
+        {0x88, 0x04, 0x0F, 0xBE, 0x99, 0x05, 0xCC}, // 2
+        {0x88, 0x04, 0x0F, 0xBE}, // 3
+        {0x00}, // 4 (预留位置，可根据需要填充)
+        {0x00}, // 5
+        {0x00}, // 6
+        {0x00}, // 7
+        {0x00}, // 8
+        {0x00}, // 9
+        {0x00}  // 10
+    };
+    //对应的卡号长度，按序
+    uint8_t test_lens[] = {7, 7, 4, 1, 1, 1, 1, 1, 1, 1};
 
     if (argc < 2)
     {
@@ -993,13 +1012,19 @@ static int cmd_nfc_swip_test(const struct shell *sh, size_t argc, char **argv)
     memset(shell_test_buff, 0, sizeof(shell_test_buff));
 
     len = strlen(argv[1]);
+    select = atoi(argv[1]);
     memcpy(shell_test_buff, argv[1], len);
     shell_test_buff[len] = 0;
 
     shell_print(sh, "param: %s, len: %d", argv[1], len);
+    if (select < 1 || select > 10)
+    {
+        shell_error(sh, "Invalid selection: %d (Range: 1-10)", select);
+        return -EINVAL;
+    }
 
-    handle_nfc_card_event(argv[1], len);
-
+    //刷卡处理
+    handle_nfc_card_event(test_data[select - 1], test_lens[select-1]);
     return 0;
 }
 

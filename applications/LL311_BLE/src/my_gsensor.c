@@ -1055,6 +1055,10 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
                 }
                 break;
 
+            case MY_MSG_MODESET_UPDATE:
+                get_motion_status();
+                break;
+
             default:
                 break;
         }

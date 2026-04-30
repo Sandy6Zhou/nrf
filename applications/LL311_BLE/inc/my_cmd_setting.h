@@ -63,6 +63,9 @@ typedef struct
 // 标记lte_cmd来的,用于区分蓝牙下发的还是lte过来的(某些指令只能网络发蓝牙不能执行)
 extern uint8_t g_lte_cmdSource;
 
+// 用于存储整包返回的数据内容(仅在蓝牙线程使用)
+extern char g_resp_buf[RESP_STRING_LENGTH_MAX];
+
 /********************************************************************
 **函数名称:  set_work_mode
 **入口参数:  config   ---        指向设备工作模式配置结构体的指针

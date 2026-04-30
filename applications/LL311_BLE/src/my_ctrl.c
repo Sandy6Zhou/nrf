@@ -476,7 +476,8 @@ void handle_nfc_card_event(uint8_t *card_id, uint8_t id_len)
 {
     int ret;
     char card_id_str[33] = {0};
-    uint8_t nfctrig_card_index = 0;
+    nfctrig_cmd_t *nfctrig_cmd;
+    MSG_S msg;
 
     /* 重复刷卡缓存记录检查 */
     ret = is_need_location_upload(card_id, id_len);
@@ -489,17 +490,19 @@ void handle_nfc_card_event(uint8_t *card_id, uint8_t id_len)
     /* 将二进制卡号转换为十六进制字符串，以与配置中的字符串格式匹配 */
     hex2hexstr(card_id, id_len, (uint8_t *)card_id_str, sizeof(card_id_str));
 
-    //执行NFC联动指令
-    ret = run_nfc_cmd(card_id_str, &nfctrig_card_index);
-    if (ret)
+    //发消息到蓝牙线程处理（涉及NFC联调指令，会调用at_recv_cmd_handler此函数）
+    MY_MALLOC_BUFFER(nfctrig_cmd, sizeof(nfctrig_cmd_t));
+    if (nfctrig_cmd == NULL)
     {
-        //命令匹配成功，具体执行结果看命令响应
-        MY_LOG_INF("Command matched success: cmd_type:%d; command:%s", ret, gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[nfctrig_card_index].nfctrig_command);
+        MY_LOG_ERR("nfctrig_cmd malloc failed");
+        return;
     }
-    else
-    {
-        MY_LOG_INF("Command not matched or failed to parse: cmd_type:%d; card_id:%s", ret, card_id_str);
-    }
+
+    memcpy(nfctrig_cmd->card_id, card_id_str, sizeof(nfctrig_cmd->card_id));
+
+    msg.msgID = MY_MSG_BLE_NFCTRIG_EVENT;
+    msg.pData = nfctrig_cmd;
+    my_send_msg_data(MOD_MAIN, MOD_BLE, &msg);
 
     //4G就绪后发送NFC刷卡事件：BLE+ALARM=<告警类型>(NFC),< 时间戳 >,< 附加信息 >(NFC卡号)
     my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);

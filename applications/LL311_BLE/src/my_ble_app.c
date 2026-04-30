@@ -1446,7 +1446,6 @@ void ble_log_send(uint8_t *data, uint8_t len)
 void ble_comu_at_cmd_handle(const uint8_t *data, uint16_t len)
 {
     at_cmd_struc ble_at_msg = {0};
-    static char s_resp_buf[RESP_STRING_LENGTH_MAX];// 用于存储整包返回的数据内容
 
 #if 0
     LOG_INF("ble_comu_at_cmd_handle:%s, len=%d", data, len);
@@ -1454,7 +1453,7 @@ void ble_comu_at_cmd_handle(const uint8_t *data, uint16_t len)
 #endif
 
     /* 使用静态缓冲区存储响应数据，避免栈溢出 */
-    ble_at_msg.resp_msg = s_resp_buf;
+    ble_at_msg.resp_msg = g_resp_buf;
 
     ble_at_msg.rcv_length = len;
     memcpy(ble_at_msg.rcv_msg, data, len);
@@ -1538,7 +1537,6 @@ static void ble_comu_app_handle(uint32_t type, const uint8_t *data, uint16_t len
         }
     }
 }
-
 /********************************************************************
 **函数名称:  ble_log_init
 **入口参数:  无
