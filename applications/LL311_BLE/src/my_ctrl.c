@@ -1693,6 +1693,8 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
 *********************************************************************/
 int my_ctrl_init(k_tid_t *tid)
 {
+    int ret;
+
     // 初始化消息队列
     my_init_msg_handler(MOD_CTRL, &my_ctrl_msgq);
 
@@ -1712,6 +1714,13 @@ int my_ctrl_init(k_tid_t *tid)
     // 注：初始化中会立即开启定时器触发batt_update_timer_handler回调，会向ctrl发送消息（由于未初始化会丢消息），需放在ctrl初始化之后
     batt_adc_init();
     batt_gpio_init();
+
+    ret = my_battery_pm_register();
+    if (ret < 0)
+    {
+        MY_LOG_ERR("Battery PM registration failed: %d", ret);
+        return ret;
+    }
 
     // 初始化蜂鸣器 PWM
     if (!pwm_is_ready_dt(&buzzer))

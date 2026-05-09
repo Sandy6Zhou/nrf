@@ -94,7 +94,6 @@ typedef struct {
     uint8_t head;                                 /* 最旧消息的索引 */
     uint8_t tail;                                 /* 下一个空槽的索引 */
     uint8_t count;                                /* 当前队列中的消息数 */
-    struct k_mutex queue_mutex;                   /* 线程安全访问的互斥锁 */
 } lte_msg_queue_t;
 
 extern bool g_lte_ota_in_progress;

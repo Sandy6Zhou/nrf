@@ -206,6 +206,9 @@ typedef enum
 
     /* LTE处理程序消息 */
     MY_MSG_RESET_LTE_TIMER,
+    MY_MSG_LTE_UART_IDLE,
+    MY_MSG_LTE_TX_DONE,
+    MY_MSG_LTE_TX_ABORTED,
     MY_MSG_LTE_PWRON,
     MY_MSG_LTE_PWROFF,
     MY_MSG_LTE_REV,
@@ -273,6 +276,7 @@ typedef enum
     MY_MSG_SCAN_LENGTH,         /* 单次扫描时长定时器消息 */
     MY_MSG_SCAN_UPLOAD,         /* 上报间隔定时器消息 */
     MY_MSG_UPLOAD_WAKEUP,       /* 扫描数据在LTE唤醒时顺便上报消息 */
+    MY_MSG_LTE_WAKEUP,          /* LTE唤醒引脚中断触发的UART恢复消息 */
 } MY_MAIN_TASK_MSG;
 
 /* ========== 集中引用所有模块头文件 ========== */

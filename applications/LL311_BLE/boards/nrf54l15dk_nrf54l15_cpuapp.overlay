@@ -28,6 +28,7 @@
 		/delete-property/ mcuboot-led0;
 		lte-uart = &uart30;
 		lte-pwr-ctrl = &lte_pwr_en;
+		lte-wake-ctrl = &lte_wake_pin;
 		gsensor-i2c = &i2c21;
 		gsensor-pwr-ctrl = &gsensor_pwr_en;
 		nfc-i2c = &i2c22;
@@ -91,6 +92,13 @@
 	lte_pwr_en: lte-pwr-en {
 		compatible = "nordic,gpio-pins";
 		gpios = <&gpio2 2 GPIO_ACTIVE_HIGH>;
+		status = "okay";
+	};
+
+	/* LTE 唤醒引脚配置：P0.04，外部上拉，4G拉低唤醒Nordic */
+	lte_wake_pin: lte-wake-pin {
+		compatible = "nordic,gpio-pins";
+		gpios = <&gpio0 4 GPIO_ACTIVE_LOW>;
 		status = "okay";
 	};
 

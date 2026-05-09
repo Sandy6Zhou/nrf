@@ -35,6 +35,7 @@ typedef enum
     MY_PM_DEV_NFC,     /* NFC模块：I2C22 + FM175XX */
     MY_PM_DEV_GSENSOR, /* G-Sensor模块：I2C21 + LSM6DSV16X */
     MY_PM_DEV_LTE,     /* LTE模块：UART + 电源控制 */
+    MY_PM_DEV_BATTERY, /* Battery模块：ADC采样 */
     MY_PM_DEV_BLE,     /* BLE模块：由协议栈管理，仅作状态同步 */
     MY_PM_DEV_CTRL,    /* Control模块：LED、蜂鸣器等 */
     MY_PM_DEV_MAX      /* 最大设备数量 */

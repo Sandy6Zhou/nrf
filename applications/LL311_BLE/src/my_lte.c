@@ -21,6 +21,11 @@
 // 默认存储点有效期: 30分钟（秒)
 #define LOCATION_VALIDITY_PERIOD_S     (30 * 60)
 
+// LTE UART 单次发送最大等待超时
+#define LTE_UART_TX_WAIT_MS         200
+// LTE UART 空闲挂起超时：3秒无收发自动进入低功耗挂起态
+#define LTE_UART_IDLE_TIMEOUT_MS    3000
+
 // 串口协议报文头定义清单
 char LTE_PWRON[] = "LTE+PWRON=";
 char LTE_BTSET[] = "LTE+BTSET=";
@@ -79,6 +84,29 @@ static const char *s_special_cmd_prefixes[] = {
 // 重传检查定时器
 struct k_timer retrans_check_timer;
 
+// LTE UART 空闲挂起定时器（3秒无收发自动挂起UART）
+typedef struct
+{
+    struct k_timer idle_timer;  // 空闲定时器：超时后触发 UART 挂起以节省功耗
+    bool active;                // UART 是否处于活跃态（true=已启用RX，false=已挂起）
+    bool tx_busy;               // UART 是否正在发送数据（true=发送中，false=空闲）
+} lte_uart_ctx_t;
+
+static lte_uart_ctx_t s_lte_uart_ctx = { 0 };
+
+// 电源管理回调函数前置声明
+static int lte_pm_init(void);
+static int lte_pm_suspend(void);
+static int lte_pm_resume(void);
+
+// LTE 电源管理操作回调结构体
+static const struct PM_DEVICE_OPS lte_pm_ops =
+{
+    .init = lte_pm_init,
+    .suspend = lte_pm_suspend,
+    .resume = lte_pm_resume,
+};
+
 // 命令映射表定义
 static const ble_rsp_cmd_map_t ble_rsp_cmd_table[] = {
     {"LOCATION", BLE_RSP_LOCATION},
@@ -121,6 +149,10 @@ static const struct device *lte_uart_dev = DEVICE_DT_GET(LTE_UART_NODE);
 
 #define LTE_PWR_CTRL_NODE DT_ALIAS(lte_pwr_ctrl)
 static const struct gpio_dt_spec lte_pwr_gpio = GPIO_DT_SPEC_GET(LTE_PWR_CTRL_NODE, gpios);
+
+#define LTE_WAKE_NODE DT_ALIAS(lte_wake_ctrl)
+static const struct gpio_dt_spec lte_wake_gpio = GPIO_DT_SPEC_GET(LTE_WAKE_NODE, gpios);
+static struct gpio_callback lte_wake_cb;
 
 /* 接收LTE+CMD响应回复缓冲区大小 */
 #define LTE_CMD_RESPBUF_SIZE 1024
@@ -194,6 +226,197 @@ void init_async_queue(void)
 
 // lte OTA升级状态
 bool g_lte_ota_in_progress = false;
+
+/********************************************************************
+**函数名称:  lte_uart_idle_timer_handler
+**入口参数:  timer   ---   定时器句柄（输入）
+**出口参数:  无
+**函数功能:  LTE UART空闲定时器回调，触发UART挂起检查
+**返 回 值:  无
+**注意事项:  通过消息机制通知LTE线程执行挂起判断，避免在中断上下文操作UART
+*********************************************************************/
+static void lte_uart_idle_timer_handler(struct k_timer *timer)
+{
+    ARG_UNUSED(timer);
+
+    my_send_msg(MOD_LTE, MOD_LTE, MY_MSG_LTE_UART_IDLE);
+}
+
+/********************************************************************
+**函数名称:  lte_pm_init
+**入口参数:  无
+**出口参数:  无
+**函数功能:  LTE电源管理初始化，重置UART上下文状态
+**返 回 值:  0 --- 始终成功
+*********************************************************************/
+static int lte_pm_init(void)
+{
+    s_lte_uart_ctx.active = false;
+    s_lte_uart_ctx.tx_busy = false;
+    k_timer_init(&s_lte_uart_ctx.idle_timer, lte_uart_idle_timer_handler, NULL);
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  lte_pm_suspend
+**入口参数:  无
+**出口参数:  无
+**函数功能:  LTE UART挂起处理，关闭RX接收以节省功耗
+**返 回 值:  0 --- 挂起成功
+**           其他 --- uart_rx_disable返回的错误码
+**注意事项:  允许忽略-EFAULT/-EINVAL/-EBUSY等已关闭或忙异常
+*********************************************************************/
+static int lte_pm_suspend(void)
+{
+    int ret;
+
+    // 先设置标志，再禁用 RX，防止中断抢占导致重新 enable rx
+    s_lte_uart_ctx.active = false;
+
+    ret = uart_rx_disable(lte_uart_dev);
+    if ((ret != 0) && (ret != -EFAULT) && (ret != -EINVAL) && (ret != -EBUSY))
+    {
+        MY_LOG_ERR("LTE UART RX disable failed: %d", ret);
+        // 如果失败，恢复 active 标志
+        s_lte_uart_ctx.active = true;
+        return ret;
+    }
+
+    MY_LOG_INF("LTE UART suspended");
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  lte_pm_resume
+**入口参数:  无
+**出口参数:  无
+**函数功能:  LTE UART恢复处理，重新启用RX接收
+**返 回 值:  0 --- 恢复成功
+**           其他 --- uart_rx_enable返回的错误码
+**注意事项:  -EBUSY表示UART已处于活跃态，允许忽略
+*********************************************************************/
+static int lte_pm_resume(void)
+{
+    int ret;
+
+    ret = uart_rx_enable(lte_uart_dev, lte_rx_buf_1, LTE_UART_BUF_SIZE, 10 * USEC_PER_MSEC);
+    if ((ret != 0) && (ret != -EBUSY))
+    {
+        MY_LOG_ERR("Failed to enable LTE UART RX in resume (err %d)", ret);
+        return ret;
+    }
+
+    s_lte_uart_ctx.active = true;
+
+    MY_LOG_INF("LTE UART resumed");
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  lte_uart_ensure_active
+**入口参数:  无
+**出口参数:  无
+**函数功能:  确保LTE UART处于活跃态，若已挂起则执行恢复
+**返 回 值:  0 --- UART已活跃或恢复成功
+**           -ENODEV --- LTE电源未开启
+**           其他 --- my_pm_device_resume返回的错误码
+*********************************************************************/
+static int lte_uart_ensure_active(void)
+{
+    int ret;
+
+    if (!g_lte_power_state)
+    {
+        return -ENODEV;
+    }
+
+    if (!s_lte_uart_ctx.active)
+    {
+        ret = my_pm_device_resume(MY_PM_DEV_LTE);
+        if (ret < 0)
+        {
+            MY_LOG_ERR("Failed to resume LTE UART: %d", ret);
+            return ret;
+        }
+    }
+
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  lte_uart_can_suspend
+**入口参数:  无
+**出口参数:  无
+**函数功能:  检查LTE UART是否满足挂起条件
+**返 回 值:  true --- 可以挂起
+**           false --- 存在未处理数据或发送中，不允许挂起
+**注意事项:  需同时检查消息队列、循环缓冲区、重传队列及发送状态
+*********************************************************************/
+static bool lte_uart_can_suspend(void)
+{
+    bool can_suspend;
+
+    can_suspend = (g_lte_msg_queue.count == 0);
+
+    if (my_rb_get_used_size(&g_lte_rb) > 0)
+    {
+        can_suspend = false;
+    }
+
+#if RETRANSMIT_CHECK_ENABLED
+    if (!retrans_queue_is_empty())
+    {
+        can_suspend = false;
+    }
+#endif
+
+    if (s_lte_uart_ctx.tx_busy)
+    {
+        can_suspend = false;
+    }
+
+    return can_suspend;
+}
+
+/********************************************************************
+**函数名称:  lte_uart_activity_kick
+**入口参数:  无
+**出口参数:  无
+**函数功能:  刷新LTE UART活跃定时器，延迟挂起以维持通信
+**返 回 值:  无
+*********************************************************************/
+static void lte_uart_activity_kick(void)
+{
+    if (!s_lte_uart_ctx.active)
+    {
+        return;
+    }
+
+    k_timer_start(&s_lte_uart_ctx.idle_timer, K_MSEC(LTE_UART_IDLE_TIMEOUT_MS), K_NO_WAIT);
+}
+
+/********************************************************************
+**函数名称:  lte_wake_pin_isr
+**入口参数:  port     ---        GPIO端口
+**           cb       ---        GPIO回调结构体
+**           pins     ---        触发中断的引脚位掩码
+**出口参数:  无
+**函数功能:  LTE唤醒引脚(P0.04)中断回调，4G模块发数据前拉低此引脚
+**           唤醒Nordic，本回调通知LTE线程恢复UART接收
+**返 回 值:  无
+*********************************************************************/
+static void lte_wake_pin_isr(const struct device *port, struct gpio_callback *cb, gpio_port_pins_t pins)
+{
+    ARG_UNUSED(port);
+    ARG_UNUSED(cb);
+    ARG_UNUSED(pins);
+
+    // 避免频繁发消息到LTE线程
+    if (!s_lte_uart_ctx.active)
+    {
+        my_send_msg(MOD_LTE, MOD_LTE, MY_MSG_LTE_WAKEUP);
+    }
+}
 
 /********************************************************************
 **函数名称:  init_retransmission_queue
@@ -697,8 +920,6 @@ int async_match_and_resp(char *data)
  ********************************************************************/
 static int my_lte_msg_queue_init(void)
 {
-    k_mutex_init(&g_lte_msg_queue.queue_mutex);
-
     g_lte_msg_queue.head = 0;
     g_lte_msg_queue.tail = 0;
     g_lte_msg_queue.count = 0;
@@ -726,8 +947,6 @@ static int my_lte_enqueue_msg(const char *msg_content, uint16_t msg_len)
     {
         return -EINVAL;
     }
-
-    k_mutex_lock(&g_lte_msg_queue.queue_mutex, K_FOREVER);
 
     // 如果队列已满，移除最旧的消息（head位置）
     if (g_lte_msg_queue.count >= LTE_MSG_QUEUE_SIZE)
@@ -767,7 +986,6 @@ static int my_lte_enqueue_msg(const char *msg_content, uint16_t msg_len)
     g_lte_msg_queue.count++;
 
 exit:
-    k_mutex_unlock(&g_lte_msg_queue.queue_mutex);
     return ret;
 }
 
@@ -782,8 +1000,6 @@ exit:
 static void my_lte_process_queued_msgs(void)
 {
     lte_pending_msg_t *pending_msg;
-
-    k_mutex_lock(&g_lte_msg_queue.queue_mutex, K_FOREVER);
 
     // 遍历并发送所有排队的消息
     while (g_lte_msg_queue.count > 0)
@@ -808,8 +1024,88 @@ static void my_lte_process_queued_msgs(void)
         g_lte_msg_queue.head = (g_lte_msg_queue.head + 1) % LTE_MSG_QUEUE_SIZE;
         g_lte_msg_queue.count--;
     }
+}
 
-    k_mutex_unlock(&g_lte_msg_queue.queue_mutex);
+/********************************************************************
+ * 函数名称: my_lte_msg_queue_clear
+ * 入口参数: 无
+ * 出口参数: 无
+ * 函数功能: 清空LTE缓存消息队列，释放所有已分配的消息内存并重置队列状态
+ * 返回值: 无
+ ********************************************************************/
+static void my_lte_msg_queue_clear(void)
+{
+    int i;
+
+    for (i = 0; i < LTE_MSG_QUEUE_SIZE; i++)
+    {
+        if (g_lte_msg_queue.queue[i].msg_content != NULL)
+        {
+            MY_FREE_BUFFER(g_lte_msg_queue.queue[i].msg_content);
+            g_lte_msg_queue.queue[i].msg_content = NULL;
+        }
+        g_lte_msg_queue.queue[i].msg_len = 0;
+    }
+
+    g_lte_msg_queue.head = 0;
+    g_lte_msg_queue.tail = 0;
+    g_lte_msg_queue.count = 0;
+}
+
+/********************************************************************
+**函数名称:  my_lte_pwroff_handle
+**入口参数:  无
+**出口参数:  无
+**函数功能:  LTE模块断电处理，完成发送等待、UART挂起、状态清理及电源关闭
+**返 回 值:  无
+**注意事项:  1. OTA升级中或产测模式下不执行实际断电，仅清理状态
+**           2. 强制重置信号量与TX标志，防止异常阻塞
+**           3. 等待发送完成超时后仍强制继续断电流程
+*********************************************************************/
+static void my_lte_pwroff_handle(void)
+{
+    int ret;
+
+    // OTA进行中 或 产测模式下，拒绝整个关机流程，保持所有状态不变
+    if (g_lte_ota_in_progress || g_lte_factory)
+    {
+        MY_LOG_INF("LTE pwr off blocked: ota=%d factory=%d",
+                    g_lte_ota_in_progress, g_lte_factory);
+        return;
+    }
+
+    k_timer_stop(&s_lte_uart_ctx.idle_timer);
+
+    // 若 UART 正在发送，利用信号量等待发送完成（中断回调直接释放）
+    if (s_lte_uart_ctx.tx_busy)
+    {
+        ret = k_sem_take(&s_TxDoneSem, K_MSEC(LTE_UART_TX_WAIT_MS));
+        if (ret != 0)
+        {
+            MY_LOG_WRN("Wait TX done timeout, force pwr off");
+        }
+    }
+
+    if (s_lte_uart_ctx.active)
+    {
+        my_pm_device_suspend(MY_PM_DEV_LTE);
+    }
+
+    // 强制清理状态，防止异常场景下信号量或标志位未复位
+    s_lte_uart_ctx.tx_busy = false;
+    k_sem_give(&s_TxDoneSem);
+    my_rb_clear(&g_lte_rb);
+    my_lte_msg_queue_clear();
+
+    // 断LTE的电源
+    my_lte_pwr_on(false);
+    my_stop_timer(MY_TIMER_LTE_PULSE);
+    g_bLteReady = 0;
+
+    #if RETRANSMIT_CHECK_ENABLED
+        //清空重传队列
+        init_retransmission_queue();
+    #endif
 }
 
 /********************************************************************
@@ -908,23 +1204,25 @@ static void my_lte_task(void *p1, void *p2, void *p3)
         switch (msg.msgID)
         {
             /* TODO: 添加 LTE 相关的消息处理逻辑 */
+            case MY_MSG_LTE_TX_DONE:
+            case MY_MSG_LTE_TX_ABORTED:
+                s_lte_uart_ctx.tx_busy = false;
+                lte_uart_activity_kick();
+                break;
+
+            case MY_MSG_LTE_UART_IDLE:
+                if (s_lte_uart_ctx.active && lte_uart_can_suspend())
+                {
+                    my_pm_device_suspend(MY_PM_DEV_LTE);
+                }
+                break;
+
             case MY_MSG_LTE_PWRON:
                 my_lte_pwr_on(true);
                 break;
 
             case MY_MSG_LTE_PWROFF:
-                // 只有在OTA升级完成后，才允许断电 or 4G不在产测下
-                if (g_lte_ota_in_progress == false || g_lte_factory == 0)
-                {
-                    my_lte_pwr_on(false);
-                    my_stop_timer(MY_TIMER_LTE_PULSE);
-                    g_bLteReady = 0;
-                }
-
-                #if RETRANSMIT_CHECK_ENABLED
-                    //清空重传队列
-                    init_retransmission_queue();
-                #endif
+                my_lte_pwroff_handle();
                 //2s延时，防止断电后立马上电，导致模块没法真正复位
                 k_sleep(K_MSEC(2000));
 
@@ -951,6 +1249,7 @@ static void my_lte_task(void *p1, void *p2, void *p3)
                         break;
                     }
                 }
+                lte_uart_activity_kick();
             }
                 break;
 
@@ -985,6 +1284,11 @@ static void my_lte_task(void *p1, void *p2, void *p3)
                 send_lte_pulse();
                 break;
 
+            case MY_MSG_LTE_WAKEUP:
+                MY_LOG_INF("LTE wakeup pin triggered, resuming UART");
+                lte_uart_ensure_active();
+                break;
+
             default:
                 break;
         }
@@ -1008,6 +1312,7 @@ static void lte_uart_cb(const struct device *dev, struct uart_event *evt, void *
     {
         case UART_TX_DONE:
             // MY_LOG_INF("LTE UART TX Done");
+            my_send_msg(MOD_LTE, MOD_LTE, MY_MSG_LTE_TX_DONE);
 
             // 传输完成，释放信号量
             k_sem_give(&s_TxDoneSem);
@@ -1037,12 +1342,18 @@ static void lte_uart_cb(const struct device *dev, struct uart_event *evt, void *
             break;
 
         case UART_RX_DISABLED:
-            /* 如果接收被禁用，尝试重新开启 */
-            uart_rx_enable(dev, lte_rx_buf_1, LTE_UART_BUF_SIZE, 10 * USEC_PER_MSEC);
+            // uart活跃时，才允许重新开启
+            if (s_lte_uart_ctx.active)
+            {
+                uart_rx_enable(dev, lte_rx_buf_1, LTE_UART_BUF_SIZE, 10 * USEC_PER_MSEC);
+            }
             break;
 
         case UART_TX_ABORTED:
             MY_LOG_WRN("LTE UART TX Aborted");
+            my_send_msg(MOD_LTE, MOD_LTE, MY_MSG_LTE_TX_ABORTED);
+            // 发送异常中止时也要释放等待信号量，避免发送线程永久阻塞
+            k_sem_give(&s_TxDoneSem);
             break;
 
         default:
@@ -1062,6 +1373,7 @@ int my_lte_uart_send(const uint8_t *data, uint16_t len)
 {
     static uint8_t wake_byte[3] = {0xAA, 0x0D, 0x0A};  // 唤醒字节
     static uint8_t s_sendDataBuf[UART_TX_BUFFER_SIZE] = {0};
+    int ret = 0;
 #if 0
     if (len == 0 || data == NULL)
     {
@@ -1077,14 +1389,40 @@ int my_lte_uart_send(const uint8_t *data, uint16_t len)
         return -1;
     }
 
-    // 等待上一次传输完成
-    k_sem_take(&s_TxDoneSem, K_FOREVER);
+    if (lte_uart_ensure_active() < 0)
+    {
+        return -1;
+    }
+
+    // 刷新LTE UART活跃定时器，延迟挂起以维持通信
+    lte_uart_activity_kick();
+
+    // 等待上一次传输完成，增加等待超时避免异常状态下永久阻塞
+    ret = k_sem_take(&s_TxDoneSem, K_MSEC(LTE_UART_TX_WAIT_MS));
+    if (ret != 0)
+    {
+        return ret;
+    }
+
+    s_lte_uart_ctx.tx_busy = true;
 
     // 发送唤醒字节：如果4G在休眠状态，这个字节会将其唤醒
-    uart_tx(lte_uart_dev, wake_byte, 3, SYS_FOREVER_MS);
+    ret = uart_tx(lte_uart_dev, wake_byte, 3, SYS_FOREVER_MS);
+    if (ret != 0)
+    {
+        s_lte_uart_ctx.tx_busy = false;
+        k_sem_give(&s_TxDoneSem);
+        return ret;
+    }
 
-    // 等待上一次传输完成
-    k_sem_take(&s_TxDoneSem, K_FOREVER);
+    // 等待唤醒字节发送完成，增加等待超时避免异常状态下永久阻塞
+    ret = k_sem_take(&s_TxDoneSem, K_MSEC(LTE_UART_TX_WAIT_MS));
+    if (ret != 0)
+    {
+        s_lte_uart_ctx.tx_busy = false;
+        k_sem_give(&s_TxDoneSem);
+        return ret;
+    }
 
     // TODO 唤醒时间仅需几百微秒，几乎不影响后续数据传输，待实际测试验证，暂定等待1ms
     k_sleep(K_MSEC(1));
@@ -1092,7 +1430,15 @@ int my_lte_uart_send(const uint8_t *data, uint16_t len)
     memcpy(s_sendDataBuf, data, len);
 
     // 发送实际数据，此时4G模块已经处于唤醒状态，可以正常接收数据
-    return uart_tx(lte_uart_dev, s_sendDataBuf, len, SYS_FOREVER_MS);
+    ret = uart_tx(lte_uart_dev, s_sendDataBuf, len, SYS_FOREVER_MS);
+    if (ret != 0)
+    {
+        s_lte_uart_ctx.tx_busy = false;
+        k_sem_give(&s_TxDoneSem);
+        return ret;
+    }
+
+    return 0;
 }
 
 /********************************************************************
@@ -2538,11 +2884,40 @@ int my_lte_init(k_tid_t *tid)
         return -ENODEV;
     }
 
+    if (!gpio_is_ready_dt(&lte_wake_gpio))
+    {
+        MY_LOG_ERR("LTE Wake GPIO not ready");
+        return -ENODEV;
+    }
+
     /* 配置电源控制引脚为输出，默认低电平（不使能） */
     err = gpio_pin_configure_dt(&lte_pwr_gpio, GPIO_OUTPUT_INACTIVE);
     if (err)
     {
         MY_LOG_ERR("Failed to configure LTE Power GPIO (err %d)", err);
+        return err;
+    }
+
+    // 配置唤醒引脚(P0.04)为输入，外部上拉，下降沿中断
+    err = gpio_pin_configure_dt(&lte_wake_gpio, GPIO_INPUT);
+    if (err)
+    {
+        MY_LOG_ERR("Failed to configure LTE Wake GPIO (err %d)", err);
+        return err;
+    }
+
+    err = gpio_pin_interrupt_configure_dt(&lte_wake_gpio, GPIO_INT_EDGE_TO_ACTIVE);
+    if (err)
+    {
+        MY_LOG_ERR("Failed to configure LTE Wake interrupt (err %d)", err);
+        return err;
+    }
+
+    gpio_init_callback(&lte_wake_cb, lte_wake_pin_isr, BIT(lte_wake_gpio.pin));
+    err = gpio_add_callback(lte_wake_gpio.port, &lte_wake_cb);
+    if (err)
+    {
+        MY_LOG_ERR("Failed to add LTE Wake callback (err %d)", err);
         return err;
     }
 
@@ -2560,11 +2935,11 @@ int my_lte_init(k_tid_t *tid)
         return err;
     }
 
-    /* 开启 UART 接收 */
-    err = uart_rx_enable(lte_uart_dev, lte_rx_buf_1, LTE_UART_BUF_SIZE, 10 * USEC_PER_MSEC);
-    if (err)
+    // 初始化 LTE 到统一 PM 框架，默认保持 UART 挂起态
+    err = my_pm_device_register(MY_PM_DEV_LTE, &lte_pm_ops);
+    if (err < 0)
     {
-        MY_LOG_ERR("Failed to enable LTE UART RX (err %d)", err);
+        MY_LOG_ERR("LTE PM registration failed: %d", err);
         return err;
     }
 

@@ -43,6 +43,9 @@ LOG_MODULE_REGISTER(my_pm, LOG_LEVEL_INF);
 /* ========== LTE UART 总线设备节点 ========== */
 #define LTE_UART_NODE DT_ALIAS(lte_uart)
 
+/* ========== Battery ADC 设备节点 ========== */
+#define BATTERY_ADC_NODE DT_PATH(zephyr_user)
+
 /* ========== 设备上下文数组 ========== */
 static struct PM_DEVICE_CTX l_st_pm_devices[MY_PM_DEV_MAX];
 
@@ -266,6 +269,77 @@ static int my_pm_lte_uart_suspend(void)
 }
 
 /********************************************************************
+**函数名称:  my_pm_get_battery_adc_device
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取 Battery ADC 设备句柄
+**返 回 值:  ADC 设备指针，未就绪返回 NULL
+*********************************************************************/
+static const struct device *my_pm_get_battery_adc_device(void)
+{
+    const struct adc_dt_spec battery_adc = ADC_DT_SPEC_GET_BY_IDX(BATTERY_ADC_NODE, 0);
+    return battery_adc.dev;
+}
+
+/********************************************************************
+**函数名称:  my_pm_battery_adc_resume
+**入口参数:  无
+**出口参数:  无
+**函数功能:  恢复 Battery ADC 设备（使用 Runtime PM API）
+**返 回 值:  0 表示成功，负值表示错误码
+*********************************************************************/
+static int my_pm_battery_adc_resume(void)
+{
+    const struct device *dev = my_pm_get_battery_adc_device();
+    int ret = 0;
+
+    if (dev == NULL)
+    {
+        MY_LOG_ERR("Battery ADC device not found");
+        return -ENODEV;
+    }
+
+    ret = pm_device_runtime_get(dev);
+    if (ret < 0)
+    {
+        MY_LOG_ERR("Battery ADC runtime get failed: %d", ret);
+        return ret;
+    }
+
+    MY_LOG_DBG("Battery ADC runtime get OK");
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  my_pm_battery_adc_suspend
+**入口参数:  无
+**出口参数:  无
+**函数功能:  挂起 Battery ADC 设备（使用 Runtime PM API）
+**返 回 值:  0 表示成功，负值表示错误码
+*********************************************************************/
+static int my_pm_battery_adc_suspend(void)
+{
+    const struct device *dev = my_pm_get_battery_adc_device();
+    int ret = 0;
+
+    if (dev == NULL)
+    {
+        MY_LOG_ERR("Battery ADC device not found");
+        return -ENODEV;
+    }
+
+    ret = pm_device_runtime_put(dev);
+    if (ret < 0)
+    {
+        MY_LOG_ERR("Battery ADC runtime put failed: %d", ret);
+        return ret;
+    }
+
+    MY_LOG_DBG("Battery ADC runtime put OK");
+    return 0;
+}
+
+/********************************************************************
 **函数名称:  my_pm_device_register
 **入口参数:  dev_id   ---        设备ID
 **           ops      ---        设备操作回调结构体指针
@@ -317,12 +391,19 @@ int my_pm_device_register(MY_PM_DEV_ID_T dev_id, const struct PM_DEVICE_OPS *ops
             case MY_PM_DEV_NFC:
                 ret = my_pm_i2c22_resume();
                 break;
+
             case MY_PM_DEV_GSENSOR:
                 ret = my_pm_i2c21_resume();
                 break;
+
             case MY_PM_DEV_LTE:
                 ret = my_pm_lte_uart_resume();
                 break;
+
+            case MY_PM_DEV_BATTERY:
+                ret = my_pm_battery_adc_resume();
+                break;
+
             default:
                 ret = -ENOTSUP;
                 break;
@@ -340,12 +421,19 @@ int my_pm_device_register(MY_PM_DEV_ID_T dev_id, const struct PM_DEVICE_OPS *ops
             case MY_PM_DEV_NFC:
                 ret = my_pm_i2c22_suspend();
                 break;
+
             case MY_PM_DEV_GSENSOR:
                 ret = my_pm_i2c21_suspend();
                 break;
+
             case MY_PM_DEV_LTE:
                 ret = my_pm_lte_uart_suspend();
                 break;
+
+            case MY_PM_DEV_BATTERY:
+                ret = my_pm_battery_adc_suspend();
+                break;
+
             default:
                 ret = -ENOTSUP;
                 break;
@@ -425,6 +513,10 @@ int my_pm_device_resume(MY_PM_DEV_ID_T dev_id)
 
         case MY_PM_DEV_LTE:
             ret = my_pm_lte_uart_resume();
+            break;
+
+        case MY_PM_DEV_BATTERY:
+            ret = my_pm_battery_adc_resume();
             break;
 
         default:
@@ -545,6 +637,10 @@ int my_pm_device_suspend(MY_PM_DEV_ID_T dev_id)
 
         case MY_PM_DEV_LTE:
             ret = my_pm_lte_uart_suspend();
+            break;
+
+        case MY_PM_DEV_BATTERY:
+            ret = my_pm_battery_adc_suspend();
             break;
 
         default:
