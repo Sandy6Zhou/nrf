@@ -68,3 +68,7 @@ SysbuildKconfigBasic.txt
 SysbuildKconfigBasicNoModules.txt
 TextEncoding.txt
 YAMLLint.txt
+
+# myprj gitnore
+applications/LL311_BLE/compile_commands.json
+applications/LL311_BLE/.cache
