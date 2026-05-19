@@ -1208,7 +1208,55 @@ static int cmd_retransmit_check_test(const struct shell *sh, size_t argc, char *
     return 0;
 }
 
+/********************************************************************
+**函数名称:  cmd_hardware_test
+**入口参数:  sh    ---   Shell 实例句柄
+**           argc  ---   参数个数
+**           argv  ---   参数数组 (argv[1]: 指令内容, argv[2]: 可选参数)
+**出口参数:  无
+**函数功能:  Shell 测试命令：手动触发硬件测试
+**指令格式:  hardware_ware [cmd_string] [optional_param]
+**返回值说明:  0:      成功
+**           -EINVAL: 参数缺失
+**返 回 值:  int
+*********************************************************************/
+static int cmd_hardware_test(const struct shell *sh, size_t argc, char **argv)
+{
+    int mode = 0;
 
+    // 锁电源使能测试
+    if (strcmp(argv[1], "lockpwren") == 0)
+    {
+        //lockpwren 0/1      (锁控制电源关/开)
+        mode = atoi(argv[2]);
+
+        motor_power_set(mode);
+    }
+    // G-Sensor电源使能测试
+    else if (strcmp(argv[1], "gsensorpwren") == 0)
+    {
+        //gsensorpwren 0/1      (G-Sensor控制电源关/开)
+        mode = atoi(argv[2]);
+
+        my_gsensor_pwr_on(mode);
+    }
+    // 充电电路开关
+    else if (strcmp(argv[1], "v_chg_en") == 0)
+    {
+        //v_chg_en 0/1      (充电电路关/开)
+        mode = atoi(argv[2]);
+
+        batt_enable(mode);
+    }
+    // 4G电源使能测试
+    else if (strcmp(argv[1], "4GPOWER") == 0)
+    {
+        //4GPOWER 0/1      (4G控制电源关/开)
+        mode = atoi(argv[2]);
+
+        my_lte_pwr_on(mode);
+    }
+}
 
 /* 注册自定义命令到 Shell 子系统 */
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
@@ -1233,6 +1281,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(tagscan, NULL, "Set tag scan config: app tagscan <mode> <scan_interval> <scan_length> <upload_interval>", cmd_tag_scan_set_config),
     SHELL_CMD(alarmtest, NULL, "Test alarm message: app alarmtest <type> [info]", cmd_alarm_test),
     SHELL_CMD(retransmit_check_test, NULL, "Run retransmit_check_test test", cmd_retransmit_check_test),
+    SHELL_CMD(hardware_test, NULL, "Run hardware test", cmd_hardware_test),
     SHELL_SUBCMD_SET_END
 );
 /* Zephyr Shell 子系统提供的宏，随 nRF Connect SDK一起提供，用来在 Shell里注册一个“根命令”

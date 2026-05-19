@@ -187,26 +187,6 @@ static void gsensor_int_edge_handler(void)
 }
 
 /********************************************************************
-**函数名称:  gsensor_start_sample_timer
-**入口参数:  无
-**出口参数:  无
-**函数功能:  启动 GSENSOR 周期采样定时器，仅在智能模式下生效
-**返 回 值:  无
-*********************************************************************/
-static void gsensor_start_sample_timer(void)
-{
-    if (gsensor_is_smart_mode() != true)
-    {
-        return;
-    }
-
-    my_start_timer(MY_TIMER_GSENSOR_SAMPLE,
-                   GSENSOR_SAMPLE_INTERVAL_MS,
-                   false,
-                   gsensor_sample_timer_cb);
-}
-
-/********************************************************************
 **函数名称:  gsensor_reset_sample_window
 **入口参数:  无
 **出口参数:  无
@@ -244,40 +224,52 @@ static void gsensor_reset_state(void)
 }
 
 /********************************************************************
-**函数名称:  gsensor_apply_fifo_mode_config
+**函数名称:  gsensor_apply_wakeup_mode_config
 **入口参数:  无
 **出口参数:  无
-**函数功能:  配置 G-Sensor 为FIFO水印模式，用于运动检测与唤醒主控
+**函数功能:  配置 G-Sensor 为低功耗唤醒待机模式
 **返 回 值:  0 表示成功，负值表示错误码
 *********************************************************************/
-static int gsensor_apply_fifo_mode_config(void)
+static int gsensor_apply_wakeup_mode_config(void)
 {
     int ret;
+    lsm6dsv16x_wake_up_ths_t wake_up_ths = { 0 };
+    lsm6dsv16x_wake_up_dur_t wake_up_dur = { 0 };
     lsm6dsv16x_pin_int_route_t int1_route = { 0 };
     lsm6dsv16x_interrupt_mode_t int_mode = { 0 };
 
-    ret = lsm6dsv16x_fifo_xl_batch_set(&lsm_ctx, LSM6DSV16X_XL_BATCHED_AT_30Hz);
+    // 关闭陀螺仪以降低功耗（唤醒待机模式仅需加速度计检测运动）
+    ret = lsm6dsv16x_gy_data_rate_set(&lsm_ctx, LSM6DSV16X_ODR_OFF);
     GSENSOR_REG_CHECK(ret);
 
-    ret = lsm6dsv16x_fifo_gy_batch_set(&lsm_ctx, LSM6DSV16X_GY_BATCHED_AT_30Hz);
+    // 配置加速度计数据速率为15Hz（低功耗待机，检测运动事件即可）
+    ret = lsm6dsv16x_xl_data_rate_set(&lsm_ctx, LSM6DSV16X_ODR_AT_15Hz);
     GSENSOR_REG_CHECK(ret);
 
-    // 配置 FIFO 水印阈值
-    ret = lsm6dsv16x_fifo_watermark_set(&lsm_ctx, FIFO_WATERMARK);
+    // 设置加速度计满量程为±2g（与正常运行模式保持一致）
+    ret = lsm6dsv16x_xl_full_scale_set(&lsm_ctx, LSM6DSV16X_2g);
     GSENSOR_REG_CHECK(ret);
 
-    ret = lsm6dsv16x_fifo_mode_set(&lsm_ctx, LSM6DSV16X_FIFO_MODE);
-    GSENSOR_REG_CHECK(ret);
+    // TODO: 敲击与跌落检测
+    // // 配置唤醒阈值（值2≈244mg，超过此加速度触发唤醒中断）
+    // wake_up_ths.wk_ths = GSENSOR_WAKEUP_THRESHOLD;
+    // ret = lsm6dsv16x_write_reg(&lsm_ctx, LSM6DSV16X_WAKE_UP_THS, (uint8_t *)&wake_up_ths, 1);
+    // GSENSOR_REG_CHECK(ret);
 
-    // 打开事件中断总使能，并使用锁存模式保持INT1电平，软件手动清除，防止中断丢失
-    int_mode.enable = 1;
-    int_mode.lir = 1;
-    ret = lsm6dsv16x_interrupt_enable_set(&lsm_ctx, int_mode);
-    GSENSOR_REG_CHECK(ret);
+    // // 打开事件中断总使能，并使用锁存模式保持INT1电平，软件手动清除，防止中断丢失
+    // int_mode.enable = 1;
+    // int_mode.lir = 1;
+    // ret = lsm6dsv16x_interrupt_enable_set(&lsm_ctx, int_mode);
+    // GSENSOR_REG_CHECK(ret);
 
-    // 配置INT1引脚路由到FIFO水印事件
-    int1_route.fifo_th = 1;
-    ret = lsm6dsv16x_pin_int1_route_set(&lsm_ctx, &int1_route);
+    // // 配置INT1引脚路由到wakeup事件（运动超阈值时拉高INT1唤醒主控）
+    // int1_route.wakeup = 1;
+    // ret = lsm6dsv16x_pin_int1_route_set(&lsm_ctx, &int1_route);
+    // GSENSOR_REG_CHECK(ret);
+
+    wake_up_dur.sleep_dur = 0;                      // 闲置多久后进入睡眠（填 0 = 立即睡眠）
+    wake_up_dur.wake_dur = GSENSOR_WAKEUP_DURATION; // 配置唤醒持续时间（0=1个ODR周期即触发，响应最灵敏）
+    ret = lsm6dsv16x_write_reg(&lsm_ctx, LSM6DSV16X_WAKE_UP_DUR, (uint8_t *)&wake_up_dur, 1);
     GSENSOR_REG_CHECK(ret);
 
     return 0;
@@ -295,6 +287,10 @@ static int gsensor_apply_run_mode_config(void)
     lsm6dsv16x_pin_int_route_t int1_route = { 0 };
     lsm6dsv16x_interrupt_mode_t int_mode = { 0 };
     int ret;
+
+    // 禁用活动/睡眠模式，恢复正常运行状态
+    ret = lsm6dsv16x_act_mode_set(&lsm_ctx, LSM6DSV16X_XL_AND_GY_NOT_AFFECTED);
+    GSENSOR_REG_CHECK(ret);
 
     // 使能数据块更新，确保读取的数据一致
     ret = lsm6dsv16x_block_data_update_set(&lsm_ctx, PROPERTY_ENABLE);
@@ -316,7 +312,34 @@ static int gsensor_apply_run_mode_config(void)
     ret = lsm6dsv16x_gy_full_scale_set(&lsm_ctx, LSM6DSV16X_125dps);
     GSENSOR_REG_CHECK(ret);
 
-    ret = gsensor_apply_fifo_mode_config();
+    // 配置 FIFO 批量模式，将数据批量写入FIFO，加速度计写入30Hz
+    ret = lsm6dsv16x_fifo_xl_batch_set(&lsm_ctx, LSM6DSV16X_XL_BATCHED_AT_30Hz);
+    GSENSOR_REG_CHECK(ret);
+
+    // 配置 FIFO 批量模式，将数据批量写入FIFO，陀螺仪写入30Hz
+    ret = lsm6dsv16x_fifo_gy_batch_set(&lsm_ctx, LSM6DSV16X_GY_BATCHED_AT_30Hz);
+    GSENSOR_REG_CHECK(ret);
+
+    // 等待陀螺仪启动稳定
+    k_sleep(K_MSEC(30));
+
+    // 配置 FIFO 水印阈值
+    ret = lsm6dsv16x_fifo_watermark_set(&lsm_ctx, FIFO_WATERMARK);
+    GSENSOR_REG_CHECK(ret);
+
+    // 配置 FIFO 模式为水印模式
+    ret = lsm6dsv16x_fifo_mode_set(&lsm_ctx, LSM6DSV16X_FIFO_MODE);
+    GSENSOR_REG_CHECK(ret);
+
+    // 打开事件中断总使能，并使用锁存模式保持INT1电平，软件手动清除，防止中断丢失
+    int_mode.enable = 1;
+    int_mode.lir = 1;
+    ret = lsm6dsv16x_interrupt_enable_set(&lsm_ctx, int_mode);
+    GSENSOR_REG_CHECK(ret);
+
+    // 配置INT1引脚路由到FIFO水印事件
+    int1_route.fifo_th = 1;
+    ret = lsm6dsv16x_pin_int1_route_set(&lsm_ctx, &int1_route);
     GSENSOR_REG_CHECK(ret);
 
     return 0;
@@ -455,7 +478,8 @@ static int analyze_gsensor_state(const struct gsensor_data *data)
     g_gsensor_runtime_ctx.current_gsensor_state = sm_update(&sm_batch, raw_prob); /* 状态机更新 */
     LOG_INF("g_gsensor_runtime_ctx.current_gsensor_state = %d", g_gsensor_runtime_ctx.current_gsensor_state);
 
-    gsensor_start_sample_timer();
+    // 启动 GSENSOR 周期采样定时器
+    my_start_timer(MY_TIMER_GSENSOR_SAMPLE, GSENSOR_SAMPLE_INTERVAL_MS, false, gsensor_sample_timer_cb);
 
     return 0;
 }
@@ -560,6 +584,11 @@ static int gsensor_pm_suspend(void)
 
     if (gsensor_is_smart_mode() == true)
     {
+        if (g_gsensor_runtime_ctx.window_ready == true)
+        {
+            // 配置为唤醒待机模式
+            gsensor_apply_wakeup_mode_config();
+        }
         MY_LOG_INF("GSENSOR successfully entered sleep mode");
 
         return 0;
@@ -606,11 +635,19 @@ static int gsensor_pm_resume(void)
     // 智能模式下传感器未断电，只需切回运行模式，无需完整初始化
     if (gsensor_is_smart_mode() == true && g_gsensor_runtime_ctx.sensor_ready == true)
     {
-        result = gsensor_apply_run_mode_config();
-        if (result != 0)
+
+        if (g_gsensor_runtime_ctx.window_ready == true)
         {
-            MY_LOG_ERR("Failed to apply run mode config: %d", result);
-            return result;
+            // 清空窗口重新开始 burst 采集，确保每次判定都基于最新连续数据
+            gsensor_reset_sample_window();
+
+            // 配置为正常运行模式
+            result = gsensor_apply_run_mode_config();
+            if (result != 0)
+            {
+                MY_LOG_ERR("Failed to apply run mode config: %d", result);
+                return result;
+            }
         }
 
         // 清楚状态及窗口
@@ -742,10 +779,7 @@ static void gsensor_handle_read_msg(void)
 
         if (g_gsensor_runtime_ctx.window_ready == true)
         {
-            /* 如果窗口已满，说明之前已完成一次状态判定，窗口数据已过期。
-            * 清空窗口重新开始 burst 采集，确保每次判定都基于最新连续数据
-            */
-            gsensor_reset_sample_window();
+            // 如果窗口已满，说明已完成一次状态判定
             break;
         }
     }
@@ -827,14 +861,10 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
                 break;
 
             case MY_MSG_GSENSOR_SAMPLE:
-                // 操作IIC必须先释放总线，否则会段错误系统死机
+                // 释放总线，初始化 FIFO 模式
                 my_pm_device_resume(MY_PM_DEV_GSENSOR);
 
-                ret = lsm6dsv16x_fifo_mode_set(&lsm_ctx, LSM6DSV16X_FIFO_MODE);
-                LOG_INF("lsm6dsv16x_fifo_mode_set: %d", ret);
-
                 my_pm_device_suspend(MY_PM_DEV_GSENSOR);
-
                 break;
 
             default:
@@ -936,13 +966,13 @@ int my_lsm6dsv16x_init(void)
         lsm6dsv16x_reset_set(&lsm_ctx, LSM6DSV16X_GLOBAL_RST);
         // 4.确保寄存器稳定后，才能设置寄存器
         k_sleep(K_MSEC(20));
+        lsm6dsv16x_fifo_mode_set(&lsm_ctx, LSM6DSV16X_BYPASS_MODE);
         if (gsensor_apply_run_mode_config() != 0)
         {
             MY_LOG_ERR("Failed to configure GSENSOR run mode");
             g_gsensor_runtime_ctx.sensor_ready = false;
             return -EIO;
         }
-        lsm6dsv16x_fifo_mode_set(&lsm_ctx, LSM6DSV16X_BYPASS_MODE);
 
         // 5.确保陀螺仪启动稳定时间
         k_sleep(K_MSEC(50));
