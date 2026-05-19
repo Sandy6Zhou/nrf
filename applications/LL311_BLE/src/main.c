@@ -439,7 +439,7 @@ void handle_long_life_mode(void)
 *********************************************************************/
 void handle_smart_mode(void)
 {
-    my_send_msg(MOD_MAIN, MOD_GSENSOR, MY_MSG_GSENSOR_PWRON);
+    my_send_msg(MOD_MAIN, MOD_GSENSOR, MY_MSG_GSENSOR_SAMPLE);
 }
 
 /*********************************************************************

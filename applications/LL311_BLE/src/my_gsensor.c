@@ -146,7 +146,7 @@ static void gsensor_sample_timer_cb(void *param)
 {
     ARG_UNUSED(param);
 
-    my_send_msg(MOD_GSENSOR, MOD_GSENSOR, MY_MSG_GSENSOR_READ);
+    my_send_msg(MOD_GSENSOR, MOD_GSENSOR, MY_MSG_GSENSOR_SAMPLE);
 }
 
 /********************************************************************
@@ -202,7 +202,7 @@ static void gsensor_start_sample_timer(void)
 
     my_start_timer(MY_TIMER_GSENSOR_SAMPLE,
                    GSENSOR_SAMPLE_INTERVAL_MS,
-                   true,
+                   false,
                    gsensor_sample_timer_cb);
 }
 
@@ -314,10 +314,6 @@ static int gsensor_apply_run_mode_config(void)
 
     // 设置陀螺仪满量程为125dps（分辨率比250dps高一倍，噪声占比更小，更适合静止/海运检测）
     ret = lsm6dsv16x_gy_full_scale_set(&lsm_ctx, LSM6DSV16X_125dps);
-    GSENSOR_REG_CHECK(ret);
-
-    // 禁用活动/睡眠模式，恢复正常运行状态
-    ret = lsm6dsv16x_act_mode_set(&lsm_ctx, LSM6DSV16X_XL_AND_GY_NOT_AFFECTED);
     GSENSOR_REG_CHECK(ret);
 
     ret = gsensor_apply_fifo_mode_config();
@@ -459,8 +455,7 @@ static int analyze_gsensor_state(const struct gsensor_data *data)
     g_gsensor_runtime_ctx.current_gsensor_state = sm_update(&sm_batch, raw_prob); /* 状态机更新 */
     LOG_INF("g_gsensor_runtime_ctx.current_gsensor_state = %d", g_gsensor_runtime_ctx.current_gsensor_state);
 
-    ret = lsm6dsv16x_fifo_mode_set(&lsm_ctx, LSM6DSV16X_FIFO_MODE);
-    GSENSOR_REG_CHECK(ret);
+    gsensor_start_sample_timer();
 
     return 0;
 }
@@ -563,8 +558,6 @@ static int gsensor_pm_suspend(void)
 {
     int ret = 0;
 
-    my_stop_timer(MY_TIMER_GSENSOR_SAMPLE);
-
     if (gsensor_is_smart_mode() == true)
     {
         MY_LOG_INF("GSENSOR successfully entered sleep mode");
@@ -661,8 +654,6 @@ static int gsensor_pm_resume(void)
     // 清楚状态及窗口
     gsensor_reset_state();
     gsensor_reset_sample_window();
-    // 开启采样
-    gsensor_start_sample_timer();
 
     MY_LOG_INF("gsensor resume wake up success");
     return 0;
@@ -814,6 +805,8 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
                 // 智能模式静止挂起后，设备状态可能已经是 SUSPENDED，但传感器仍处于带电唤醒待机态
                 if (my_pm_device_get_state(MY_PM_DEV_GSENSOR) == MY_PM_STATE_SUSPENDED)
                 {
+                    // 关闭电源时，停止采样定时器
+                    my_stop_timer(MY_TIMER_GSENSOR_SAMPLE);
                     g_gsensor_runtime_ctx.sensor_ready = false;
                     my_gsensor_pwr_on(false);
                 }
@@ -824,11 +817,6 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
                 }
                 break;
 
-            case MY_MSG_GSENSOR_PWRON:
-                // 通过电源管理模块恢复 G-Sensor 设备（会自动恢复 I2C21 总线），会调用 gsensor_pm_resume
-                gsensor_resume_and_read();
-                break;
-
             case MY_MSG_GSENSOR_FIFO_INT:
                 // 检查保护时间，过滤配置期间产生的假唤醒
 
@@ -836,6 +824,17 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
                 {
                     gsensor_resume_and_read();
                 }
+                break;
+
+            case MY_MSG_GSENSOR_SAMPLE:
+                // 操作IIC必须先释放总线，否则会段错误系统死机
+                my_pm_device_resume(MY_PM_DEV_GSENSOR);
+
+                ret = lsm6dsv16x_fifo_mode_set(&lsm_ctx, LSM6DSV16X_FIFO_MODE);
+                LOG_INF("lsm6dsv16x_fifo_mode_set: %d", ret);
+
+                my_pm_device_suspend(MY_PM_DEV_GSENSOR);
+
                 break;
 
             default:

@@ -12,7 +12,15 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260511"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260518"
+/* 软件版本:        V1.0
+** 完成日期:        2026.05.18
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:       1.增加当采集完一次数据进行模式判定后得等1min（宏定义可设置）才进行下一次数据采集进行模式判定的功能
+**                2.修复当切换模式后，G-Sensor不进行数据采集的问题
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260511"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.05.11
 ** 作    者:        曹阳 (caoyang@jimiiot.com)
