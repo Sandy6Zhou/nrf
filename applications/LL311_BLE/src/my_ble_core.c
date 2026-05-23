@@ -878,8 +878,8 @@ static int non_connectable_adv_create(void)
     int err, i;
     struct bt_le_adv_param param = {
         .options = BT_LE_ADV_OPT_SCANNABLE | BT_LE_ADV_OPT_USE_IDENTITY,
-        .interval_min = ADV_INTERVAL,
-        .interval_max = ADV_INTERVAL,
+        .interval_min = gConfigParam.tag_config.tag_interval/0.625,
+        .interval_max = gConfigParam.tag_config.tag_interval/0.625,
         .peer = NULL,
     };
 

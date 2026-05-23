@@ -12,7 +12,15 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260521"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260522"
+/* 软件版本:        V1.0
+** 完成日期:        2026.05.22
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:       1. TAG配置参数上电后丢失。
+**                 2.初步实现STATUS#查询设备状态指令，具体参数得和产品经理确认
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260521"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.05.21
 ** 作    者:        曹阳 (caoyang@jimiiot.com)

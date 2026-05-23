@@ -106,6 +106,18 @@ static const struct PM_DEVICE_OPS battery_pm_ops =
 // 电源状态，初始值为未连接
 MY_CHG_STATE g_charg_state = NO_CHARGING;
 
+static int8_t s_show_percent = 0;        // 显示的电池电量百分比
+
+/*********************************************************************
+**函数名称:  get_show_percent
+**入口参数:  无
+**出口参数:  电池电量百分比
+**函数功能:  获取当前电池电量百分比
+*********************************************************************/
+int8_t get_show_percent(void)
+{
+    return s_show_percent;
+}
 /*********************************************************************
 **函数名称:  batt_timer_handler
 **入口参数:  timer 定时器指针，由系统自动传递
@@ -641,7 +653,6 @@ void my_battery_event_reporting()
 void my_battery_update_state()
 {
     static bool s_batt_first_update = true;  // 上电首次更新标志
-    static int8_t s_show_percent = 0;        // 显示的电池电量百分比
     static int s_batt_update_count = 0;       // 电池更新计数器
     static int8_t s_jump_percent = -1;         // 电量跳变值
     int8_t percent = 0;                       // 当前电池电量百分比

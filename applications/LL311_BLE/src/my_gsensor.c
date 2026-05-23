@@ -867,6 +867,26 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
                 my_pm_device_suspend(MY_PM_DEV_GSENSOR);
                 break;
 
+            case MY_MSG_GPS_SPEED_UPDATE:
+                // 为智能模式时，速度大于20km/h，且当前状态为静止，认为是状态误判
+                if (gsensor_is_smart_mode() && g_location_point.speed > 20 && g_gsensor_runtime_ctx.current_gsensor_state == STATE_STATIC)
+                {
+                    // 网络状态为0，认为是海运输状态
+                    if (g_lte_net_flag == 0)
+                    {
+                        sm_batch.candidate_count = 0; // 重置候选状态计数
+                        sm_batch.candidate_mode = STATE_SEA_TRANSPORT;// 候选状态为海运输状态
+                        sm_batch.current_mode = STATE_SEA_TRANSPORT;// 当前状态为海运输状态
+
+                        g_gsensor_runtime_ctx.current_gsensor_state = STATE_SEA_TRANSPORT;
+
+                        get_motion_status();  // 更新当前状态
+
+                        LOG_INF("sea transport");
+                    }
+                }
+                break;
+
             default:
                 break;
         }

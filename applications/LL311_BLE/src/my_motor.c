@@ -57,6 +57,19 @@ const char unlock_success[] = "Unlock success";
 const char unlock_fail[] = "Unlock failed. No unlock state detected.";
 const char lock_success[] = "Lock success";
 const char lock_fail[] = "Lock failed. No lock state detected.";
+
+/********************************************************************
+**函数名称:  get_lock_state
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取当前锁状态
+**返 回 值:  true=已锁，false=未锁
+*********************************************************************/
+bool get_lock_state(void)
+{
+    return closelock_posdet.state;
+}
+
 /* 电源控制：1 = 打开，0 = 关闭 */
 void motor_power_set(bool on)
 {

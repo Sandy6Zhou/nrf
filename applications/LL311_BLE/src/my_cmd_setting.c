@@ -71,6 +71,7 @@ static int modeset_cmd_handler(at_cmd_struc* msg);
 static int cunlock_cmd_handler(at_cmd_struc* msg);
 static int clock_cmd_handler(at_cmd_struc* msg);
 static int bt_parmac_cmd_handler(at_cmd_struc* msg);
+static int status_cmd_handler(at_cmd_struc* msg);
 
 static const at_cmd_attr_t at_cmd_attr_table[] =
 {
@@ -106,6 +107,7 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"CUNLOCK",        cunlock_cmd_handler},
     {"CLOCK",          clock_cmd_handler},
     {"BT_PARMAC",      bt_parmac_cmd_handler},
+    {"STATUS",         status_cmd_handler},
 };
 
 static const char* lte_cmd_attr_table[] =
@@ -4154,4 +4156,78 @@ param_invalid:
     LOG_INF("%s=>%s, param error or set fail", __func__, msg->parm[0]);
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
+}
+
+/********************************************************************
+**函数名称:  status_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针
+**出口参数:  无
+**函数功能:  处理状态查询指令
+**指令格式:  STATUS#
+**返 回 值:  BLE_DATA_TYPE_AT_CMD
+*********************************************************************/
+static int status_cmd_handler(at_cmd_struc* msg)
+{
+    uint16_t remaining;  // 响应消息缓冲区的剩余空间
+    int ret;             // snprintf 函数的返回值
+    char motion[20];
+
+    remaining = RESP_STRING_LENGTH_MAX;  // 计算响应消息缓冲区的大小
+
+    /* 检查参数数量：应为0 */
+    if (msg->parm_count == 0)  // 检查命令是否有参数
+    {
+        LOG_INF("%s=>%s", __func__, msg->parm[0]);  // 输出函数名和命令名
+
+        switch (g_gsensor_runtime_ctx.current_gsensor_state)
+        {
+            case STATE_STATIC:
+                memcpy(motion, "Static", sizeof("Static"));
+                break;
+
+            case STATE_LAND_TRANSPORT:
+                memcpy(motion, "Land Transport", sizeof("Land Transport"));
+                break;
+
+            case STATE_SEA_TRANSPORT:
+                memcpy(motion, "Sea Transport", sizeof("Sea Transport"));
+                break;
+
+            default:
+                memcpy(motion, "Unknown", sizeof("Unknown"));
+                break;
+        }
+
+        // TODO: Network,GNSS,Lockpin采用的默认值，后续需要根据实际情况修改
+        /* 生成响应消息，格式：[VERSION]%s*/
+        ret = snprintf(msg->resp_msg, remaining, "Battery:%d%%(%s);Network:%s(%s);GNSS:%s(%s); \
+            Tamper:%s;Lockpin:%s,%s;Lock state:%s;Motion:%s(%.2f KM/h)",
+            get_show_percent(),
+            g_charg_state == NO_CHARGING ? "Discharging" : "Charging",
+            g_lte_net_flag == 0 ? "Disconnect" : "Connect",
+            "Strong", "Fix", "1,2,3,4",
+            get_light_state() ? "Remove" : "Noemal",
+            "L-In", "R-Out",
+            get_lock_state() ? "Lock" : "Unlock",
+            motion, g_location_point.speed);
+
+        if (ret > 0 && ret < remaining)  // 检查响应消息是否生成成功
+        {
+            msg->resp_length = ret;  // 设置响应消息的长度
+            LOG_INF("STATUS: %s", msg->resp_msg);  // 输出状态信息
+        }
+        else  // 响应消息生成失败
+        {
+            // 生成失败响应消息
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+        }
+    }
+    else  // 参数数量错误
+    {
+        // 输出参数数量错误信息
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        // 生成失败响应消息
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    }
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;  // 返回 BLE 数据类型
 }

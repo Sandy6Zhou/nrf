@@ -98,6 +98,8 @@ typedef struct {
 
 extern bool g_lte_ota_in_progress;
 
+extern uint8_t g_lte_net_flag; // 网络状态
+
 /********************************************************************
 **函数名称:  my_lte_init
 **入口参数:  tid      ---        指向线程 ID 变量的指针

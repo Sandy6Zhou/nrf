@@ -223,6 +223,7 @@ typedef enum
     MY_MSG_GSENSOR_FIFO_INT, /* G-Sensor FIFO中断消息 */
     MY_MSG_MODESET_UPDATE,  // 处理智能模式下参数设置更新
     MY_MSG_GSENSOR_SAMPLE,  // G-Sensor 周期采样消息
+    MY_MSG_GPS_SPEED_UPDATE , // 处理GPS速度消息
 
     /* NFC处理程序消息 */
     MY_MSG_NFC_START_POLL,   /* 启动NFC轮询 */
