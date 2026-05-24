@@ -36,12 +36,12 @@ typedef enum
     BLE_RSP_POWOFF,   // BLE+POWOFF=OK
     BLE_RSP_PULSE,    // BLE+PULSE=OK,<持续时间(分钟)>
     BLE_RSP_MAX
-} ble_rsp_type;
+} ble_rsp_t;
 
 // 应答解析结果结构体
 typedef struct
 {
-    ble_rsp_type type; // 应答类型
+    ble_rsp_t type; // 应答类型
     char cmd_name[32]; // 命令名称
     char params[256];  // 参数部分
     int param_count;   // 参数个数
@@ -51,7 +51,7 @@ typedef struct
 typedef struct
 {
     const char *cmd_name;  // 命令名称 (如 "LOCATION")
-    ble_rsp_type rsp_type; // 应答类型
+    ble_rsp_t rsp_type; // 应答类型
 } ble_rsp_cmd_map_t;
 
 // 经纬度存储点结构体定义

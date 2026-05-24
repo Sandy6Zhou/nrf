@@ -1,13 +1,3 @@
-/*
- * Copyright (c) 2018 Nordic Semiconductor ASA
- *
- * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
- */
-
-/** @file
- *  @brief Nordic UART Bridge Service (NUS) sample
- */
-
 /* 必须在包含 my_comm.h 之前定义 BLE_LOG_MODULE_ID，避免与 my_ble_log.h 中的默认定义冲突 */
 #define BLE_LOG_MODULE_ID BLE_LOG_MOD_MAIN
 
@@ -17,21 +7,22 @@
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 
 /* 线程 ID 声明 */
-k_tid_t my_main_task_id = NULL;
-k_tid_t my_ble_task_id = NULL;
-k_tid_t my_ctrl_task_id = NULL;
-k_tid_t my_lte_task_id = NULL;
-k_tid_t my_nfc_task_id = NULL;
-k_tid_t my_gsensor_task_id = NULL;
-k_tid_t g_my_task_info[MAX_MY_MOD_TYPE] = {NULL};
+static k_tid_t s_my_main_task_id = NULL;
+static k_tid_t s_my_ble_task_id = NULL;
+static k_tid_t s_my_ctrl_task_id = NULL;
+static k_tid_t s_my_lte_task_id = NULL;
+static k_tid_t s_my_nfc_task_id = NULL;
+static k_tid_t s_my_gsensor_task_id = NULL;
+
+static k_tid_t s_my_task_info[MAX_MY_MOD_TYPE] = {NULL};
 
 /* 消息队列声明 */
-K_MSGQ_DEFINE(my_main_msgq, sizeof(MSG_S), 10, 4);
-struct k_msgq *g_my_msg_info[MAX_MY_MOD_TYPE] = {NULL};
+K_MSGQ_DEFINE(my_main_msgq, sizeof(msg_t), 10, 4);
+static struct k_msgq *s_my_msg_info[MAX_MY_MOD_TYPE] = {NULL};
 
 /* 定时器声明 */
-struct k_timer g_my_timer_info[MY_TIMER_MAX_ID];
-bool g_my_timer_init_status[MY_TIMER_MAX_ID] = {false};
+static struct k_timer s_my_timer_info[MY_TIMER_MAX_ID];
+static bool s_my_timer_init_status[MY_TIMER_MAX_ID] = {false};
 
 /********************************************************************
 **函数名称:  error
@@ -73,12 +64,12 @@ void my_system_reset(void)
 *********************************************************************/
 void custom_task_info_init(void)
 {
-    g_my_task_info[MOD_MAIN] = my_main_task_id;
-    g_my_task_info[MOD_BLE] = my_ble_task_id;
-    g_my_task_info[MOD_CTRL] = my_ctrl_task_id;
-    g_my_task_info[MOD_LTE] = my_lte_task_id;
-    g_my_task_info[MOD_NFC] = my_nfc_task_id;
-    g_my_task_info[MOD_GSENSOR] = my_gsensor_task_id;
+    s_my_task_info[MOD_MAIN] = s_my_main_task_id;
+    s_my_task_info[MOD_BLE] = s_my_ble_task_id;
+    s_my_task_info[MOD_CTRL] = s_my_ctrl_task_id;
+    s_my_task_info[MOD_LTE] = s_my_lte_task_id;
+    s_my_task_info[MOD_NFC] = s_my_nfc_task_id;
+    s_my_task_info[MOD_GSENSOR] = s_my_gsensor_task_id;
 }
 
 /*********************************************************************
@@ -96,7 +87,7 @@ void my_init_msg_handler(module_type mod, struct k_msgq *msgq)
     }
 
     /* 保存消息队列指针 */
-    g_my_msg_info[mod] = msgq;
+    s_my_msg_info[mod] = msgq;
 }
 
 /*********************************************************************
@@ -109,8 +100,8 @@ void my_init_msg_handler(module_type mod, struct k_msgq *msgq)
 *********************************************************************/
 void my_send_msg(module_type src_mod_id, module_type dest_mod_id, uint32_t msg)
 {
-    MSG_S sendMsg = {.msgID = msg, .pData = NULL, .DataLen = 0};
-    struct k_msgq *destHdl = g_my_msg_info[dest_mod_id];
+    msg_t sendMsg = {.msgID = msg, .pData = NULL, .DataLen = 0};
+    struct k_msgq *destHdl = s_my_msg_info[dest_mod_id];
 
     if (destHdl == NULL)
     {
@@ -128,13 +119,13 @@ void my_send_msg(module_type src_mod_id, module_type dest_mod_id, uint32_t msg)
 **函数名称:  my_send_msg_data
 **入口参数:  src_mod_id   --  发送消息的源模块ID
 **           dest_mod_id  --  接收消息的目标模块ID
-**           msg          --  消息结构体指针 (MSG_S)
+**           msg          --  消息结构体指针 (msg_t)
 **出口参数:  无
 **函数功能:  向指定模块发送包含数据的完整消息结构
 *********************************************************************/
-void my_send_msg_data(module_type src_mod_id, module_type dest_mod_id, MSG_S *msg)
+void my_send_msg_data(module_type src_mod_id, module_type dest_mod_id, msg_t *msg)
 {
-    struct k_msgq *destHdl = g_my_msg_info[dest_mod_id];
+    struct k_msgq *destHdl = s_my_msg_info[dest_mod_id];
 
     if (destHdl == NULL)
     {
@@ -190,9 +181,9 @@ void my_stop_timer(int timerId)
         return;
     }
 
-    if (g_my_timer_init_status[timerId])
+    if (s_my_timer_init_status[timerId])
     {
-        k_timer_stop(&g_my_timer_info[timerId]);
+        k_timer_stop(&s_my_timer_info[timerId]);
     }
 }
 
@@ -213,45 +204,25 @@ int my_start_timer(int timerId, uint32_t ms, bool isPeriod, TIMER_FUN timer_fun)
     }
 
     /* 如果定时器未初始化，则先执行初始化并标记状态 */
-    if (!g_my_timer_init_status[timerId])
+    if (!s_my_timer_init_status[timerId])
     {
-        k_timer_init(&g_my_timer_info[timerId], my_timer_expiry_function, NULL);
-        g_my_timer_init_status[timerId] = true;
+        k_timer_init(&s_my_timer_info[timerId], my_timer_expiry_function, NULL);
+        s_my_timer_init_status[timerId] = true;
     }
 
     /* 停止旧的定时器 (现在已确保初始化，可以安全调用) */
-    k_timer_stop(&g_my_timer_info[timerId]);
+    k_timer_stop(&s_my_timer_info[timerId]);
 
     /* 把用户回调函数指针存到 user_data */
-    k_timer_user_data_set(&g_my_timer_info[timerId],
+    k_timer_user_data_set(&s_my_timer_info[timerId],
                           (void *)timer_fun);
 
     /* 启动定时器 */
-    k_timer_start(&g_my_timer_info[timerId],
+    k_timer_start(&s_my_timer_info[timerId],
                   K_MSEC(ms),
                   isPeriod ? K_MSEC(ms) : K_NO_WAIT);
 
     return 0;
-}
-
-/*********************************************************************
-**函数名称:  my_delete_timer
-**入口参数:  timerId    --  定时器ID
-**出口参数:  无
-**函数功能:  停止定时器（静态方式不释放内存）
-*********************************************************************/
-void my_delete_timer(int timerId)
-{
-    if (timerId < 0 || timerId >= MY_TIMER_MAX_ID)
-    {
-        return;
-    }
-
-    if (g_my_timer_init_status[timerId])
-    {
-        k_timer_stop(&g_my_timer_info[timerId]);
-        /* 静态分配下不置回状态，以便下次 start 时直接复用 */
-    }
 }
 
 /*********************************************************************
@@ -268,13 +239,13 @@ bool my_time_is_run(int timerId)
         return false;
     }
 
-    if (!g_my_timer_init_status[timerId])
+    if (!s_my_timer_init_status[timerId])
     {
         return false;
     }
 
     /* 如果剩余时间大于 0，说明定时器正在运行 */
-    return (k_timer_remaining_get(&g_my_timer_info[timerId]) > 0);
+    return (k_timer_remaining_get(&s_my_timer_info[timerId]) > 0);
 }
 
 /*********************************************************************
@@ -283,7 +254,7 @@ bool my_time_is_run(int timerId)
 **出口参数:  无
 **函数功能:  发送工作模式给LTE模块
 *********************************************************************/
-void send_work_mode_command(MY_WORK_MODE mode)
+void send_work_mode_command(work_mode_t mode)
 {
     char buf[30];
 
@@ -327,10 +298,10 @@ void send_work_mode_command(MY_WORK_MODE mode)
 **出口参数:  无
 **函数功能:  切换工作模式，通过消息机制通知主线程
 *********************************************************************/
-void switch_work_mode(MY_WORK_MODE mode)
+void switch_work_mode(work_mode_t mode)
 {
     lte_boot_reason_t boot_reason;
-    static MY_WORK_MODE last_mode = MY_MODE_SHUTDOWN;
+    static work_mode_t last_mode = MY_MODE_SHUTDOWN;
 
     // 当前模式与目标模式相同，无需切换
     if (last_mode == mode)
@@ -515,7 +486,7 @@ void set_reset_lte_timer(void)
 static void print_app_info(void)
 {
     const macaddr_t *mac_addr = my_param_get_macaddr();
-    const GsmImei_t *imei = my_param_get_imei();
+    const gsm_imei_t *imei = my_param_get_imei();
 
     MY_LOG_INF("============================================");
     MY_LOG_INF("App Info:");
@@ -652,7 +623,7 @@ void handle_verify_unlock(ble_rsp_result_t *result)
 int main(void)
 {
     int err = 0;
-    MSG_S msg;
+    msg_t msg;
 
     // 设置自定义日志时间戳格式化函数
     log_custom_timestamp_set(custom_timestamp_formatter);
@@ -665,7 +636,7 @@ int main(void)
     print_app_info();
 
     /* 获取当前线程 ID 并保存 */
-    my_main_task_id = k_current_get();
+    s_my_main_task_id = k_current_get();
 
     /* 初始化电源管理子系统（必须在其他模块之前） */
     my_pm_init();
@@ -682,7 +653,7 @@ int main(void)
         .reserved = 0,
     };
 
-    err = my_ble_core_init(&ble_param, &my_ble_task_id);
+    err = my_ble_core_init(&ble_param, &s_my_ble_task_id);
     if (err)
     {
         error();
@@ -696,7 +667,7 @@ int main(void)
     }
 
     /* 初始化 LTE 模块 */
-    err = my_lte_init(&my_lte_task_id);
+    err = my_lte_init(&s_my_lte_task_id);
     if (err)
     {
         MY_LOG_ERR("Failed to initialize LTE module (err %d)", err);
@@ -704,21 +675,21 @@ int main(void)
     }
 
     /* 初始化 G-Sensor 模块 */
-    err = my_gsensor_init(&my_gsensor_task_id);
+    err = my_gsensor_init(&s_my_gsensor_task_id);
     if (err)
     {
         MY_LOG_ERR("Failed to initialize G-Sensor (err %d)", err);
     }
 
     /* 初始化 NFC 模块 */
-    err = my_nfc_init(&my_nfc_task_id);
+    err = my_nfc_init(&s_my_nfc_task_id);
     if (err)
     {
         MY_LOG_ERR("Failed to initialize NFC (err %d)", err);
     }
 
     /* 初始化系统控制模块 (LED, Buzzer, Key) */
-    err = my_ctrl_init(&my_ctrl_task_id);
+    err = my_ctrl_init(&s_my_ctrl_task_id);
     if (err)
     {
         MY_LOG_ERR("Failed to initialize Control module (err %d)", err);
@@ -735,9 +706,9 @@ int main(void)
     /* 主循环：等待并处理消息，逻辑已迁移至各线程 */
     for (;;)
     {
-        memset(&msg, 0, sizeof(MSG_S));
+        memset(&msg, 0, sizeof(msg_t));
 
-        my_recv_msg(&my_main_msgq, (void *)&msg, sizeof(MSG_S), K_FOREVER);
+        my_recv_msg(&my_main_msgq, (void *)&msg, sizeof(msg_t), K_FOREVER);
 
         switch (msg.msgID)
         {
@@ -844,7 +815,7 @@ int main(void)
                 gConfigParam.ota_config.flag = FLAG_VALID;
                 gConfigParam.ota_config.ble_ota_reboot = true;
                 // 设备升级完成后，会有一个6.5s定时器重启系统，不会导致数据写不进去，时间足够
-                my_user_data_write(ZMS_ID_OTA_CONFIG, &gConfigParam.ota_config, sizeof(OtaConfig_t));
+                my_user_data_write(ZMS_ID_OTA_CONFIG, &gConfigParam.ota_config, sizeof(ota_config_t));
                 MY_LOG_INF("DFU complete received");
                 break;
 

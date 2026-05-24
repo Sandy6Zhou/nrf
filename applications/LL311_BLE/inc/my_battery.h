@@ -20,15 +20,15 @@ typedef enum
     BATT_FAIR,          /* 电池电量良好 */
     BATT_HIGH,          /* 电池电量高 */
     BATT_FULL,          /* 电池电量满 */
-} MY_BATT_STATE;
+} my_batt_state_t;
 
 // 正常状态 LED 控制结构体, 用于控制电池状态 LED 显示的结构体
 typedef struct
 {
     struct k_timer *timer;       /* 定时器指针，用于控制 LED 显示的定时 */
-    MY_BATT_STATE state;            /* 当前电池状态，使用枚举类型 */
+    my_batt_state_t state;            /* 当前电池状态，使用枚举类型 */
     uint8_t time_count;          /* 时间计数器，用于控制 LED 闪烁和显示持续时间, 按键按下, LED 执行5s, 定时器设置为100ms , 50次*/
-} Batt_LED_Ctrl_S;
+} batt_led_ctrl_t;
 
 // 电源状态枚举, 定义了设备的电源连接状态
 typedef enum
@@ -37,7 +37,7 @@ typedef enum
     NO_CHARGING,            /* 充电器未连接 */
     CHARGING,               /* 充电器已连接（充电中） */
     CHARG_FULL,             /* 充电器已连接且电池已充满 */
-} MY_CHG_STATE;
+} my_chg_state_t;
 
 typedef enum
 {
@@ -45,31 +45,31 @@ typedef enum
     CHG_BATT_FAIR,   /* 充电状态电池电量良好 */
     CHG_BATT_HIGH,   /* 充电状态电池电量高 */
     CHG_BATT_FULL,   /* 充电状态电池电量满，电池已充满 */
-}MY_CHG_BATT_STATE;
+} my_chg_batt_state_t;
 
 // 充电状态 LED 控制结构体, 用于控制电池状态 LED 显示的结构体
 typedef struct
 {
     struct k_timer *timer;       /* 定时器指针，用于控制 LED 显示的定时 */
-    MY_CHG_BATT_STATE state;            /* 当前电池状态，使用枚举类型 */
+    my_chg_batt_state_t state;            /* 当前电池状态，使用枚举类型 */
     uint16_t time_count;          /* 时间计数器，用于控制 LED 闪烁和显示持续时间以及固定时间(10s)检测更新充电状态,定时器500ms循环*/
-} CHG_LED_Ctrl_S;
+} chg_led_ctrl_t;
 
 //电池电压-电量映射结构体,用于存储电池电压值与对应电量百分比的映射关系,用于通过电池电压计算电量百分比.
 typedef struct
 {
     int32_t mv;       /**< 电池电压值，单位为毫伏 (mV) */
     int8_t percent;   /**< 对应的电池电量百分比，范围为 0-100 */
-} Batt_Volt_Percent_Map_S;
+} batt_volt_percent_map_t;
 
 // 正常状态LED控制结构体，包含定时器、电池状态和计数器
-extern Batt_LED_Ctrl_S g_batt_led_ctrl;
+extern batt_led_ctrl_t g_batt_led_ctrl;
 
 // 充电状态LED控制结构体，包含定时器、充电电池状态和计数器
-extern CHG_LED_Ctrl_S g_chg_led_ctrl;
+extern chg_led_ctrl_t g_chg_led_ctrl;
 
 // 电源状态，初始值为未连接
-extern MY_CHG_STATE g_charg_state;
+extern my_chg_state_t g_charg_state;
 
 int batt_read_mv(int32_t *mv);
 int ntc_read_raw(int16_t *raw);

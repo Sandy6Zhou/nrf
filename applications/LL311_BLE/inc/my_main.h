@@ -39,20 +39,12 @@ typedef void (*TIMER_FUN)(void *param);
 #define NFCTRIG_MAX_RULES  10
 
 /* 消息结构体定义 */
-typedef struct MSG_S
+typedef struct
 {
     uint32_t msgID;
     void *pData;
     uint32_t DataLen;
-} MSG_S;
-
-/* 语言类型定义 */
-typedef enum
-{
-    MY_LANG_ENGLISH,      // 英语
-    MY_LANG_SIMP_CHINESE, // 简体中文
-    MY_MAX_LANG,
-} my_lang_type;
+} msg_t;
 
 /* 工作模式定义 */
 typedef enum
@@ -61,20 +53,20 @@ typedef enum
     MY_MODE_LONG_LIFE,      // 长续航模式
     MY_MODE_SMART,          // 智能模式
     MY_MODE_SHUTDOWN,       // 关机模式，该模式下所有功能关闭，只有按键可以唤醒设备，长按2秒开机，开机后智能模式，这种主要应用在仓储模式，进入超低功耗模式
-} MY_WORK_MODE;
+} work_mode_t;
 
 // 连续追踪模式参数结构体
 typedef struct
 {
     uint32_t reporting_interval_sec;    // 上传间隔，单位：秒（非负整数）
     uint32_t reporting_interval_dis;    // 上传距离，单位：米（非负整数）
-} ContinuousTrackingMode;
+} continuous_tracking_mode_t;
 
 // 长续航模式参数结构体
 typedef struct {
     uint32_t reporting_interval_min;    // 上传间隔，单位：分钟（非负整数）
     char start_time[5];                 // 开始时间，格式HHMM（24小时制，如"0001"），长度5含字符串结束符
-} LongBatteryMode;
+} long_battery_mode_t;
 
 // 智能模式参数结构体
 typedef struct {
@@ -83,15 +75,15 @@ typedef struct {
     uint32_t land_status_interval_dis;  // 陆运状态上传距离，单位：米（非负整数）
     uint32_t sea_status_interval_sec;   // 海运状态上传间隔，单位：秒（非负整数）
     uint8_t sleep_switch;               // 休眠开关，可设置范围：0/1/2
-} IntelligentMode;
+} intelligent_mode_t;
 
 // 设备工作模式配置结构体
 typedef struct {
-    MY_WORK_MODE current_mode;
-    ContinuousTrackingMode continuous_tracking; // 连续追踪模式
-    LongBatteryMode long_battery;          // 长续航模式
-    IntelligentMode intelligent;           // 智能模式
-} DeviceWorkModeConfig;
+    work_mode_t current_mode;
+    continuous_tracking_mode_t continuous_tracking; // 连续追踪模式
+    long_battery_mode_t long_battery;          // 长续航模式
+    intelligent_mode_t intelligent;           // 智能模式
+} device_work_mode_config_t;
 
 /* NFC卡权限结构体 */
 typedef struct
@@ -105,7 +97,7 @@ typedef struct
     char     end_time[12];         /* 结束时间，格式YYMMDDHHMM */
     uint8_t  time_valid;           /* 起止时间有效标志: 0-不限制, 1-有效 */
     int16_t  unlock_times;         /* 可用次数，-1表示不限次数 */
-} NfcAuthCard;
+} nfc_auth_card_t;
 
 /* 上报方式枚举定义 */
 typedef enum
@@ -114,7 +106,7 @@ typedef enum
     REPORT_MODE_GPRS,           /* 1-GPRS */
     REPORT_MODE_GPRS_SMS,       /* 2-GPRS+SMS */
     REPORT_MODE_GPRS_SMS_CALL,  /* 3-GPRS+SMS+CALL */
-} REPORT_MODE_T;
+} report_mode_t;
 
 /* 报警模式枚举定义 */
 typedef enum
@@ -122,7 +114,7 @@ typedef enum
     ALARM_NONE = 0,         /* 0-不报警 */
     ALARM_TEMPORARY,    /* 1-报警30s */
     ALARM_CONTINUOUS,   /* 2-持续报警 */
-} ALARM_MODE_T;
+} alarm_mode_t;
 
 /* 锁销状态触发方式枚举定义 */
 typedef enum
@@ -131,7 +123,7 @@ typedef enum
     PINSTAT_TRIGGER_MODE_INSERT,        /* 1-插入触发 */
     PINSTAT_TRIGGER_MODE_REMOVE,        /* 2-拔出触发 */
     PINSTAT_TRIGGER_MODE_BOTH,          /* 3-插入拔出均触发 */
-} PINSTAT_TRIGGER_MODE_T;
+} pinstat_trigger_mode_t;
 
 /* 锁状态触发方式枚举定义 */
 typedef enum
@@ -140,7 +132,7 @@ typedef enum
     LOCK_TRIGGER_LOCK,          /* 1-上锁触发 */
     LOCK_TRIGGER_UNLOCK,        /* 2-解锁触发 */
     LOCK_TRIGGER_BOTH,          /* 3-上锁解锁均触发 */
-} LOCK_TRIGGER_MODE_T;
+} lock_trigger_mode_t;
 
 /* Empty状态触发方式枚举定义 */
 typedef enum
@@ -148,7 +140,7 @@ typedef enum
     EMPTY_TRIGGER_NONE = 0,         /* 0-不触发 */
     EMPTY_TRIGGER_ONLINE,           /* 1-在线触发 */
     EMPTY_TRIGGER_CHANGE,           /* 2-状态变化触发 */
-} EMPTY_TRIGGER_MODE_T;
+} empty_trigger_mode_t;
 
 //NFC触发规则项结构体，用于存储单个NFC卡号与指令的关联关系
 typedef struct
@@ -203,16 +195,16 @@ void my_send_msg(module_type src_mod_id, module_type dest_mod_id, uint32_t msg);
 **函数名称:  my_send_msg_data
 **入口参数:  src_mod_id   --  发送消息的源模块ID
 **           dest_mod_id  --  接收消息的目标模块ID
-**           msg          --  消息结构体指针 (MSG_S)
+**           msg          --  消息结构体指针 (msg_t)
 **出口参数:  无
 **函数功能:  向指定模块发送包含数据的完整消息结构
 *********************************************************************/
-void my_send_msg_data(module_type src_mod_id, module_type dest_mod_id, MSG_S *msg);
+void my_send_msg_data(module_type src_mod_id, module_type dest_mod_id, msg_t *msg);
 
 /*********************************************************************
 **函数名称:  my_recv_msg
 **入口参数:  msg_queue    --  消息队列
-**           msg          --  消息结构体指针 (MSG_S)
+**           msg          --  消息结构体指针 (msg_t)
 **           msg_size     --  消息结构体大小
 **           wait_option  --  等待选项
 **出口参数:  无
@@ -240,14 +232,6 @@ int my_start_timer(int timerId, uint32_t ms, bool isPeriod, TIMER_FUN timer_fun)
 void my_stop_timer(int timerId);
 
 /*********************************************************************
-**函数名称:  my_delete_timer
-**入口参数:  timerId    --  定时器ID
-**出口参数:  无
-**函数功能:  停止并删除指定定时器
-*********************************************************************/
-void my_delete_timer(int timerId);
-
-/*********************************************************************
 **函数名称:  my_time_is_run
 **入口参数:  timerId    --  定时器ID
 **出口参数:  无
@@ -262,7 +246,7 @@ bool my_time_is_run(int timerId);
 **出口参数:  无
 **函数功能:  切换工作模式，通过消息机制通知主线程
 *********************************************************************/
-void switch_work_mode(MY_WORK_MODE mode);
+void switch_work_mode(work_mode_t mode);
 
 /*********************************************************************
 **函数名称:  lte_power_check_timer_callback
@@ -310,6 +294,6 @@ void awaken_lte_timer_callback(void *timer);
 **出口参数:  无
 **函数功能:  发送工作模式给LTE模块
 *********************************************************************/
-void send_work_mode_command(MY_WORK_MODE mode);
+void send_work_mode_command(work_mode_t mode);
 
 #endif /* _MY_MAIN_H_ */

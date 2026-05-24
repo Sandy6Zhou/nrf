@@ -12,7 +12,15 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260522"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260524"
+/* 软件版本:        V1.0
+** 完成日期:        2026.05.24
+** 作    者:       周森达 (zhousenda@jimiiot.com)
+** 修改内容:        1.统一命名规范(静态变量：s_xxx、结构体/枚举：xxx_t)
+**                 2.删除未使用到的函数及类型(my_delete_timer、my_lang_type)
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260522"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.05.22
 ** 作    者:        曹阳 (caoyang@jimiiot.com)

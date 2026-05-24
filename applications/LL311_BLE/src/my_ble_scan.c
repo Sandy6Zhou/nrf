@@ -1338,7 +1338,7 @@ int my_tag_prefix_add(const char *prefix)
 **返 回 值:  无
 **注意事项:  此函数必须在BLE线程的消息处理循环中调用
 *********************************************************************/
-void my_scan_msg_handler(MSG_S *msg)
+void my_scan_msg_handler(msg_t *msg)
 {
     tag_scan_process_msg_t process_msg;
     tran_mac_process_msg_t tmac_msg;

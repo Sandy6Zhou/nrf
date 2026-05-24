@@ -27,9 +27,9 @@ typedef struct {
     char *cmd;
     char *hlp;
     cmdproc proc;
-}CMD_STRUC;
+} cmd_struct_t;
 
-extern uint8_t shell_test_buff[256];
+extern uint8_t g_shell_test_buff[256];
 
 /********************************************************************
 **函数名称:  my_shell_init

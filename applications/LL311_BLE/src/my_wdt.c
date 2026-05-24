@@ -26,14 +26,14 @@ LOG_MODULE_REGISTER(my_wdt, LOG_LEVEL_INF);
 static const struct device *wdt_dev = DEVICE_DT_GET(WDT_NODE);
 
 /* 看门狗通道 ID */
-static int wdt_channel_id = -1;
+static int s_wdt_channel_id = -1;
 
 /* 看门狗配置参数（30秒超时） */
 #define WDT_TIMEOUT_MS 30000
 #define WDT_FEED_INTERVAL_MS 10000  /* 每10秒喂一次狗 */
 
 /* 线程检活标志位 */
-static volatile uint32_t thread_alive_flags = 0;
+static volatile uint32_t s_thread_alive_flags = 0;
 
 /********************************************************************
 **函数名称:  wdt_feed_timer_callback
@@ -50,18 +50,18 @@ static void wdt_feed_timer_callback(void *p1)
     uint32_t expected_flags = (1 << MOD_MAIN) | (1 << MOD_BLE) | (1 << MOD_CTRL) |
                               (1 << MOD_LTE) | (1 << MOD_NFC) | (1 << MOD_GSENSOR);
 
-    if ((thread_alive_flags & expected_flags) == expected_flags)
+    if ((s_thread_alive_flags & expected_flags) == expected_flags)
     {
         /* 所有关键线程正常，喂狗 */
-        wdt_feed(wdt_dev, wdt_channel_id);
+        wdt_feed(wdt_dev, s_wdt_channel_id);
 
         /* 清除标志位，准备下一轮检查 */
-        thread_alive_flags = 0;
+        s_thread_alive_flags = 0;
     }
     else
     {
         MY_LOG_ERR("Thread watchdog check failed! alive_flags=0x%x, expected=0x%x",
-                thread_alive_flags, expected_flags);
+                s_thread_alive_flags, expected_flags);
         /* 不喂狗，让看门狗复位系统 */
     }
 }
@@ -77,7 +77,7 @@ void my_wdt_feed(module_type mod_type)
 {
     if (mod_type < MAX_MY_MOD_TYPE)
     {
-        thread_alive_flags |= (1 << mod_type);
+        s_thread_alive_flags |= (1 << mod_type);
     }
 }
 
@@ -108,11 +108,11 @@ int my_wdt_init(void)
     };
 
     /* 安装看门狗 */
-    wdt_channel_id = wdt_install_timeout(wdt_dev, &wdt_config);
-    if (wdt_channel_id < 0)
+    s_wdt_channel_id = wdt_install_timeout(wdt_dev, &wdt_config);
+    if (s_wdt_channel_id < 0)
     {
-        MY_LOG_ERR("Failed to install watchdog timeout (err %d)", wdt_channel_id);
-        return wdt_channel_id;
+        MY_LOG_ERR("Failed to install watchdog timeout (err %d)", s_wdt_channel_id);
+        return s_wdt_channel_id;
     }
 
     /* 启动看门狗 */
@@ -124,7 +124,7 @@ int my_wdt_init(void)
     }
 
     /* 初始喂狗 */
-    wdt_feed(wdt_dev, wdt_channel_id);
+    wdt_feed(wdt_dev, s_wdt_channel_id);
 
     /* 启动定时喂狗定时器（周期性） */
     my_start_timer(MY_TIMER_WDT_FEED, WDT_FEED_INTERVAL_MS, true, wdt_feed_timer_callback);

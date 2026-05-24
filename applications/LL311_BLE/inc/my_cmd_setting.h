@@ -39,7 +39,7 @@ typedef enum
     PARM_19,
     PARM_20,
     PARM_MAX
-} cmd_parm_struct;
+} cmd_parm_t;
 
 typedef struct {
     char *parm[PARM_MAX];
@@ -50,9 +50,9 @@ typedef struct {
 
     char *resp_msg;                                 //应答数据指针（指向静态缓冲区）
     uint16_t resp_length;
-} at_cmd_struc;
+} at_cmd_t;
 
-typedef int(*at_cmd_handler_t)(at_cmd_struc *msg);
+typedef int(*at_cmd_handler_t)(at_cmd_t *msg);
 
 typedef struct
 {
@@ -74,7 +74,7 @@ extern char g_resp_buf[RESP_STRING_LENGTH_MAX];
 **函数功能:  设置设备的工作模式，将指定的工作模式写入作模式配置结构体
 **返 回 值:  0 表示成功，负值表示失败（如参数非法等）
 *********************************************************************/
-int set_work_mode(DeviceWorkModeConfig *config, MY_WORK_MODE mode);
+int set_work_mode(device_work_mode_config_t *config, work_mode_t mode);
 
 /********************************************************************
 **函数名称:  set_long_battery_params
@@ -85,7 +85,7 @@ int set_work_mode(DeviceWorkModeConfig *config, MY_WORK_MODE mode);
 **函数功能:  设置长续航模式的工作参数，包括上报间隔和启动时间
 **返 回 值:  0 表示成功，负值表示失败（如时间格式错误等）
 *********************************************************************/
-int set_long_battery_params(DeviceWorkModeConfig *config, uint16_t reporting_interval, const char *start_time_str);
+int set_long_battery_params(device_work_mode_config_t *config, uint16_t reporting_interval, const char *start_time_str);
 
 /********************************************************************
 **函数名称:  set_intelligent_params
@@ -98,7 +98,7 @@ int set_long_battery_params(DeviceWorkModeConfig *config, uint16_t reporting_int
 **函数功能:  设置智能模式的工作参数，根据不同状态配置不同的上报间隔及睡眠模式
 **返 回 值:  0 表示成功，负值表示失败（如参数非法等）
 *********************************************************************/
-int set_intelligent_params(DeviceWorkModeConfig *config, uint32_t static_int, uint32_t land_int, uint32_t land_distance, uint32_t sea_int, uint8_t sleep_sw);
+int set_intelligent_params(device_work_mode_config_t *config, uint32_t static_int, uint32_t land_int, uint32_t land_distance, uint32_t sea_int, uint8_t sleep_sw);
 
 /********************************************************************
 **函数名称:  at_recv_cmd_handler
@@ -107,7 +107,7 @@ int set_intelligent_params(DeviceWorkModeConfig *config, uint32_t static_int, ui
 **函数功能:  解析接收到的AT指令并执行对应的处理函数
 **返回值:    成功返回处理函数返回的BLE数据类型，未匹配指令或处理失败返回0
 *********************************************************************/
-uint16_t at_recv_cmd_handler(at_cmd_struc *at_cmd_msg);
+uint16_t at_recv_cmd_handler(at_cmd_t *at_cmd_msg);
 
 /********************************************************************
 **函数名称:  run_nfc_cmd
@@ -128,7 +128,7 @@ uint16_t run_nfc_cmd(char *card_id, uint8_t *index);
 **返回值:    未匹配指令或命令解析失败返回0
 **          返回非0不代表command执行成功，具体看对应的执行函数resp_msg回复
 *********************************************************************/
-uint16_t run_lte_cmd(at_cmd_struc *at_cmd_msg);
+uint16_t run_lte_cmd(at_cmd_t *at_cmd_msg);
 
 /*********************************************************************
 **函数名称:  lte_send_command

@@ -57,11 +57,11 @@ struct jimi_dfu_image_info
 };
 
 /* 全局变量 */
-static struct jimi_dfu_image_info dfu_image; /* DFU 镜像信息 */
-static uint32_t req_file_addr;               /* 请求文件地址 */
-static uint8_t repeat_req_count;             /* 重复请求计数 */
-static bool dfu_end_flag = false;            /* DFU 结束标志 */
-static bool dfu_in_progress = false;         /* DFU 进行中标志 */
+static struct jimi_dfu_image_info s_dfu_image; /* DFU 镜像信息 */
+static uint32_t s_req_file_addr;               /* 请求文件地址 */
+static uint8_t s_repeat_req_count;             /* 重复请求计数 */
+static bool s_dfu_end_flag = false;            /* DFU 结束标志 */
+static bool s_dfu_in_progress = false;         /* DFU 进行中标志 */
 
 /**
  * @brief DFU 1KB 缓存
@@ -69,20 +69,20 @@ static bool dfu_in_progress = false;         /* DFU 进行中标志 */
  * 必须小于FLASH_SECTOR_SIZE（4096）的大小，且FLASH_SECTOR_SIZE必须是它的整倍数
  */
 #define DFU_BUFFER_SIZE 1024
-static uint8_t dfu_buffer[DFU_BUFFER_SIZE]; /* 1KB 数据缓存 */
-static uint16_t dfu_buf_offset = 0;         /* 缓存内当前偏移 */
-static uint32_t dfu_block_addr = 0;         /* 当前 1KB 块起始地址 */
+static uint8_t s_dfu_buffer[DFU_BUFFER_SIZE]; /* 1KB 数据缓存 */
+static uint16_t s_dfu_buf_offset = 0;         /* 缓存内当前偏移 */
+static uint32_t s_dfu_block_addr = 0;         /* 当前 1KB 块起始地址 */
 
-static struct k_timer file_trans_wait_timer; /* 文件传输等待定时器 */
-static struct k_timer dfu_finish_wait_timer; /* DFU 完成等待定时器 */
-static struct k_timer dfu_reset_timer;       /* DFU 重置定时器 */
-static struct k_work dfu_timeout_work;       /* DFU 超时工作项，用于线程上下文处理 */
-static struct k_work dfu_retry_work;         /* DFU 重试工作项，用于线程上下文处理 */
-static struct k_work dfu_reset_work;         /* DFU 复位工作项，用于线程上下文处理 */
+static struct k_timer s_file_trans_wait_timer; /* 文件传输等待定时器 */
+static struct k_timer s_dfu_finish_wait_timer; /* DFU 完成等待定时器 */
+static struct k_timer s_dfu_reset_timer;       /* DFU 重置定时器 */
+static struct k_work s_dfu_timeout_work;       /* DFU 超时工作项，用于线程上下文处理 */
+static struct k_work s_dfu_retry_work;         /* DFU 重试工作项，用于线程上下文处理 */
+static struct k_work s_dfu_reset_work;         /* DFU 复位工作项，用于线程上下文处理 */
 
 /* 自定义工作队列，避免系统工作队列栈溢出 */
 static K_THREAD_STACK_DEFINE(dfu_workq_stack, 4096);
-static struct k_work_q dfu_workq;
+static struct k_work_q s_dfu_workq;
 
 /* 函数声明 */
 static void dfu_timer_wait_callback(struct k_timer *timer);                               /* 文件传输等待定时器回调函数 */
@@ -238,17 +238,17 @@ static int jimi_dfu_flash_write(uint32_t wrt_addr, const void *in_buf, uint32_t 
 **函数名称:  jimi_dfu_flush_buffer
 **入口参数:  is_last  ---   是否是最后一包
 **出口参数:  无
-**函数功能:  将 dfu_buffer 缓存写入 Flash，包含 CRC 校验
+**函数功能:  将 s_dfu_buffer 缓存写入 Flash，包含 CRC 校验
 **返 回 值:  0 表示成功，负值表示失败
 *********************************************************************/
 static int jimi_dfu_flush_buffer(bool is_last)
 {
     int ret;
     uint16_t write_crc, read_crc;
-    uint32_t read_addr = dfu_block_addr;
+    uint32_t read_addr = s_dfu_block_addr;
     uint8_t *read_back_buf = NULL;
 
-    if (dfu_buf_offset == 0 && !is_last)
+    if (s_dfu_buf_offset == 0 && !is_last)
     {
         return 0; /* 缓存为空且不是最后一包，无需写入 */
     }
@@ -262,19 +262,19 @@ static int jimi_dfu_flush_buffer(bool is_last)
     }
 
     /* 最后一包不足 1KB，填充 0xFF */
-    if (dfu_buf_offset < DFU_BUFFER_SIZE)
+    if (s_dfu_buf_offset < DFU_BUFFER_SIZE)
     {
-        memset(&dfu_buffer[dfu_buf_offset], 0xFF, DFU_BUFFER_SIZE - dfu_buf_offset);
+        memset(&s_dfu_buffer[s_dfu_buf_offset], 0xFF, DFU_BUFFER_SIZE - s_dfu_buf_offset);
     }
 
     /* 计算写入前 CRC */
-    write_crc = my_crc16_calc(dfu_buffer, DFU_BUFFER_SIZE, CRC16_POLYNOMIAL);
+    write_crc = my_crc16_calc(s_dfu_buffer, DFU_BUFFER_SIZE, CRC16_POLYNOMIAL);
 
     /* 写入 Flash */
-    ret = jimi_dfu_flash_write(dfu_block_addr, dfu_buffer, DFU_BUFFER_SIZE);
+    ret = jimi_dfu_flash_write(s_dfu_block_addr, s_dfu_buffer, DFU_BUFFER_SIZE);
     if (ret != 0)
     {
-        LOG_ERR("1KB buffer flash write failed at 0x%x", dfu_block_addr);
+        LOG_ERR("1KB buffer flash write failed at 0x%x", s_dfu_block_addr);
         MY_FREE_BUFFER(read_back_buf);
         return ret;
     }
@@ -283,7 +283,7 @@ static int jimi_dfu_flush_buffer(bool is_last)
     ret = jimi_dfu_flash_read(&read_addr, read_back_buf, DFU_BUFFER_SIZE);
     if (ret != 0)
     {
-        LOG_ERR("1KB buffer flash read back failed at 0x%x", dfu_block_addr);
+        LOG_ERR("1KB buffer flash read back failed at 0x%x", s_dfu_block_addr);
         MY_FREE_BUFFER(read_back_buf);
         return ret;
     }
@@ -294,17 +294,17 @@ static int jimi_dfu_flush_buffer(bool is_last)
     if (write_crc != read_crc)
     {
         LOG_ERR("1KB buffer CRC verify failed at 0x%x: write=0x%04x, read=0x%04x",
-                dfu_block_addr, write_crc, read_crc);
+                s_dfu_block_addr, write_crc, read_crc);
         MY_FREE_BUFFER(read_back_buf);
         return -EIO;
     }
 
-    LOG_INF("1KB buffer flushed: addr=0x%x, crc=0x%04x", dfu_block_addr, read_crc);
+    LOG_INF("1KB buffer flushed: addr=0x%x, crc=0x%04x", s_dfu_block_addr, read_crc);
 
     /* 准备下一个 1KB 块 */
-    dfu_block_addr += DFU_BUFFER_SIZE;
-    dfu_buf_offset = 0;
-    memset(dfu_buffer, 0xFF, DFU_BUFFER_SIZE);
+    s_dfu_block_addr += DFU_BUFFER_SIZE;
+    s_dfu_buf_offset = 0;
+    memset(s_dfu_buffer, 0xFF, DFU_BUFFER_SIZE);
 
     MY_FREE_BUFFER(read_back_buf);
     return 0;
@@ -381,7 +381,7 @@ static void dfu_reset_work_handler(struct k_work *work)
 
     LOG_INF("DFU reset work handler, rebooting...");
 
-    if (dfu_end_flag)
+    if (s_dfu_end_flag)
     {
         /* 请求 MCUboot 升级（必须在线程上下文调用） */
         boot_request_upgrade(BOOT_UPGRADE_PERMANENT);
@@ -402,7 +402,7 @@ static void dfu_reset_callback(struct k_timer *timer)
     ARG_UNUSED(timer);
 
     /* 提交到工作队列，在线程上下文执行复位 */
-    k_work_submit_to_queue(&dfu_workq, &dfu_reset_work);
+    k_work_submit_to_queue(&s_dfu_workq, &s_dfu_reset_work);
 }
 
 /********************************************************************
@@ -417,7 +417,7 @@ static void dfu_finish_wait_callback(struct k_timer *timer)
     ARG_UNUSED(timer);
 
     /* 启动复位定时器 */
-    k_timer_start(&dfu_reset_timer, K_MSEC(3000), K_NO_WAIT);
+    k_timer_start(&s_dfu_reset_timer, K_MSEC(3000), K_NO_WAIT);
 }
 
 /********************************************************************
@@ -435,7 +435,7 @@ static void dfu_timeout_work_handler(struct k_work *work)
 
     rsp_buf[0] = JIMI_DFU_END_RESP_TIME_OUT;
     my_ble_dfu_send_response(JIMI_DFU_FILE_END, rsp_buf, sizeof(rsp_buf));
-    dfu_in_progress = false;
+    s_dfu_in_progress = false;
     LOG_ERR("DFU timeout");
 
     /* 通知 main 线程 OTA 超时 */
@@ -453,11 +453,11 @@ static void dfu_retry_work_handler(struct k_work *work)
 {
     ARG_UNUSED(work);
 
-    uint32_t remain = dfu_image.fw_copy_size - req_file_addr;
-    uint16_t buf_remain = DFU_BUFFER_SIZE - dfu_buf_offset;
-    uint16_t retry_pkt_size = jimi_dfu_calc_pkt_size(ble_server_mtu, remain, buf_remain);
-    jimi_dfu_image_down_req(req_file_addr, retry_pkt_size);
-    LOG_DBG("DFU retry request addr: 0x%x, size: %d", req_file_addr, retry_pkt_size);
+    uint32_t remain = s_dfu_image.fw_copy_size - s_req_file_addr;
+    uint16_t buf_remain = DFU_BUFFER_SIZE - s_dfu_buf_offset;
+    uint16_t retry_pkt_size = jimi_dfu_calc_pkt_size(g_ble_server_mtu, remain, buf_remain);
+    jimi_dfu_image_down_req(s_req_file_addr, retry_pkt_size);
+    LOG_DBG("DFU retry request addr: 0x%x, size: %d", s_req_file_addr, retry_pkt_size);
 }
 
 /********************************************************************
@@ -471,16 +471,16 @@ static void dfu_timer_wait_callback(struct k_timer *timer)
 {
     ARG_UNUSED(timer);
 
-    if (++repeat_req_count <= 10)
+    if (++s_repeat_req_count <= 10)
     {
         /* 在中断上下文中不能直接调用 BLE 发送，提交工作项到自定义工作队列执行 */
-        k_work_submit_to_queue(&dfu_workq, &dfu_retry_work);
+        k_work_submit_to_queue(&s_dfu_workq, &s_dfu_retry_work);
     }
     else
     {
-        repeat_req_count = 0;
+        s_repeat_req_count = 0;
         /* 提交工作项到自定义工作队列执行 */
-        k_work_submit_to_queue(&dfu_workq, &dfu_timeout_work);
+        k_work_submit_to_queue(&s_dfu_workq, &s_dfu_timeout_work);
     }
 }
 
@@ -499,8 +499,8 @@ static void jimi_dfu_start(uint8_t *data, uint16_t len)
     ARG_UNUSED(data);
     ARG_UNUSED(len);
 
-    dfu_end_flag = false;
-    dfu_in_progress = true;
+    s_dfu_end_flag = false;
+    s_dfu_in_progress = true;
 
     LOG_INF("DFU start");
 
@@ -532,16 +532,16 @@ static void jimi_dfu_rx_file_size(uint8_t *data, uint16_t len)
     file_size = data[0] | (data[1] << 8) | (data[2] << 16) | (data[3] << 24);
 
     /* 获取 image-1 分区地址 */
-    dfu_image.fw_copy_src_addr = FLASH_AREA_OFFSET(DFU_FLASH_PARTITION);
-    dfu_image.fw_copy_dst_addr = FLASH_AREA_OFFSET(image_0); /* 目标地址 */
-    dfu_image.fw_copy_size = file_size;
+    s_dfu_image.fw_copy_src_addr = FLASH_AREA_OFFSET(DFU_FLASH_PARTITION);
+    s_dfu_image.fw_copy_dst_addr = FLASH_AREA_OFFSET(image_0); /* 目标地址 */
+    s_dfu_image.fw_copy_size = file_size;
 
     /* APP 端发送的 MD5 值 (data[10]~data[25])，因 NCS 3.2.1 废弃 MD5 支持，
      * 设备端改用片段 CRC16 校验替代，此处仅保留注释说明协议兼容性。
      * 如需使用 MD5：memcpy(dfu_file_md5, data + 10, FILE_MD5_BUF_LEN);
      */
 
-    LOG_INF("DFU file size: %d bytes, addr: 0x%x", file_size, dfu_image.fw_copy_src_addr);
+    LOG_INF("DFU file size: %d bytes, addr: 0x%x", file_size, s_dfu_image.fw_copy_src_addr);
 
     /* 检查大小 */
     partition_size = FLASH_AREA_SIZE(DFU_FLASH_PARTITION);
@@ -550,7 +550,7 @@ static void jimi_dfu_rx_file_size(uint8_t *data, uint16_t len)
         LOG_ERR("DFU file too large: %d > %d", file_size, partition_size);
         rsp_buf[0] = JIMI_DFU_END_RESP_SIZE;
         my_ble_dfu_send_response(JIMI_DFU_FILE_END, rsp_buf, sizeof(rsp_buf));
-        dfu_in_progress = false;
+        s_dfu_in_progress = false;
         return;
     }
 
@@ -560,26 +560,26 @@ static void jimi_dfu_rx_file_size(uint8_t *data, uint16_t len)
         LOG_ERR("DFU flash erase failed");
         rsp_buf[0] = JIMI_DFU_END_RESP_ERROR;
         my_ble_dfu_send_response(JIMI_DFU_FILE_END, rsp_buf, sizeof(rsp_buf));
-        dfu_in_progress = false;
+        s_dfu_in_progress = false;
         return;
     }
     LOG_INF("DFU flash erase complete");
 
     /* 初始化 1KB 缓存 */
-    dfu_block_addr = 0;
-    dfu_buf_offset = 0;
-    memset(dfu_buffer, 0xFF, DFU_BUFFER_SIZE);
+    s_dfu_block_addr = 0;
+    s_dfu_buf_offset = 0;
+    memset(s_dfu_buffer, 0xFF, DFU_BUFFER_SIZE);
 
     /* 请求第一包数据 - 动态计算分包大小（初始缓存为空） */
-    first_pkt_size = jimi_dfu_calc_pkt_size(ble_server_mtu, file_size, DFU_BUFFER_SIZE);
+    first_pkt_size = jimi_dfu_calc_pkt_size(g_ble_server_mtu, file_size, DFU_BUFFER_SIZE);
     jimi_dfu_image_down_req(0x00, first_pkt_size);
-    req_file_addr = 0x00;
-    repeat_req_count = 0;
+    s_req_file_addr = 0x00;
+    s_repeat_req_count = 0;
 
-    LOG_INF("DFU first request addr: 0x%x, size: %d", req_file_addr, first_pkt_size);
+    LOG_INF("DFU first request addr: 0x%x, size: %d", s_req_file_addr, first_pkt_size);
 
     /* 启动超时定时器 */
-    k_timer_start(&file_trans_wait_timer, K_MSEC(3000), K_NO_WAIT);
+    k_timer_start(&s_file_trans_wait_timer, K_MSEC(3000), K_NO_WAIT);
 }
 
 /********************************************************************
@@ -621,14 +621,14 @@ static void jimi_dfu_write_image(uint8_t *data, uint16_t len)
         LOG_ERR("DFU write CRC error: calc=0x%x, rx=0x%x", calc_crc, rx_crc);
         return;
     }
-    else if (wrt_addr != req_file_addr)
+    else if (wrt_addr != s_req_file_addr)
     {
-        LOG_ERR("DFU write addr error: rx=0x%x, req=0x%x", wrt_addr, req_file_addr);
+        LOG_ERR("DFU write addr error: rx=0x%x, req=0x%x", wrt_addr, s_req_file_addr);
         return;
     }
 
     /* 停止超时定时器 */
-    k_timer_stop(&file_trans_wait_timer);
+    k_timer_stop(&s_file_trans_wait_timer);
 
     LOG_INF("DFU write: addr=0x%x, len=%d", wrt_addr, wrt_len);
 
@@ -639,24 +639,24 @@ static void jimi_dfu_write_image(uint8_t *data, uint16_t len)
         LOG_ERR("DFU buffer overflow: pos=%d, len=%d", buf_pos, wrt_len);
         rsp_buf[0] = JIMI_DFU_END_RESP_ERROR;
         my_ble_dfu_send_response(JIMI_DFU_FILE_END, rsp_buf, sizeof(rsp_buf));
-        dfu_in_progress = false;
+        s_dfu_in_progress = false;
         return;
     }
-    memcpy(&dfu_buffer[buf_pos], data + 8, wrt_len);
-    dfu_buf_offset = buf_pos + wrt_len;
+    memcpy(&s_dfu_buffer[buf_pos], data + 8, wrt_len);
+    s_dfu_buf_offset = buf_pos + wrt_len;
 
     /* 检查是否完成 */
-    is_last = (wrt_addr + wrt_len) >= dfu_image.fw_copy_size;
+    is_last = (wrt_addr + wrt_len) >= s_dfu_image.fw_copy_size;
 
     /* 缓存满 1KB 或最后一包，写入 Flash */
-    if (dfu_buf_offset >= DFU_BUFFER_SIZE || is_last)
+    if (s_dfu_buf_offset >= DFU_BUFFER_SIZE || is_last)
     {
         if (jimi_dfu_flush_buffer(is_last) != 0)
         {
             LOG_ERR("DFU 1KB buffer flush failed");
             rsp_buf[0] = JIMI_DFU_END_RESP_ERROR;
             my_ble_dfu_send_response(JIMI_DFU_FILE_END, rsp_buf, sizeof(rsp_buf));
-            dfu_in_progress = false;
+            s_dfu_in_progress = false;
             return;
         }
     }
@@ -664,7 +664,7 @@ static void jimi_dfu_write_image(uint8_t *data, uint16_t len)
     if (is_last)
     {
         rsp_buf[0] = JIMI_DFU_END_RESP_OK;
-        dfu_end_flag = true;
+        s_dfu_end_flag = true;
         LOG_INF("DFU image write complete");
 
         my_ble_dfu_send_response(JIMI_DFU_FILE_END, rsp_buf, sizeof(rsp_buf));
@@ -673,21 +673,21 @@ static void jimi_dfu_write_image(uint8_t *data, uint16_t len)
         my_send_msg(MOD_BLE, MOD_MAIN, MY_MSG_DFU_COMPLETE);
 
         /* 启动完成定时器 */
-        k_timer_start(&dfu_finish_wait_timer, K_MSEC(3000), K_NO_WAIT);
-        k_timer_start(&dfu_reset_timer, K_MSEC(6500), K_NO_WAIT);
+        k_timer_start(&s_dfu_finish_wait_timer, K_MSEC(3000), K_NO_WAIT);
+        k_timer_start(&s_dfu_reset_timer, K_MSEC(6500), K_NO_WAIT);
     }
     else
     {
         /* 请求下一包 - 动态计算分包大小 */
-        repeat_req_count = 0;
-        req_file_addr = wrt_addr + wrt_len;
-        remain = dfu_image.fw_copy_size - req_file_addr;
-        buf_remain = DFU_BUFFER_SIZE - dfu_buf_offset;
-        next_pkt_size = jimi_dfu_calc_pkt_size(ble_server_mtu, remain, buf_remain);
-        jimi_dfu_image_down_req(req_file_addr, next_pkt_size);
+        s_repeat_req_count = 0;
+        s_req_file_addr = wrt_addr + wrt_len;
+        remain = s_dfu_image.fw_copy_size - s_req_file_addr;
+        buf_remain = DFU_BUFFER_SIZE - s_dfu_buf_offset;
+        next_pkt_size = jimi_dfu_calc_pkt_size(g_ble_server_mtu, remain, buf_remain);
+        jimi_dfu_image_down_req(s_req_file_addr, next_pkt_size);
 
-        LOG_INF("DFU next request addr: 0x%x, size: %d", req_file_addr, next_pkt_size);
-        k_timer_start(&file_trans_wait_timer, K_MSEC(3000), K_NO_WAIT);
+        LOG_INF("DFU next request addr: 0x%x, size: %d", s_req_file_addr, next_pkt_size);
+        k_timer_start(&s_file_trans_wait_timer, K_MSEC(3000), K_NO_WAIT);
     }
 }
 
@@ -706,8 +706,8 @@ static void jimi_dfu_end_image(uint8_t *data, uint16_t len)
 
     LOG_INF("DFU end image");
 
-    k_timer_stop(&file_trans_wait_timer);
-    k_timer_start(&dfu_reset_timer, K_MSEC(3000), K_NO_WAIT);
+    k_timer_stop(&s_file_trans_wait_timer);
+    k_timer_start(&s_dfu_reset_timer, K_MSEC(3000), K_NO_WAIT);
 }
 
 /* 命令处理表 */
@@ -760,15 +760,15 @@ void jimi_dfu_cmd_handler(uint8_t cmd, uint8_t *data, uint16_t len)
 *********************************************************************/
 void jimi_dfu_timer_init(void)
 {
-    k_timer_init(&file_trans_wait_timer, dfu_timer_wait_callback, NULL);
-    k_timer_init(&dfu_finish_wait_timer, dfu_finish_wait_callback, NULL);
-    k_timer_init(&dfu_reset_timer, dfu_reset_callback, NULL);
-    k_work_init(&dfu_timeout_work, dfu_timeout_work_handler);
-    k_work_init(&dfu_retry_work, dfu_retry_work_handler);
-    k_work_init(&dfu_reset_work, dfu_reset_work_handler);
+    k_timer_init(&s_file_trans_wait_timer, dfu_timer_wait_callback, NULL);
+    k_timer_init(&s_dfu_finish_wait_timer, dfu_finish_wait_callback, NULL);
+    k_timer_init(&s_dfu_reset_timer, dfu_reset_callback, NULL);
+    k_work_init(&s_dfu_timeout_work, dfu_timeout_work_handler);
+    k_work_init(&s_dfu_retry_work, dfu_retry_work_handler);
+    k_work_init(&s_dfu_reset_work, dfu_reset_work_handler);
 
     /* 启动自定义工作队列，使用较高优先级 */
-    k_work_queue_start(&dfu_workq, dfu_workq_stack, K_THREAD_STACK_SIZEOF(dfu_workq_stack),
+    k_work_queue_start(&s_dfu_workq, dfu_workq_stack, K_THREAD_STACK_SIZEOF(dfu_workq_stack),
                        K_PRIO_PREEMPT(1), NULL);
 
     LOG_INF("DFU timers and workq initialized");
@@ -784,5 +784,5 @@ void jimi_dfu_timer_init(void)
 *********************************************************************/
 bool jimi_dfu_is_in_progress(void)
 {
-    return dfu_in_progress;
+    return s_dfu_in_progress;
 }

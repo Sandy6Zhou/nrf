@@ -39,7 +39,7 @@ typedef struct {
     float gyro_low_freq_ratio;                   /* 角速度低频能量比(<1Hz) */
     float acc_periodicity;                       /* 加速度周期性(自相关峰值) */
     float gyro_periodicity;                      /* 角速度周期性(自相关峰值) */
-} Features;
+} features_t;
 
 /* ============================================================
  *  分类结果结构体: 分类器输出
@@ -47,8 +47,8 @@ typedef struct {
 typedef struct {
     gsensor_state_t mode;                           /* 判定的运输模式 */
     float confidence;                            /* 置信度(0~1) */
-    Features features;                            /* 本次提取的特征(调试用) */
-} ClassificationResult;
+    features_t features;                            /* 本次提取的特征(调试用) */
+} classification_result_t;
 
 /* ============================================================
  *  状态机结构体: 时序平滑 + 转移约束
@@ -59,7 +59,7 @@ typedef struct {
     int candidate_count;                          /* 候选模式连续出现的次数 */
     float smooth_prob[NUM_MODES];                /* EMA平滑后的各模式概率 */
     int initialized;                              /* 状态机是否已初始化(0=未, 1=已) */
-} StateMachine;
+} state_machine_t;
 
 /* ============================================================
  *  单类模型结构体: 存储一个运输模式的统计参数
@@ -67,18 +67,18 @@ typedef struct {
 typedef struct {
     float mean[FEATURE_DIM];                     /* 各特征维度的均值 */
     float std[FEATURE_DIM];                      /* 各特征维度的标准差 */
-} ClassModel;
+} class_model_t;
 
 /* ============================================================
  *  贝叶斯分类器结构体: 含模型参数和先验概率
  * ============================================================ */
 typedef struct {
-    ClassModel models[NUM_MODES];                 /* 三个运输模式的统计模型 */
+    class_model_t models[NUM_MODES];                 /* 三个运输模式的统计模型 */
     float prior[NUM_MODES];                      /* 三个运输模式的先验概率 */
     int trained;                                  /* 是否已完成训练(0=未, 1=已) */
-} BayesianClassifier;
+} bayesian_classifier_t;
 
-extern StateMachine sm_batch;                          // 状态机实例
+extern state_machine_t sm_batch;                          // 状态机实例
 
 /********************************************************************
 **函数名称:  bayes_init
@@ -87,7 +87,7 @@ extern StateMachine sm_batch;                          // 状态机实例
 **函数功能:  初始化贝叶斯分类器
 **  先验概率设为均匀分布(1/3)
 *********************************************************************/
-void bayes_init(BayesianClassifier *bclf);
+void bayes_init(bayesian_classifier_t *bclf);
 
 /********************************************************************
 **函数名称:  classify_bayesian
@@ -95,14 +95,14 @@ void bayes_init(BayesianClassifier *bclf);
 **入口参数:  readings  ---        IMU数据指针
 **入口参数:  n  ---        数据长度
 **函数功能:  贝叶斯分类器核心推理函数
-**出口参数: ClassificationResult(模式+置信度+特征)
+**出口参数: classification_result_t(模式+置信度+特征)
 **贝叶斯定理: P(mode|features) = P(features|mode) * P(mode) / P(features)
 **    P(features|mode) = 似然 = prod_d Gaussian(x_d; mean_d, std_d)
 **    P(mode) = 先验(动态调整)
 **    对数空间计算避免下溢: log_posterior = log_lik + log_prior
 *********************************************************************/
-ClassificationResult classify_bayesian(BayesianClassifier *bclf,
-                                       const IMUReading *readings, int n);
+classification_result_t classify_bayesian(bayesian_classifier_t *bclf,
+                                       const imu_reading_t *readings, int n);
 
 /********************************************************************
 **函数名称:  bayes_set_dynamic_prior
@@ -114,7 +114,7 @@ ClassificationResult classify_bayesian(BayesianClassifier *bclf,
 **    - 如果上一时刻是Land:  大概率继续Land, 可能转Still或Sea
 **    - 如果上一时刻是Sea:   大概率继续Sea, 可能转Land, 不可能转Still
 *********************************************************************/
-void bayes_set_dynamic_prior(BayesianClassifier *bclf, gsensor_state_t prev_mode);
+void bayes_set_dynamic_prior(bayesian_classifier_t *bclf, gsensor_state_t prev_mode);
 
 /********************************************************************
 **函数名称:  mode_to_best
@@ -136,7 +136,7 @@ int mode_to_best(gsensor_state_t mode);
 **    2. 非法转移拦截: Still不能直接跳到Sea
 **    3. N次确认: 连续N次检测到新模式才切换
 *********************************************************************/
-gsensor_state_t sm_update(StateMachine *sm, const float raw_prob[NUM_MODES]);
+gsensor_state_t sm_update(state_machine_t *sm, const float raw_prob[NUM_MODES]);
 
 /********************************************************************
 **函数名称:  sm_init
@@ -145,7 +145,7 @@ gsensor_state_t sm_update(StateMachine *sm, const float raw_prob[NUM_MODES]);
 **函数功能:  初始化状态机
 **  默认状态为静止, 概率全部分配给静止
 *********************************************************************/
-void sm_init(StateMachine *sm);
+void sm_init(state_machine_t *sm);
 
 #endif
 

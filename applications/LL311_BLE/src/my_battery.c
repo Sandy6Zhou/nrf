@@ -69,34 +69,34 @@ static const struct gpio_dt_spec batt_pwr_en = GPIO_DT_SPEC_GET(DT_ALIAS(batt_pw
 static const struct gpio_dt_spec charge_state = GPIO_DT_SPEC_GET(DT_ALIAS(batt_state), gpios);
 static const struct gpio_dt_spec charge_det = GPIO_DT_SPEC_GET(DT_ALIAS(charge_detect), gpios);
 
-static struct gpio_callback batt_gpio_cb;
+static struct gpio_callback s_batt_gpio_cb;
 // ADC原始采样值
-static int16_t batt_raw;
+static int16_t s_batt_raw;
 
 static struct adc_sequence batt_seq = {
-    .buffer = &batt_raw,
-    .buffer_size = sizeof(batt_raw),
+    .buffer = &s_batt_raw,
+    .buffer_size = sizeof(s_batt_raw),
 };
 
-static struct k_timer g_chg_stat_timer; // 充电状态检测消抖定时器，用于充电状态引脚的消抖处理
-static struct k_timer g_chg_det_timer;  // 充电检测消抖定时器，用于充电检测引脚的消抖处理
-static struct k_timer g_batt_update_timer;     // 电池电量检测定时器
+static struct k_timer s_chg_stat_timer; // 充电状态检测消抖定时器，用于充电状态引脚的消抖处理
+static struct k_timer s_chg_det_timer;  // 充电检测消抖定时器，用于充电检测引脚的消抖处理
+static struct k_timer s_batt_update_timer;     // 电池电量检测定时器
 
 // 正常状态LED控制结构体，包含定时器、电池状态和计数器
-Batt_LED_Ctrl_S g_batt_led_ctrl = { 0 };
+batt_led_ctrl_t g_batt_led_ctrl = { 0 };
 
 // 充电状态LED控制结构体，包含定时器、充电电池状态和计数器
-CHG_LED_Ctrl_S g_chg_led_ctrl = { 0 };
+chg_led_ctrl_t g_chg_led_ctrl = { 0 };
 
-static int g_chg_stat_level = 0;        // 当前充电状态引脚电平，用于消抖处理
-static int g_chg_det_level = 0;         // 当前充电检测引脚电平，用于消抖处理
+static int s_chg_stat_level = 0;        // 当前充电状态引脚电平，用于消抖处理
+static int s_chg_det_level = 0;         // 当前充电检测引脚电平，用于消抖处理
 
-static bool g_batt_disable_flag = false;  /**< 电池充电禁止标志，用于控制充电路径的开关，消除充电电压对电池电压测量的影响 */
+static bool s_batt_disable_flag = false;  /**< 电池充电禁止标志，用于控制充电路径的开关，消除充电电压对电池电压测量的影响 */
 
 static int battery_pm_init(void);
 
 // Battery 电源管理操作回调结构体
-static const struct PM_DEVICE_OPS battery_pm_ops =
+static const pm_device_ops_t battery_pm_ops =
 {
     .init = battery_pm_init,
     .suspend = NULL,
@@ -104,7 +104,7 @@ static const struct PM_DEVICE_OPS battery_pm_ops =
 };
 
 // 电源状态，初始值为未连接
-MY_CHG_STATE g_charg_state = NO_CHARGING;
+my_chg_state_t g_charg_state = NO_CHARGING;
 
 static int8_t s_show_percent = 0;        // 显示的电池电量百分比
 
@@ -173,7 +173,7 @@ int batt_read_mv(int32_t *mv)
     err = adc_read(batt_adc.dev, &batt_seq);
     if (err < 0) return err;
 
-    val_mv = batt_raw;
+    val_mv = s_batt_raw;
     // TODO 后续需取均值，以及开关ADC处理
     err = adc_raw_to_millivolts_dt(&batt_adc, &val_mv);
     if (err < 0) return err;
@@ -274,7 +274,7 @@ void chg_timer_handler(struct k_timer *timer)
 *********************************************************************/
 void my_chg_event_reporting()
 {
-    static MY_CHG_STATE s_last_chg_state = CHARG_UNKNOWN;     // 上次充电状态
+    static my_chg_state_t s_last_chg_state = CHARG_UNKNOWN;     // 上次充电状态
 
     // 当充电状态发生变化且报告功能开启时，上报事件
     if (s_last_chg_state != g_charg_state)
@@ -371,13 +371,13 @@ void batt_chg_stat_handle(struct k_timer *timer)
     static int s_last_chg_stat_level = 0;   // 上一次充电状态引脚电平，用于消抖处理
 
     // 如果当前检测到的电平与上一次保存的电平相同，说明是抖动，直接返回
-    if (g_chg_stat_level == s_last_chg_stat_level)
+    if (s_chg_stat_level == s_last_chg_stat_level)
         return;
 
     // 再次读取引脚电平，如果与之前检测到的电平一致，则认为是稳定状态
-    if (g_chg_stat_level == gpio_pin_get_dt(&charge_state))
+    if (s_chg_stat_level == gpio_pin_get_dt(&charge_state))
     {
-        s_last_chg_stat_level = g_chg_stat_level;  // 更新上一次保存的电平
+        s_last_chg_stat_level = s_chg_stat_level;  // 更新上一次保存的电平
 
         my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_SHOW_CHARG);     // 发送消息到控制模块
     }
@@ -395,13 +395,13 @@ void batt_chg_det_handle(struct k_timer *timer)
     static int s_last_chg_det_level = -1;    // 上一次充电检测引脚电平，用于消抖处理
 
     // 如果当前检测到的电平与上一次保存的电平相同，说明是抖动，直接返回
-    if (g_chg_det_level == s_last_chg_det_level)
+    if (s_chg_det_level == s_last_chg_det_level)
         return;
 
     // 再次读取引脚电平，如果与之前检测到的电平一致，则认为是稳定状态
-    if (g_chg_det_level == gpio_pin_get_dt(&charge_det))
+    if (s_chg_det_level == gpio_pin_get_dt(&charge_det))
     {
-        s_last_chg_det_level = g_chg_det_level;  // 更新上一次保存的电平
+        s_last_chg_det_level = s_chg_det_level;  // 更新上一次保存的电平
 
         my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_SHOW_CHARG);     // 发送消息到控制模块
     }
@@ -418,17 +418,17 @@ static void batt_gpio_isr(const struct device *dev,
     if (pins & BIT(charge_state.pin))
     {
         /* P1.7 触发：电池状态变化（充电中 / 充满） */
-        g_chg_stat_level = gpio_pin_get_dt(&charge_state);
+        s_chg_stat_level = gpio_pin_get_dt(&charge_state);
         //50ms消抖处理
-        k_timer_start(&g_chg_stat_timer, K_MSEC(CHG_DEBOUNCE_MS), K_NO_WAIT);
+        k_timer_start(&s_chg_stat_timer, K_MSEC(CHG_DEBOUNCE_MS), K_NO_WAIT);
     }
 
     if (pins & BIT(charge_det.pin))
     {
         /* P1.8 触发：充电检测变化（开始充电 / 停止充电） */
-        g_chg_det_level = gpio_pin_get_dt(&charge_det);
+        s_chg_det_level = gpio_pin_get_dt(&charge_det);
         //50ms消抖处理
-        k_timer_start(&g_chg_det_timer, K_MSEC(CHG_DEBOUNCE_MS), K_NO_WAIT);
+        k_timer_start(&s_chg_det_timer, K_MSEC(CHG_DEBOUNCE_MS), K_NO_WAIT);
     }
 }
 
@@ -444,7 +444,7 @@ void batt_update_timer_handler(struct k_timer *timer)
 {
     // 当时间计数器达到特定值且充电状态为高电量或满电量时，禁用电池电源,当电池电压过低时，不能禁用充电功能
     // 消除充电电压对电池电压抬高效应的影响。在采集电池电压输出高1s关闭充电路径，采集完毕输出低打开供电路径
-    if (g_batt_disable_flag == true && g_chg_led_ctrl.state > CHG_BATT_FAIR)
+    if (s_batt_disable_flag == true && g_chg_led_ctrl.state > CHG_BATT_FAIR)
     {
         batt_enable(false);  // 禁用充电使能
     }
@@ -494,9 +494,9 @@ int batt_gpio_init(void)
     if (ret) return ret;
 
     /* 一个回调处理两个引脚 */
-    gpio_init_callback(&batt_gpio_cb, batt_gpio_isr,
+    gpio_init_callback(&s_batt_gpio_cb, batt_gpio_isr,
                        BIT(charge_state.pin) | BIT(charge_det.pin));
-    gpio_add_callback(charge_det.port, &batt_gpio_cb);
+    gpio_add_callback(charge_det.port, &s_batt_gpio_cb);
 
     // 初始化正常状态LED控制定时器
     g_batt_led_ctrl.timer = &s_batt_timer;
@@ -507,15 +507,15 @@ int batt_gpio_init(void)
     k_timer_init(g_chg_led_ctrl.timer, chg_timer_handler, NULL);
 
     // 初始化充电状态(是否充满)检测引脚消抖定时器
-    k_timer_init(&g_chg_stat_timer, batt_chg_stat_handle, NULL);
+    k_timer_init(&s_chg_stat_timer, batt_chg_stat_handle, NULL);
 
     // 初始化充电检测（是否有充电器插入）消抖定时器
-    k_timer_init(&g_chg_det_timer, batt_chg_det_handle, NULL);
+    k_timer_init(&s_chg_det_timer, batt_chg_det_handle, NULL);
 
     // 初始化电池状态更新定时器
-    k_timer_init(&g_batt_update_timer, batt_update_timer_handler, NULL);
+    k_timer_init(&s_batt_update_timer, batt_update_timer_handler, NULL);
     // 启动电池状态更新定时器
-    k_timer_start(&g_batt_update_timer, K_MSEC(0), K_NO_WAIT);
+    k_timer_start(&s_batt_update_timer, K_MSEC(0), K_NO_WAIT);
 
     return 0;
 }
@@ -580,7 +580,7 @@ int my_battery_read_mv(int32_t *mv)
 int8_t my_battery_read_percent()
 {
     // 电压-电量映射表
-    static const Batt_Volt_Percent_Map_S s_batt_volt_map[] = BATT_VOLT_PERCENT_MAP;
+    static const batt_volt_percent_map_t s_batt_volt_map[] = BATT_VOLT_PERCENT_MAP;
     // 映射表条目数量
     static const int s_batt_map_entries = (sizeof(s_batt_volt_map) / sizeof(s_batt_volt_map[0]));
     int i = 0;                          // 循环变量，用于遍历电压-电量映射表数组
@@ -629,7 +629,7 @@ int8_t my_battery_read_percent()
 *********************************************************************/
 void my_battery_event_reporting()
 {
-    static MY_BATT_STATE s_last_batt_state = BATT_UNKNOWN;   // 上次电池状态
+    static my_batt_state_t s_last_batt_state = BATT_UNKNOWN;   // 上次电池状态
     char cmd_param[2] = {0};                 // 命令参数缓冲区
 
     // 当电池状态发生变化时，根据不同状态进行处理
@@ -661,24 +661,24 @@ void my_battery_update_state()
     // 根据充电状态设置不同的更新定时器
     if (g_charg_state == NO_CHARGING)
     {
-        g_batt_disable_flag = false;
+        s_batt_disable_flag = false;
         // 未充电时，使用较长的更新周期
-        k_timer_start(&g_batt_update_timer, K_MSEC(BATT_UPDATE_S * 1000), K_NO_WAIT);
+        k_timer_start(&s_batt_update_timer, K_MSEC(BATT_UPDATE_S * 1000), K_NO_WAIT);
     }
     else
     {
         // 充电时，使用较短的更新周期
         // 提前1s进入中断关闭充电使能, 因为在充电中检测电压会比正常情况高，导致电量显示异常
-        if (g_batt_disable_flag == true)
+        if (s_batt_disable_flag == true)
         {
-            g_batt_disable_flag = false;
-            k_timer_start(&g_batt_update_timer, K_MSEC(1000), K_NO_WAIT);
+            s_batt_disable_flag = false;
+            k_timer_start(&s_batt_update_timer, K_MSEC(1000), K_NO_WAIT);
             return;
         }
         else
         {
-            g_batt_disable_flag = true;
-            k_timer_start(&g_batt_update_timer, K_MSEC((CHG_UPDATE_S - 1) * 1000), K_NO_WAIT);
+            s_batt_disable_flag = true;
+            k_timer_start(&s_batt_update_timer, K_MSEC((CHG_UPDATE_S - 1) * 1000), K_NO_WAIT);
         }
     }
 

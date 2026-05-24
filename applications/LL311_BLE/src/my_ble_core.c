@@ -28,12 +28,12 @@ LOG_MODULE_REGISTER(my_ble_core, LOG_LEVEL_INF);
  */
 
 /* 消息队列定义 */
-K_MSGQ_DEFINE(my_ble_msgq, sizeof(MSG_S), 10, 4);
+K_MSGQ_DEFINE(my_ble_msgq, sizeof(msg_t), 10, 4);
 /* 线程数据与栈定义 */
 K_THREAD_STACK_DEFINE(my_ble_task_stack, MY_BLE_TASK_STACK_SIZE);
 /* BLE 初始化完成信号量，供写线程等待 */
 K_SEM_DEFINE(ble_init_ok, 0, 1);
-static struct k_thread my_ble_task_data;
+static struct k_thread s_my_ble_task_data;
 
 #define CONNECTABLE_APPLE_ADV_IDX       0
 #define CONNECTABLE_GOOGLE_ADV_IDX      1
@@ -49,28 +49,28 @@ static struct k_thread my_ble_task_data;
 typedef struct {
     struct bt_le_ext_adv *handle;
     bool valid;
-} ADV_HDL_S;
+} adv_hdl_t;
 
-static struct bt_conn *current_conn;
-static struct k_work adv_work;
-static struct bt_le_ext_adv *ext_adv[CONFIG_BT_EXT_ADV_MAX_ADV_SET];
+static struct bt_conn *s_current_conn;
+static struct k_work s_adv_work;
+static struct bt_le_ext_adv *s_ext_adv[CONFIG_BT_EXT_ADV_MAX_ADV_SET];
 
-ADV_HDL_S con_adv_obj_hdl =
+static adv_hdl_t s_con_adv_obj_hdl =
 {                  // 可连接广播句柄（APPLE）
     .handle = NULL,
     .valid = true,
 };
-ADV_HDL_S no_con_adv_obj_hdl[2] = {               // 不可连接广播句柄（GOOGLE/APPLE）
+static adv_hdl_t s_no_con_adv_obj_hdl[2] = {               // 不可连接广播句柄（GOOGLE/APPLE）
     {.handle = NULL, .valid = true},
     {.handle = NULL, .valid = true}
 };
 
-static uint8_t battery_capacity = 100;            // 预留电量
-static uint16_t connect_id = 0xff;                // 连接ID
-static uint16_t ble_server_rx_index = 0;          // 发送缓存索引
-static bool ble_server_send_done = true;          // 发送完成标志
-static bool ble_data_send_enable[2] = {false};    // GOOGLE/APPLE发送使能
-static uint8_t uart_ble_server_buf[BLE_NOTIFY_SEND_BUF_MAX_SIZE]; // 发送缓存
+static uint8_t s_battery_capacity = 100;            // 预留电量
+static uint16_t s_connect_id = 0xff;                // 连接ID
+static uint16_t s_ble_server_rx_index = 0;          // 发送缓存索引
+static bool s_ble_server_send_done = true;          // 发送完成标志
+static bool s_ble_data_send_enable[2] = {false};    // GOOGLE/APPLE发送使能
+static uint8_t s_uart_ble_server_buf[BLE_NOTIFY_SEND_BUF_MAX_SIZE]; // 发送缓存
 
 static void connected(struct bt_conn *conn, uint8_t err);
 static void disconnected(struct bt_conn *conn, uint8_t reason);
@@ -95,11 +95,11 @@ static struct bt_conn_cb conn_callbacks = {
 static void att_mtu_updated(struct bt_conn *conn, uint16_t tx, uint16_t rx)
 {
     if (tx >= CONFIG_BT_L2CAP_TX_MTU)
-        ble_server_mtu = CONFIG_BT_L2CAP_TX_MTU;
+        g_ble_server_mtu = CONFIG_BT_L2CAP_TX_MTU;
     else
-        ble_server_mtu = tx;
+        g_ble_server_mtu = tx;
 
-    LOG_INF("ble_server_mtu: %d, rx:%d", ble_server_mtu, rx);
+    LOG_INF("g_ble_server_mtu: %d, rx:%d", g_ble_server_mtu, rx);
 }
 
 static struct bt_gatt_cb gatt_callbacks = {
@@ -130,13 +130,13 @@ BT_GATT_SERVICE_DEFINE(my_gatt_svc,
 );
 
 /* OTA 状态回调结构体 */
-static struct mgmt_callback ota_chunk_callback;
-static struct mgmt_callback ota_started_callback;
-static struct mgmt_callback ota_stopped_callback;
-static struct mgmt_callback ota_pending_callback;
+static struct mgmt_callback s_ota_chunk_callback;
+static struct mgmt_callback s_ota_started_callback;
+static struct mgmt_callback s_ota_stopped_callback;
+static struct mgmt_callback s_ota_pending_callback;
 
 /* 配对密钥（IMEI 后 6 位）*/
-static uint32_t ota_passkey = 0;
+static uint32_t s_ota_passkey = 0;
 
 /********************************************************************
 **函数名称:  auth_passkey_entry
@@ -152,10 +152,10 @@ static int auth_passkey_entry(struct bt_conn *conn)
     char addr[BT_ADDR_LE_STR_LEN];
 
     bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
-    LOG_INF("Passkey entry for %s: %06u", addr, ota_passkey);
+    LOG_INF("Passkey entry for %s: %06u", addr, s_ota_passkey);
 
     /* 自动回复配对密钥 */
-    bt_conn_auth_passkey_entry(conn, ota_passkey);
+    bt_conn_auth_passkey_entry(conn, s_ota_passkey);
 
     return 0;
 }
@@ -175,7 +175,7 @@ static void auth_passkey_display(struct bt_conn *conn, unsigned int passkey)
     char addr[BT_ADDR_LE_STR_LEN];
 
     bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
-    LOG_INF("Passkey for %s: %06u (display only, actual: %06u)", addr, passkey, ota_passkey);
+    LOG_INF("Passkey for %s: %06u (display only, actual: %06u)", addr, passkey, s_ota_passkey);
 }
 
 /********************************************************************
@@ -265,13 +265,13 @@ static void custom_char_ccc_cfg_changed(const struct bt_gatt_attr *attr,
 
     if (value & BT_GATT_CCC_NOTIFY)
     {
-        ble_data_send_enable[GOOGLE_ADV_TYPE] = true;
-        ble_data_send_enable[APPLE_ADV_TYPE] = true;
+        s_ble_data_send_enable[GOOGLE_ADV_TYPE] = true;
+        s_ble_data_send_enable[APPLE_ADV_TYPE] = true;
     }
     else
     {
-        ble_data_send_enable[GOOGLE_ADV_TYPE] = false;
-        ble_data_send_enable[APPLE_ADV_TYPE] = false;
+        s_ble_data_send_enable[GOOGLE_ADV_TYPE] = false;
+        s_ble_data_send_enable[APPLE_ADV_TYPE] = false;
     }
 }
 
@@ -330,7 +330,7 @@ int ble_set_tx_power(int8_t tx_power)
     for (i = 0; i < 3; i++)
     {
         // 获取广播集 handle
-        err = bt_hci_get_adv_handle(ext_adv[i], &adv_handle);
+        err = bt_hci_get_adv_handle(s_ext_adv[i], &adv_handle);
         if (err)
         {
             LOG_ERR("Failed to get adv handle (err %d)", err);
@@ -396,7 +396,7 @@ int ble_set_tx_power_by_param(void)
 **函数功能:  获取指定类型的广播数据和扫描响应数据
 **返 回 值:  无
 *********************************************************************/
-static void get_adv_data(MY_ADV_TYPE adv_type,
+static void get_adv_data(my_adv_t adv_type,
                          struct bt_data **adv_data, uint8_t *adv_len,
                          struct bt_data **scan_data, uint8_t *scan_len)
 {
@@ -410,7 +410,7 @@ static void get_adv_data(MY_ADV_TYPE adv_type,
     uint8_t name_len, name_total_len;
 
     const char *local_name = bt_get_name();
-    const GsmImei_t *gsmImei = my_param_get_imei();
+    const gsm_imei_t *gsmImei = my_param_get_imei();
     const uint8_t *edr_addr = bt_get_mac_addr();
     uint16_t uuid_user = DEV_CUST_UUID;
 
@@ -434,7 +434,7 @@ static void get_adv_data(MY_ADV_TYPE adv_type,
     mac_val_and_bat[4] = edr_addr[1];
     mac_val_and_bat[5] = edr_addr[0];
     mac_val_and_bat[6] = 0x02;              // 数据类型
-    mac_val_and_bat[7] = battery_capacity;  // 电量百分比
+    mac_val_and_bat[7] = s_battery_capacity;  // 电量百分比
 
     // pack
     scan_response_data[scan_idx].type     = BT_DATA_NAME_SHORTENED;
@@ -475,11 +475,11 @@ static void get_adv_data(MY_ADV_TYPE adv_type,
     else
     {
         // TODO 预留电量值
-        if (battery_capacity >= 80) {
+        if (s_battery_capacity >= 80) {
             gConfigParam.lic_ff.hex[6] = 0x20;
-        } else if (battery_capacity >= 20) {
+        } else if (s_battery_capacity >= 20) {
             gConfigParam.lic_ff.hex[6] = 0x60;
-        } else if (battery_capacity >= 5) {
+        } else if (s_battery_capacity >= 5) {
             gConfigParam.lic_ff.hex[6] = 0xA0;
         } else {
             gConfigParam.lic_ff.hex[6] = 0xE0;
@@ -519,7 +519,7 @@ static void adv_connected_cb(struct bt_le_ext_adv *adv,
 **函数功能:  启动或停止指定的广播对象
 **返 回 值:  无
 *********************************************************************/
-static void start_adv(ADV_HDL_S *adv_obj_hdl, bool enable)
+static void start_adv(adv_hdl_t *adv_obj_hdl, bool enable)
 {
     int err;
     struct bt_data *adv_data = NULL;
@@ -527,16 +527,16 @@ static void start_adv(ADV_HDL_S *adv_obj_hdl, bool enable)
     uint8_t adv_len = 0, scan_len = 0;
     struct bt_le_ext_adv_info adv_info;
     bool is_running;
-    MY_ADV_TYPE adv_type;
+    my_adv_t adv_type;
     const char *adv_type_str;
 
     /* 判断是Google还是Apple */
-    if (adv_obj_hdl == &no_con_adv_obj_hdl[GOOGLE_ADV_TYPE])
+    if (adv_obj_hdl == &s_no_con_adv_obj_hdl[GOOGLE_ADV_TYPE])
     {
         adv_type_str = "GOOGLE";
         adv_type = GOOGLE_ADV_TYPE;
     }
-    else if (adv_obj_hdl == &no_con_adv_obj_hdl[APPLE_ADV_TYPE])
+    else if (adv_obj_hdl == &s_no_con_adv_obj_hdl[APPLE_ADV_TYPE])
     {
         adv_type_str = "APPLE";
         adv_type = APPLE_ADV_TYPE;
@@ -600,14 +600,14 @@ static void start_adv(ADV_HDL_S *adv_obj_hdl, bool enable)
 **函数功能:  设置指定类型广播的有效状态
 **返 回 值:  无
 *********************************************************************/
-void set_adv_valid_status(MY_ADV_TYPE index, int status)
+void set_adv_valid_status(my_adv_t index, int status)
 {
     // 无效状态时，先停止广播，再设置无效状态
     if (status == 0)
     {
-        start_adv(&no_con_adv_obj_hdl[index], false);
+        start_adv(&s_no_con_adv_obj_hdl[index], false);
     }
-    no_con_adv_obj_hdl[index].valid = status;
+    s_no_con_adv_obj_hdl[index].valid = status;
 }
 
 /********************************************************************
@@ -622,7 +622,7 @@ static void adv_work_handler(struct k_work *work)
     ARG_UNUSED(work);
 
     LOG_INF("Restart connectable advertising");
-    start_adv(&con_adv_obj_hdl, true);
+    start_adv(&s_con_adv_obj_hdl, true);
 }
 
 /********************************************************************
@@ -634,7 +634,7 @@ static void adv_work_handler(struct k_work *work)
 *********************************************************************/
 static void advertising_start(void)
 {
-    k_work_submit(&adv_work);
+    k_work_submit(&s_adv_work);
 }
 
 /********************************************************************
@@ -659,12 +659,12 @@ static void connected(struct bt_conn *conn, uint8_t err)
     bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
     LOG_INF("Connected %s", addr);
 
-    current_conn = bt_conn_ref(conn);
-    connect_id = bt_conn_index(conn);
-    LOG_INF("connect_id %d", connect_id);
+    s_current_conn = bt_conn_ref(conn);
+    s_connect_id = bt_conn_index(conn);
+    LOG_INF("s_connect_id %d", s_connect_id);
 
     /* 蓝牙连接上后，默认被连接的广播会自动停止*/
-    start_adv(&con_adv_obj_hdl, false);
+    start_adv(&s_con_adv_obj_hdl, false);
 
     /* 清除蓝牙日志断开标志，允许日志发送
      * 注意：必须在连接成功后调用，确保日志可以正常发送 */
@@ -687,15 +687,15 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
     bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
     LOG_INF("Disconnected: %s, reason 0x%02x %s", addr, reason, bt_hci_err_to_str(reason));
 
-    if (current_conn) {
-        bt_conn_unref(current_conn);
-        current_conn = NULL;
+    if (s_current_conn) {
+        bt_conn_unref(s_current_conn);
+        s_current_conn = NULL;
     }
 
     // 对端断开后，清除连接ID并关闭数据发送标志位
-    connect_id = 0xff;
-    ble_data_send_enable[GOOGLE_ADV_TYPE] = false;
-    ble_data_send_enable[APPLE_ADV_TYPE] = false;
+    s_connect_id = 0xff;
+    s_ble_data_send_enable[GOOGLE_ADV_TYPE] = false;
+    s_ble_data_send_enable[APPLE_ADV_TYPE] = false;
 
     /* 清除蓝牙日志就绪标志，防止下次连接前发送日志 */
     ble_log_set_ready(false);
@@ -719,7 +719,7 @@ static void recycled_cb(void)
 {
     LOG_INF("%s called", __func__);
 
-    if (connect_id == 0xff)
+    if (s_connect_id == 0xff)
     {
         LOG_INF("Connection object recycled. Restart connectable adv!");
 
@@ -745,57 +745,57 @@ void ble_server_send_notification(uint8_t *data, uint16_t tx_len)
     int err;
     uint16_t _tx_len;
 
-    if (connect_id == 0xff || current_conn == NULL)
+    if (s_connect_id == 0xff || s_current_conn == NULL)
     {
         LOG_WRN("BLE disconnected, skip send");
         return ;
     }
 
-    if (!ble_server_send_done)
+    if (!s_ble_server_send_done)
     {
-        if (tx_len > 0 && (ble_server_rx_index + tx_len) <= BLE_NOTIFY_SEND_BUF_MAX_SIZE)
+        if (tx_len > 0 && (s_ble_server_rx_index + tx_len) <= BLE_NOTIFY_SEND_BUF_MAX_SIZE)
         {
-            memcpy(&uart_ble_server_buf[ble_server_rx_index], data, tx_len);
-            ble_server_rx_index += tx_len;
+            memcpy(&s_uart_ble_server_buf[s_ble_server_rx_index], data, tx_len);
+            s_ble_server_rx_index += tx_len;
         }
-        LOG_INF("Cache data: total %d, new %d", ble_server_rx_index, tx_len);
+        LOG_INF("Cache data: total %d, new %d", s_ble_server_rx_index, tx_len);
         return ;
     }
 
-    ble_server_send_done = false;
-    if (tx_len > 0 && (ble_server_rx_index + tx_len) <= BLE_NOTIFY_SEND_BUF_MAX_SIZE)
+    s_ble_server_send_done = false;
+    if (tx_len > 0 && (s_ble_server_rx_index + tx_len) <= BLE_NOTIFY_SEND_BUF_MAX_SIZE)
     {
-        memcpy(&uart_ble_server_buf[ble_server_rx_index], data, tx_len);
-        ble_server_rx_index += tx_len;
+        memcpy(&s_uart_ble_server_buf[s_ble_server_rx_index], data, tx_len);
+        s_ble_server_rx_index += tx_len;
     }
 
-    _tx_len = (ble_server_rx_index > MIN(BLE_SERVER_MAX_DATA_LEN, BLE_SVC_TX_MAX_LEN))
-              ? MIN(BLE_SERVER_MAX_DATA_LEN, BLE_SVC_TX_MAX_LEN) : ble_server_rx_index;
+    _tx_len = (s_ble_server_rx_index > MIN(BLE_SERVER_MAX_DATA_LEN, BLE_SVC_TX_MAX_LEN))
+              ? MIN(BLE_SERVER_MAX_DATA_LEN, BLE_SVC_TX_MAX_LEN) : s_ble_server_rx_index;
 
-    if (ble_data_send_enable[GOOGLE_ADV_TYPE] || ble_data_send_enable[APPLE_ADV_TYPE])
+    if (s_ble_data_send_enable[GOOGLE_ADV_TYPE] || s_ble_data_send_enable[APPLE_ADV_TYPE])
     {
-        // LOG_HEXDUMP_INF(uart_ble_server_buf, _tx_len, "bt_gatt_notify:");
+        // LOG_HEXDUMP_INF(s_uart_ble_server_buf, _tx_len, "bt_gatt_notify:");
 
         // my_gatt_svc.attrs[4]对应notify特征值
-        err = bt_gatt_notify(current_conn, &my_gatt_svc.attrs[4], uart_ble_server_buf, _tx_len);
+        err = bt_gatt_notify(s_current_conn, &my_gatt_svc.attrs[4], s_uart_ble_server_buf, _tx_len);
         if (err)
         {
             LOG_ERR("Notify send fail: %d", err);
-            ble_server_send_done = true;
+            s_ble_server_send_done = true;
             return ;
         }
     }
     else
     {
         LOG_WRN("BLE send enable not set");
-        ble_server_send_done = true;
+        s_ble_server_send_done = true;
         return ;
     }
 
-    ble_server_rx_index -= _tx_len;
-    memcpy(&uart_ble_server_buf[0], &uart_ble_server_buf[_tx_len], ble_server_rx_index);
-    LOG_INF("Send %d bytes, remain %d bytes", _tx_len, ble_server_rx_index);
-    ble_server_send_done = true;
+    s_ble_server_rx_index -= _tx_len;
+    memcpy(&s_uart_ble_server_buf[0], &s_uart_ble_server_buf[_tx_len], s_ble_server_rx_index);
+    LOG_INF("Send %d bytes, remain %d bytes", _tx_len, s_ble_server_rx_index);
+    s_ble_server_send_done = true;
 }
 
 /********************************************************************
@@ -807,7 +807,7 @@ void ble_server_send_notification(uint8_t *data, uint16_t tx_len)
 *********************************************************************/
 bool ble_is_connected(void)
 {
-    return (connect_id != 0xff && current_conn != NULL);
+    return (s_connect_id != 0xff && s_current_conn != NULL);
 }
 
 /********************************************************************
@@ -824,13 +824,13 @@ bool ble_is_connected(void)
 bool ble_is_data_channel_ready(void)
 {
     /* 检查物理连接 */
-    if (connect_id == 0xff || current_conn == NULL)
+    if (s_connect_id == 0xff || s_current_conn == NULL)
     {
         return false;
     }
 
     /* 检查CCC通知是否已使能（APP已订阅通知） */
-    if (!ble_data_send_enable[GOOGLE_ADV_TYPE] && !ble_data_send_enable[APPLE_ADV_TYPE])
+    if (!s_ble_data_send_enable[GOOGLE_ADV_TYPE] && !s_ble_data_send_enable[APPLE_ADV_TYPE])
     {
         return false;
     }
@@ -855,13 +855,13 @@ static int connectable_adv_create(void)
         .peer = NULL,
     };
 
-    err = bt_le_ext_adv_create(&param, &adv_cb, &ext_adv);
+    err = bt_le_ext_adv_create(&param, &adv_cb, &s_ext_adv);
     if (err)
     {
         LOG_ERR("Create adv set fail: %d", err);
         return err;
     }
-    con_adv_obj_hdl.handle = ext_adv[0];
+    s_con_adv_obj_hdl.handle = s_ext_adv[0];
 
     return err;
 }
@@ -885,12 +885,12 @@ static int non_connectable_adv_create(void)
 
     for (i = 0; i < CON_ADV_OBJ_MAX_NUM; i++)
     {
-        err = bt_le_ext_adv_create(&param, &adv_cb, &ext_adv[1+i]);
+        err = bt_le_ext_adv_create(&param, &adv_cb, &s_ext_adv[1+i]);
         if (err) {
             LOG_ERR("Create adv set fail: %d", err);
             return err;
         }
-        no_con_adv_obj_hdl[i].handle = ext_adv[1+i];
+        s_no_con_adv_obj_hdl[i].handle = s_ext_adv[1+i];
     }
 
     return err;
@@ -923,9 +923,9 @@ void my_ble_updata_adv_param(uint16_t ms_data)
     my_no_con_start_adv(0);
 
     // 更新Apple类型非连接广告的参数,使用新配置的广告参数
-    bt_le_ext_adv_update_param(no_con_adv_obj_hdl[APPLE_ADV_TYPE].handle, &new_param);
+    bt_le_ext_adv_update_param(s_no_con_adv_obj_hdl[APPLE_ADV_TYPE].handle, &new_param);
     // 更新Google类型非连接广告的参数,使用相同的新配置广告参数
-    bt_le_ext_adv_update_param(no_con_adv_obj_hdl[GOOGLE_ADV_TYPE].handle, &new_param);
+    bt_le_ext_adv_update_param(s_no_con_adv_obj_hdl[GOOGLE_ADV_TYPE].handle, &new_param);
 
     // 重新启动非连接广告,使用设备命令配置中的tag_sw值
     my_no_con_start_adv(gConfigParam.tag_config.tag_sw);
@@ -1079,16 +1079,16 @@ void my_no_con_start_adv(uint8_t tag_sw)
     if (tag_sw == 1)
     {
         // 开启苹果类型的广播
-        start_adv(&no_con_adv_obj_hdl[APPLE_ADV_TYPE], true);
+        start_adv(&s_no_con_adv_obj_hdl[APPLE_ADV_TYPE], true);
         // 开启谷歌类型的广播
-        start_adv(&no_con_adv_obj_hdl[GOOGLE_ADV_TYPE], true);
+        start_adv(&s_no_con_adv_obj_hdl[GOOGLE_ADV_TYPE], true);
     }
     else
     {
         // 关闭苹果类型的广播
-        start_adv(&no_con_adv_obj_hdl[APPLE_ADV_TYPE], false);
+        start_adv(&s_no_con_adv_obj_hdl[APPLE_ADV_TYPE], false);
         // 关闭谷歌类型的广播
-        start_adv(&no_con_adv_obj_hdl[GOOGLE_ADV_TYPE], false);
+        start_adv(&s_no_con_adv_obj_hdl[GOOGLE_ADV_TYPE], false);
     }
 }
 
@@ -1126,7 +1126,7 @@ int my_ble_core_start(void)
 
     /* 获取 IMEI 并设置配对密钥为后 6 位 */
     {
-        const GsmImei_t *imei = my_param_get_imei();
+        const gsm_imei_t *imei = my_param_get_imei();
         char passkey_str[7] = {0};
 
         /* 提取 IMEI 后 6 位 */
@@ -1134,8 +1134,8 @@ int my_ble_core_start(void)
         passkey_str[6] = '\0';
 
         /* 转换为数字并保存配对密钥 */
-        ota_passkey = atoi(passkey_str);
-        LOG_INF("OTA pairing passkey set to IMEI last 6 digits: %06u", ota_passkey);
+        s_ota_passkey = atoi(passkey_str);
+        LOG_INF("OTA pairing passkey set to IMEI last 6 digits: %06u", s_ota_passkey);
     }
 
     /* 注册配对回调 */
@@ -1157,24 +1157,24 @@ int my_ble_core_start(void)
     /* 注册 GATT 回调, 处理 GATT 事件 */
     bt_gatt_cb_register(&gatt_callbacks);
 
-    k_work_init(&adv_work, adv_work_handler);
+    k_work_init(&s_adv_work, adv_work_handler);
 
     /* 注册 OTA 状态监听回调 */
-    ota_chunk_callback.callback = ota_chunk_cb;
-    ota_chunk_callback.event_id = MGMT_EVT_OP_IMG_MGMT_DFU_CHUNK;
-    mgmt_callback_register(&ota_chunk_callback);
+    s_ota_chunk_callback.callback = ota_chunk_cb;
+    s_ota_chunk_callback.event_id = MGMT_EVT_OP_IMG_MGMT_DFU_CHUNK;
+    mgmt_callback_register(&s_ota_chunk_callback);
 
-    ota_started_callback.callback = ota_started_cb;
-    ota_started_callback.event_id = MGMT_EVT_OP_IMG_MGMT_DFU_STARTED;
-    mgmt_callback_register(&ota_started_callback);
+    s_ota_started_callback.callback = ota_started_cb;
+    s_ota_started_callback.event_id = MGMT_EVT_OP_IMG_MGMT_DFU_STARTED;
+    mgmt_callback_register(&s_ota_started_callback);
 
-    ota_stopped_callback.callback = ota_stopped_cb;
-    ota_stopped_callback.event_id = MGMT_EVT_OP_IMG_MGMT_DFU_STOPPED;
-    mgmt_callback_register(&ota_stopped_callback);
+    s_ota_stopped_callback.callback = ota_stopped_cb;
+    s_ota_stopped_callback.event_id = MGMT_EVT_OP_IMG_MGMT_DFU_STOPPED;
+    mgmt_callback_register(&s_ota_stopped_callback);
 
-    ota_pending_callback.callback = ota_pending_cb;
-    ota_pending_callback.event_id = MGMT_EVT_OP_IMG_MGMT_DFU_PENDING;
-    mgmt_callback_register(&ota_pending_callback);
+    s_ota_pending_callback.callback = ota_pending_cb;
+    s_ota_pending_callback.event_id = MGMT_EVT_OP_IMG_MGMT_DFU_PENDING;
+    mgmt_callback_register(&s_ota_pending_callback);
 
     LOG_INF("OTA status hooks registered");
 
@@ -1195,7 +1195,7 @@ int my_ble_core_start(void)
     /* 根据ZMS参数设置蓝牙发射功率 */
     ble_set_tx_power_by_param();
 
-    start_adv(&con_adv_obj_hdl, true);
+    start_adv(&s_con_adv_obj_hdl, true);
 
     LOG_INF("BLE core start success");
     return 0;
@@ -1214,7 +1214,7 @@ static void my_ble_task(void *p1, void *p2, void *p3)
     ARG_UNUSED(p2);
     ARG_UNUSED(p3);
 
-    MSG_S msg;
+    msg_t msg;
     int ret;
 
     LOG_INF("BLE task thread started");
@@ -1230,7 +1230,7 @@ static void my_ble_task(void *p1, void *p2, void *p3)
 
     for (;;)
     {
-        my_recv_msg(&my_ble_msgq, (void *)&msg, sizeof(MSG_S), K_FOREVER);
+        my_recv_msg(&my_ble_msgq, (void *)&msg, sizeof(msg_t), K_FOREVER);
 
         switch (msg.msgID)
         {
@@ -1240,7 +1240,7 @@ static void my_ble_task(void *p1, void *p2, void *p3)
                 break;
             /* 暂时保留测试消息,后续测试验证会频繁使用到 */
             case MY_MSG_TEST:
-                ble_comu_at_cmd_handle(shell_test_buff, strlen(shell_test_buff));
+                ble_comu_at_cmd_handle(g_shell_test_buff, strlen(g_shell_test_buff));
                 break;
 
             // 处理BLE+CMD回复指令
@@ -1351,7 +1351,7 @@ int my_ble_core_init(const struct my_ble_core_init_param *param, k_tid_t *tid)
     my_init_msg_handler(MOD_BLE, &my_ble_msgq);
 
     /* 启动 BLE 任务线程 */
-    *tid = k_thread_create(&my_ble_task_data, my_ble_task_stack,
+    *tid = k_thread_create(&s_my_ble_task_data, my_ble_task_stack,
                            K_THREAD_STACK_SIZEOF(my_ble_task_stack),
                            my_ble_task, NULL, NULL, NULL,
                            MY_BLE_TASK_PRIORITY, 0, K_NO_WAIT);

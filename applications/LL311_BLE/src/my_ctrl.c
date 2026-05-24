@@ -52,7 +52,7 @@ static struct
     struct k_timer timer; /* 50ms 轮询定时器 */
     uint32_t press_count; /* 按下计数器 (50ms单位) */
     bool pressed;         /* 按键是否按下 */
-} key_ctrl;
+} key_ctrl_t;
 
 /* 光感检测控制结构 */
 static struct
@@ -60,7 +60,7 @@ static struct
     struct k_timer timer;       /* 消抖定时器 */
     bool state;                 /* 当前光感状态（true=有光，false=无光） */
     bool debouncing;            /* 消抖中标志 */
-} light_sensor;
+} light_sensor_t;
 
 /* 锁销检测控制结构 */
 static struct
@@ -68,7 +68,7 @@ static struct
     struct k_timer timer;       /* 消抖定时器 */
     bool inserted;              /* 当前锁销状态（true=插入，false=断开） */
     bool debouncing;            /* 消抖中标志 */
-} lock_pin_ctrl;
+} lock_pin_ctrl_t;
 
 /**
  * @brief 锁 LED 控制结构体
@@ -82,16 +82,16 @@ static struct
     uint16_t period_ms;         /**< LED 闪烁的周期（单位：100毫秒） */
     uint32_t duration_ms;       /**< LED 闪烁的总持续时间（单位：100毫秒），0表示持续闪烁 */
     uint32_t timer_count;       /**< 定时器计数，用于跟踪闪烁状态 */
-}s_lock_led_ctrl;
+} lock_led_ctrl_t;
 
 /* NFC刷卡记录缓存结构体 */
 typedef struct {
     uint8_t card_id[16];        /* 存储NFC卡号（根据实际卡号长度调整） */
     uint8_t id_len;             /* 卡号实际长度 */
     time_t last_swipe_time;     /* 最近一次刷卡时间戳 */
-} NfcCardCache;
+} nfc_card_cache_t;
 
-static BUZZER_Ctrl_S g_buzzer_ctrl = { 0 };
+static buzzer_ctrl_t s_buzzer_ctrl = { 0 };
 
 //处理NFC刷卡事件卡号索引
 uint8_t g_nfc_card_index = 0;
@@ -105,21 +105,21 @@ static void lock_pin_timer_handler(struct k_timer *timer);
 static void lock_led_timer_handler(struct k_timer *timer);
 
 /* 消息队列定义 */
-K_MSGQ_DEFINE(my_ctrl_msgq, sizeof(MSG_S), 10, 4);
+K_MSGQ_DEFINE(my_ctrl_msgq, sizeof(msg_t), 10, 4);
 
 /* 线程数据与栈定义 */
 K_THREAD_STACK_DEFINE(my_ctrl_task_stack, MY_CTRL_TASK_STACK_SIZE);
-static struct k_thread my_ctrl_task_data;
-static struct gpio_callback misc_io_cb;
+static struct k_thread s_my_ctrl_task_data;
+static struct gpio_callback s_misc_io_cb;
 
 /* 当前选中的NFC卡在缓存中的索引，-1表示未选中 */
-static int8_t current_card_index = -1;
+static int8_t s_current_card_index = -1;
 /* NFC卡号缓存数组，存储最近刷过的NFC卡信息（最多NFC_CACHE_MAX_NUM张） */
-static NfcCardCache g_nfc_card_cache[NFC_CACHE_MAX_NUM] = {0};
+static nfc_card_cache_t s_nfc_card_cache[NFC_CACHE_MAX_NUM] = {0};
 /* 自动上锁定时器，用于锁销插入后的自动上锁计时 */
-struct k_timer auto_lock_timer;
+static struct k_timer s_auto_lock_timer;
 //蜂鸣器100ms定时器
-struct k_timer buzzer_timer;
+static struct k_timer s_buzzer_timer;
 
 /************************************************************
 **函数名称:  get_light_state
@@ -130,7 +130,7 @@ struct k_timer buzzer_timer;
 *********************************************************************/
 bool get_light_state(void)
 {
-    return light_sensor.state;
+    return light_sensor_t.state;
 }
 
 /********************************************************************
@@ -276,8 +276,8 @@ static int find_card_in_cache(const uint8_t *card_id, uint8_t id_len)
     for (int i = 0; i < NFC_CACHE_MAX_NUM; i++)
     {
         /* 卡号长度一致且内容匹配 */
-        if (g_nfc_card_cache[i].id_len == id_len &&
-            memcmp(g_nfc_card_cache[i].card_id, card_id, id_len) == 0)
+        if (s_nfc_card_cache[i].id_len == id_len &&
+            memcmp(s_nfc_card_cache[i].card_id, card_id, id_len) == 0)
         {
             return i;
         }
@@ -306,7 +306,7 @@ static void update_card_cache(const uint8_t *card_id, uint8_t id_len, time_t swi
     if (index >= 0)
     {
         /* 已存在，更新刷卡时间 */
-        g_nfc_card_cache[index].last_swipe_time = swipe_time;
+        s_nfc_card_cache[index].last_swipe_time = swipe_time;
     }
     else
     {
@@ -314,28 +314,28 @@ static void update_card_cache(const uint8_t *card_id, uint8_t id_len, time_t swi
          * 当缓存空间满了之后,再次刷新的卡会把时间最早的卡给覆盖掉
          */
         oldest_index = 0;
-        oldest_time = g_nfc_card_cache[0].last_swipe_time;
+        oldest_time = s_nfc_card_cache[0].last_swipe_time;
 
         for (i = 1; i < NFC_CACHE_MAX_NUM; i++)
         {
             /* 优先使用空位置（时间为0） */
-            if (g_nfc_card_cache[i].last_swipe_time == 0)
+            if (s_nfc_card_cache[i].last_swipe_time == 0)
             {
                 oldest_index = i;
                 break;
             }
             /* 找最旧的记录 */
-            if (g_nfc_card_cache[i].last_swipe_time < oldest_time)
+            if (s_nfc_card_cache[i].last_swipe_time < oldest_time)
             {
-                oldest_time = g_nfc_card_cache[i].last_swipe_time;
+                oldest_time = s_nfc_card_cache[i].last_swipe_time;
                 oldest_index = i;
             }
         }
 
         /* 写入新卡号和时间 */
-        memcpy(g_nfc_card_cache[oldest_index].card_id, card_id, id_len);
-        g_nfc_card_cache[oldest_index].id_len = id_len;
-        g_nfc_card_cache[oldest_index].last_swipe_time = swipe_time;
+        memcpy(s_nfc_card_cache[oldest_index].card_id, card_id, id_len);
+        s_nfc_card_cache[oldest_index].id_len = id_len;
+        s_nfc_card_cache[oldest_index].last_swipe_time = swipe_time;
     }
 }
 
@@ -359,7 +359,7 @@ static int is_need_location_upload(const uint8_t *card_id, uint8_t id_len)
     if (index >= 0)
     {
         // 计算时间差（秒）
-        time_diff = now - g_nfc_card_cache[index].last_swipe_time;
+        time_diff = now - s_nfc_card_cache[index].last_swipe_time;
         if (time_diff >= 0 && time_diff <= NFC_REPEAT_INTERVAL)
         {
             // 1秒内重复刷卡，无需定位上传
@@ -385,10 +385,10 @@ int nfc_card_detected(uint8_t *card_id, uint8_t *card_index)
     uint8_t i;
     int time_check_result;
     time_t current_time;
-    NfcAuthCard *current_card;
+    nfc_auth_card_t *current_card;
 
     /* 初始化当前卡片索引为无效值 */
-    current_card_index = -1;
+    s_current_card_index = -1;
 
     /* 检查输入参数有效性 */
     if (card_id == NULL)
@@ -402,22 +402,22 @@ int nfc_card_detected(uint8_t *card_id, uint8_t *card_index)
         if (strcmp(card_id, gConfigParam.nfcauth_config.nfcauth_cards[i].nfc_no) == 0)
         {
             /* 记录匹配的卡片索引 */
-            current_card_index = i;
+            s_current_card_index = i;
             break;
         }
     }
 
     /* 检查是否找到匹配的卡片 */
-    if (current_card_index == -1)
+    if (s_current_card_index == -1)
     {
         /* 未找到匹配卡片，返回失败 */
         MY_LOG_INF("No matching card was found.");
         return -1;
     }
 
-    *card_index = current_card_index;
+    *card_index = s_current_card_index;
 
-    current_card = &gConfigParam.nfcauth_config.nfcauth_cards[current_card_index];  /* 获取当前卡片指针 */
+    current_card = &gConfigParam.nfcauth_config.nfcauth_cards[s_current_card_index];  /* 获取当前卡片指针 */
 
     /* 检查是否需要时间验证 */
     if (current_card->time_valid == 1)
@@ -481,7 +481,7 @@ void handle_nfc_card_event(uint8_t *card_id, uint8_t id_len)
     int ret;
     char card_id_str[33] = {0};
     nfctrig_cmd_t *nfctrig_cmd;
-    MSG_S msg;
+    msg_t msg;
 
     /* 重复刷卡缓存记录检查 */
     ret = is_need_location_upload(card_id, id_len);
@@ -601,9 +601,9 @@ void go_to_system_off(void)
 *********************************************************************/
 static void key_timer_init(void)
 {
-    k_timer_init(&key_ctrl.timer, key_timer_handler, NULL);
-    key_ctrl.pressed = false;
-    key_ctrl.press_count = 0;
+    k_timer_init(&key_ctrl_t.timer, key_timer_handler, NULL);
+    key_ctrl_t.pressed = false;
+    key_ctrl_t.press_count = 0;
 }
 
 /********************************************************************
@@ -616,7 +616,7 @@ static void key_timer_init(void)
 *********************************************************************/
 static void send_key_event(uint32_t msg_id)
 {
-    MSG_S msg;
+    msg_t msg;
     msg.msgID = msg_id;
     msg.pData = NULL;
     msg.DataLen = 0;
@@ -642,17 +642,17 @@ static void key_timer_handler(struct k_timer *timer)
     if (level == 1)
     {
         /* 按键持续按下 */
-        if (!key_ctrl.pressed)
+        if (!key_ctrl_t.pressed)
         {
-            key_ctrl.pressed = true;
-            key_ctrl.press_count = 0;
+            key_ctrl_t.pressed = true;
+            key_ctrl_t.press_count = 0;
         }
 
         /* 计数器增加 */
-        key_ctrl.press_count++;
+        key_ctrl_t.press_count++;
 
         /* 检查是否达到长按阈值(1.2s) */
-        if (key_ctrl.press_count == KEY_LONG_PRESS_COUNT)
+        if (key_ctrl_t.press_count == KEY_LONG_PRESS_COUNT)
         {
             send_key_event(MY_MSG_CTRL_KEY_LONG_PRESS);
         }
@@ -660,17 +660,17 @@ static void key_timer_handler(struct k_timer *timer)
     else
     {
         /* 按键已释放 */
-        if (key_ctrl.pressed)
+        if (key_ctrl_t.pressed)
         {
-            key_ctrl.pressed = false;
-            k_timer_stop(&key_ctrl.timer);
+            key_ctrl_t.pressed = false;
+            k_timer_stop(&key_ctrl_t.timer);
 
             /* 短按判断：大于等于100ms且小于1.2s */
-            if (key_ctrl.press_count < KEY_LONG_PRESS_COUNT && key_ctrl.press_count >= 2)
+            if (key_ctrl_t.press_count < KEY_LONG_PRESS_COUNT && key_ctrl_t.press_count >= 2)
             {
                 send_key_event(MY_MSG_CTRL_KEY_SHORT_PRESS);
             }
-            key_ctrl.press_count = 0;
+            key_ctrl_t.press_count = 0;
         }
     }
 }
@@ -692,20 +692,20 @@ static void light_sensor_timer_handler(struct k_timer *timer)
     int level = gpio_pin_get(light_det.port, light_det.pin);
     bool new_state = (level == 1);
 
-    if (new_state != light_sensor.state)
+    if (new_state != light_sensor_t.state)
     {
-        light_sensor.state = new_state;
+        light_sensor_t.state = new_state;
         // MY_LOG_INF("Light state changed: %s", new_state ? "LIGHT" : "DARK");
 
         /* 发送光感状态变化消息到主任务 */
-        MSG_S msg;
+        msg_t msg;
         msg.msgID = new_state ? MY_MSG_CTRL_LIGHT_SENSOR_BRIGHT : MY_MSG_CTRL_LIGHT_SENSOR_DARK;
         msg.pData = NULL;
         msg.DataLen = 0;
         my_send_msg_data(MOD_CTRL, MOD_CTRL, &msg);
     }
 
-    light_sensor.debouncing = false;
+    light_sensor_t.debouncing = false;
 }
 
 /********************************************************************
@@ -720,10 +720,10 @@ static void light_sensor_timer_handler(struct k_timer *timer)
 *********************************************************************/
 static void light_sensor_edge_handler(void)
 {
-    if (!light_sensor.debouncing)
+    if (!light_sensor_t.debouncing)
     {
-        light_sensor.debouncing = true;
-        k_timer_start(&light_sensor.timer, K_MSEC(LIGHT_DEBOUNCE_MS), K_NO_WAIT);
+        light_sensor_t.debouncing = true;
+        k_timer_start(&light_sensor_t.timer, K_MSEC(LIGHT_DEBOUNCE_MS), K_NO_WAIT);
     }
 }
 
@@ -737,7 +737,7 @@ static void light_sensor_edge_handler(void)
 *********************************************************************/
 bool get_lockpin_insert_state(void)
 {
-    return lock_pin_ctrl.inserted;
+    return lock_pin_ctrl_t.inserted;
 }
 
 /********************************************************************
@@ -758,9 +758,9 @@ static void lock_pin_timer_handler(struct k_timer *timer)
     int level = gpio_pin_get(lock_pin_det.port, lock_pin_det.pin);
     bool new_state = (level == 1);
 
-    if (new_state != lock_pin_ctrl.inserted)
+    if (new_state != lock_pin_ctrl_t.inserted)
     {
-        lock_pin_ctrl.inserted = new_state;
+        lock_pin_ctrl_t.inserted = new_state;
         // MY_LOG_INF("Lock pin state changed: %s", new_state ? "INSERTED" : "DISCONNECTED");
 
         /* 发送锁销状态变化消息到主任务 */
@@ -813,7 +813,7 @@ static void lock_pin_timer_handler(struct k_timer *timer)
         }
     }
 
-    lock_pin_ctrl.debouncing = false;
+    lock_pin_ctrl_t.debouncing = false;
 }
 
 /********************************************************************
@@ -828,10 +828,10 @@ static void lock_pin_timer_handler(struct k_timer *timer)
 *********************************************************************/
 static void lock_pin_edge_handler(void)
 {
-    if (!lock_pin_ctrl.debouncing)
+    if (!lock_pin_ctrl_t.debouncing)
     {
-        lock_pin_ctrl.debouncing = true;
-        k_timer_start(&lock_pin_ctrl.timer, K_MSEC(LOCK_PIN_DEBOUNCE_MS), K_NO_WAIT);
+        lock_pin_ctrl_t.debouncing = true;
+        k_timer_start(&lock_pin_ctrl_t.timer, K_MSEC(LOCK_PIN_DEBOUNCE_MS), K_NO_WAIT);
     }
 }
 
@@ -848,10 +848,10 @@ static void lock_pin_edge_handler(void)
 static void key_falling_edge_handler(void)
 {
     /* 如果定时器未运行，才启动 */
-    if (!k_timer_remaining_get(&key_ctrl.timer))
+    if (!k_timer_remaining_get(&key_ctrl_t.timer))
     {
         /* 启动循环定时器，每 50ms 检查一次按键状态 */
-        k_timer_start(&key_ctrl.timer, K_MSEC(KEY_POLL_PERIOD_MS), K_MSEC(KEY_POLL_PERIOD_MS));
+        k_timer_start(&key_ctrl_t.timer, K_MSEC(KEY_POLL_PERIOD_MS), K_MSEC(KEY_POLL_PERIOD_MS));
     }
 }
 
@@ -876,7 +876,7 @@ static void auto_lock_detection(void)
         return;
     }
     // 自动上锁定时器
-    k_timer_start(&auto_lock_timer, K_MSEC(gConfigParam.locked_config.lockcd_countdown * 1000), K_NO_WAIT);
+    k_timer_start(&s_auto_lock_timer, K_MSEC(gConfigParam.locked_config.lockcd_countdown * 1000), K_NO_WAIT);
 }
 
 /********************************************************************
@@ -997,13 +997,13 @@ static int misc_io_init(void)
     }
 
     /* 初始化光感定时器和状态 */
-    k_timer_init(&light_sensor.timer, light_sensor_timer_handler, NULL);
-    light_sensor.state = false;
-    light_sensor.debouncing = false;
+    k_timer_init(&light_sensor_t.timer, light_sensor_timer_handler, NULL);
+    light_sensor_t.state = false;
+    light_sensor_t.debouncing = false;
     /* 读取初始状态 */
     light_initial_level = gpio_pin_get(light_det.port, light_det.pin);
-    light_sensor.state = (light_initial_level == 1);
-    MY_LOG_INF("Light initial state: %s", light_sensor.state ? "LIGHT" : "DARK");
+    light_sensor_t.state = (light_initial_level == 1);
+    MY_LOG_INF("Light initial state: %s", light_sensor_t.state ? "LIGHT" : "DARK");
 
     /* 配置锁销中断：双边沿触发 */
     ret = gpio_pin_interrupt_configure_dt(&lock_pin_det, GPIO_INT_EDGE_BOTH);
@@ -1014,26 +1014,26 @@ static int misc_io_init(void)
     }
 
     /* 初始化锁销定时器和状态 */
-    k_timer_init(&lock_pin_ctrl.timer, lock_pin_timer_handler, NULL);
-    lock_pin_ctrl.inserted = false;
-    lock_pin_ctrl.debouncing = false;
+    k_timer_init(&lock_pin_ctrl_t.timer, lock_pin_timer_handler, NULL);
+    lock_pin_ctrl_t.inserted = false;
+    lock_pin_ctrl_t.debouncing = false;
     /* 读取初始状态 */
     lock_initial_level = gpio_pin_get(lock_pin_det.port, lock_pin_det.pin);
-    lock_pin_ctrl.inserted = (lock_initial_level == 1);
-    MY_LOG_INF("Lock pin initial state: %s", lock_pin_ctrl.inserted ? "INSERTED" : "DISCONNECTED");
+    lock_pin_ctrl_t.inserted = (lock_initial_level == 1);
+    MY_LOG_INF("Lock pin initial state: %s", lock_pin_ctrl_t.inserted ? "INSERTED" : "DISCONNECTED");
 
     /* 初始化按键定时器 */
     key_timer_init();
 
     /* 初始化自动上锁定时器 */
-    k_timer_init(&auto_lock_timer, auto_lock_handler, NULL);
+    k_timer_init(&s_auto_lock_timer, auto_lock_handler, NULL);
 
     /* 一个回调处理三个引脚 */
-    gpio_init_callback(&misc_io_cb, misc_io_isr,
+    gpio_init_callback(&s_misc_io_cb, misc_io_isr,
                        BIT(fun_key.pin) |
                        BIT(light_det.pin) |
                        BIT(lock_pin_det.pin));
-    gpio_add_callback(fun_key.port, &misc_io_cb);
+    gpio_add_callback(fun_key.port, &s_misc_io_cb);
 
     return 0;
 }
@@ -1165,7 +1165,7 @@ static int leds_init(void)
         return ret;
     }
 
-     k_timer_init(&s_lock_led_ctrl.timer, lock_led_timer_handler, NULL);
+     k_timer_init(&lock_led_ctrl_t.timer, lock_led_timer_handler, NULL);
 
     return 0;
 }
@@ -1178,7 +1178,7 @@ static int leds_init(void)
 **函数功能:  根据指定的操作命令执行相应的 LED 控制操作
 **返 回 值:  无
 *********************************************************************/
-void my_ctrl_led_process(MY_LED_ID led_id, MY_LED_CTRL_CMD led_cmd)
+void my_ctrl_led_process(my_led_id_t led_id, my_led_ctrl_cmd_t led_cmd)
 {
     // MY_LOG_INF("my_led:%d cmd:%d", led_id, led_cmd);
     // 根据 LED 操作命令执行不同的操作
@@ -1264,32 +1264,32 @@ void lock_led_set(bool on)
 static void lock_led_timer_handler(struct k_timer *timer)
 {
     // 根据定时器计数和配置的参数控制 LED 点亮和熄灭
-    if (s_lock_led_ctrl.timer_count % s_lock_led_ctrl.period_ms == 0)
+    if (lock_led_ctrl_t.timer_count % lock_led_ctrl_t.period_ms == 0)
     {
         lock_led_set(true);  // 周期开始时点亮 LED
     }
-    else if (s_lock_led_ctrl.timer_count % s_lock_led_ctrl.period_ms == s_lock_led_ctrl.on_ms)
+    else if (lock_led_ctrl_t.timer_count % lock_led_ctrl_t.period_ms == lock_led_ctrl_t.on_ms)
     {
         lock_led_set(false);  // 点亮指定时间后熄灭 LED
     }
 
-    s_lock_led_ctrl.timer_count++;  // 增加定时器计数
+    lock_led_ctrl_t.timer_count++;  // 增加定时器计数
 
     // 处理持续闪烁模式（duration_ms 为 0）
-    if (s_lock_led_ctrl.duration_ms == 0)
+    if (lock_led_ctrl_t.duration_ms == 0)
     {
         // 当计数达到周期时，重置计数，实现持续闪烁
-        if (s_lock_led_ctrl.timer_count >= s_lock_led_ctrl.period_ms)
+        if (lock_led_ctrl_t.timer_count >= lock_led_ctrl_t.period_ms)
         {
-            s_lock_led_ctrl.timer_count = 0;
+            lock_led_ctrl_t.timer_count = 0;
         }
     }
     else
     {
         // 处理指定时间后停止闪烁模式
-        if (s_lock_led_ctrl.timer_count >= s_lock_led_ctrl.duration_ms)
+        if (lock_led_ctrl_t.timer_count >= lock_led_ctrl_t.duration_ms)
         {
-            k_timer_stop(&s_lock_led_ctrl.timer);  // 停止定时器
+            k_timer_stop(&lock_led_ctrl_t.timer);  // 停止定时器
             lock_led_set(false);  // 熄灭 LED
         }
     }
@@ -1312,7 +1312,7 @@ void my_lock_led_ctrl_start(uint16_t on_ms, uint16_t off_ms, uint32_t duration_m
 {
     if (on_ms == 0)
     {
-        k_timer_stop(&s_lock_led_ctrl.timer);  // 停止 LED 控制定时器
+        k_timer_stop(&lock_led_ctrl_t.timer);  // 停止 LED 控制定时器
         lock_led_set(false);  // 关闭 LED
     }
     else
@@ -1320,23 +1320,23 @@ void my_lock_led_ctrl_start(uint16_t on_ms, uint16_t off_ms, uint32_t duration_m
         // 检查 LED 显示功能是否启用
         if (gConfigParam.led_config.led_display == 1)
         {
-            s_lock_led_ctrl.on_ms = on_ms / 100;  // 将点亮时间转换为 100 毫秒为单位
-            s_lock_led_ctrl.period_ms = (on_ms+off_ms) / 100;  // 计算闪烁周期并转换为 100 毫秒为单位
-            s_lock_led_ctrl.duration_ms = duration_ms / 100;  // 将总持续时间转换为 100 毫秒为单位
-            s_lock_led_ctrl.timer_count = 0;  // 重置定时器计数
-            k_timer_start(&s_lock_led_ctrl.timer, K_MSEC(0), K_MSEC(100));  // 启动定时器，立即执行一次，然后 100 毫秒循环执行
+            lock_led_ctrl_t.on_ms = on_ms / 100;  // 将点亮时间转换为 100 毫秒为单位
+            lock_led_ctrl_t.period_ms = (on_ms+off_ms) / 100;  // 计算闪烁周期并转换为 100 毫秒为单位
+            lock_led_ctrl_t.duration_ms = duration_ms / 100;  // 将总持续时间转换为 100 毫秒为单位
+            lock_led_ctrl_t.timer_count = 0;  // 重置定时器计数
+            k_timer_start(&lock_led_ctrl_t.timer, K_MSEC(0), K_MSEC(100));  // 启动定时器，立即执行一次，然后 100 毫秒循环执行
         }
     }
 }
 
 /*********************************************************************
 **函数名称:  my_lock_led_set_mode
-**入口参数:  mode  ---        LED 显示模式，使用 MY_LOCK_LED_MODE 枚举类型
+**入口参数:  mode  ---        LED 显示模式，使用 my_lock_led_mode_t 枚举类型
 **出口参数:  无
 **函数功能:  该函数根据传入的模式参数，设置锁 LED 的不同显示模式，
 **          包括关闭、NFC启动、解锁中和上锁中和已解锁模式。
 *********************************************************************/
-void my_lock_led_set_mode(MY_LOCK_LED_MODE mode)
+void my_lock_led_set_mode(my_lock_led_mode_t mode)
 {
     switch (mode)
     {
@@ -1368,14 +1368,14 @@ void my_lock_led_set_mode(MY_LOCK_LED_MODE mode)
 
 /*********************************************************************
 **函数名称:  my_lock_led_msg_send
-**入口参数:  mode  ---        LED 显示模式，使用 MY_LOCK_LED_MODE 枚举类型
+**入口参数:  mode  ---        LED 显示模式，使用 my_lock_led_mode_t 枚举类型
 **出口参数:  无
 **函数功能:  用于发送锁 LED 控制消息到控制模块，设置锁 LED 的显示模式
 *********************************************************************/
-void my_lock_led_msg_send(MY_LOCK_LED_MODE mode)
+void my_lock_led_msg_send(my_lock_led_mode_t mode)
 {
-    MSG_S msg;  // 消息结构体，用于发送 LED 控制消息
-    static MY_LOCK_LED_MODE led_mode;  // 静态存储 LED 模式，确保消息处理时数据有效
+    msg_t msg;  // 消息结构体，用于发送 LED 控制消息
+    static my_lock_led_mode_t led_mode;  // 静态存储 LED 模式，确保消息处理时数据有效
 
     led_mode = mode;  // 存储 LED 模式
 
@@ -1396,12 +1396,12 @@ void my_lock_led_msg_send(MY_LOCK_LED_MODE mode)
 **功能描述：  向控制模块 (MOD_CTRL) 发送消息 (MY_MSG_CTRL_BUZZER_MODE)
 ********************************************************************
 */
-void my_set_buzzer_mode(my_buzzer_mode buzzer_mode)
+void my_set_buzzer_mode(my_buzzer_mode_t buzzer_mode)
 {
-    MSG_S msg;
-    my_buzzer_mode *buzzer_mode_loc;
+    msg_t msg;
+    my_buzzer_mode_t *buzzer_mode_loc;
 
-    MY_MALLOC_BUFFER(buzzer_mode_loc, sizeof(my_buzzer_mode));
+    MY_MALLOC_BUFFER(buzzer_mode_loc, sizeof(my_buzzer_mode_t));
     if(buzzer_mode_loc == NULL)
     {
         MY_LOG_ERR("buzzer_mode_loc malloc failed");
@@ -1431,12 +1431,12 @@ void my_set_buzzer_mode(my_buzzer_mode buzzer_mode)
 */
 void g_buzzer_ctrl_config(int on_time, int off_time, int repeat)
 {
-    g_buzzer_ctrl.on_time = on_time;
-    g_buzzer_ctrl.off_time = off_time;
-    g_buzzer_ctrl.repeat = repeat;
+    s_buzzer_ctrl.on_time = on_time;
+    s_buzzer_ctrl.off_time = off_time;
+    s_buzzer_ctrl.repeat = repeat;
     //启动蜂鸣器，状态为1
-    g_buzzer_ctrl.state = 1;
-    g_buzzer_ctrl.tick = 0;
+    s_buzzer_ctrl.state = 1;
+    s_buzzer_ctrl.tick = 0;
 }
 
 /**
@@ -1453,16 +1453,16 @@ void g_buzzer_ctrl_config(int on_time, int off_time, int repeat)
 **注意事项:  时间单位统一为 100ms。定时器周期固定为 100ms。
 ********************************************************************
 */
-void my_buzzer_play(my_buzzer_mode buzzer_mode)
+void my_buzzer_play(my_buzzer_mode_t buzzer_mode)
 {
     MY_LOG_INF("buzzer_mode = %d", buzzer_mode);
     switch(buzzer_mode)
     {
         case BUZZER_STOP:
             //定时器在运行就停止定时器
-            if (k_timer_remaining_get(&buzzer_timer) != 0)
+            if (k_timer_remaining_get(&s_buzzer_timer) != 0)
             {
-                k_timer_stop(&buzzer_timer);
+                k_timer_stop(&s_buzzer_timer);
             }
             my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_BUZZER_OFF);
             return;
@@ -1516,12 +1516,12 @@ void my_buzzer_play(my_buzzer_mode buzzer_mode)
 
     my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_BUZZER_ON);
 
-    if (k_timer_remaining_get(&buzzer_timer) != 0)
+    if (k_timer_remaining_get(&s_buzzer_timer) != 0)
     {
-        k_timer_stop(&buzzer_timer);
+        k_timer_stop(&s_buzzer_timer);
     }
     //初始化计数器
-    k_timer_start(&buzzer_timer, K_MSEC(100), K_MSEC(100));
+    k_timer_start(&s_buzzer_timer, K_MSEC(100), K_MSEC(100));
 }
 
 /**
@@ -1543,35 +1543,35 @@ static void buzzer_timer_handler(struct k_timer *timer)
 {
     ARG_UNUSED(timer);
 
-    g_buzzer_ctrl.tick++;
+    s_buzzer_ctrl.tick++;
 
-    if (g_buzzer_ctrl.state)
+    if (s_buzzer_ctrl.state)
     {
         // 当前是“响”（判断是否等于响多久的时间）
-        if (g_buzzer_ctrl.tick >= g_buzzer_ctrl.on_time)
+        if (s_buzzer_ctrl.tick >= s_buzzer_ctrl.on_time)
         {
             //达到响多久即可关闭蜂鸣器
             my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_BUZZER_OFF);
-            g_buzzer_ctrl.state = 0;
-            g_buzzer_ctrl.tick = 0;
+            s_buzzer_ctrl.state = 0;
+            s_buzzer_ctrl.tick = 0;
 
             //重复次数--，为0即可关闭定时器
-            if (g_buzzer_ctrl.repeat > 0)
+            if (s_buzzer_ctrl.repeat > 0)
             {
-                g_buzzer_ctrl.repeat--;
-                if (g_buzzer_ctrl.repeat == 0)
-                    k_timer_stop(&buzzer_timer);
+                s_buzzer_ctrl.repeat--;
+                if (s_buzzer_ctrl.repeat == 0)
+                    k_timer_stop(&s_buzzer_timer);
             }
         }
     }
     else
     {
         // 当前是“关”
-        if (g_buzzer_ctrl.tick >= g_buzzer_ctrl.off_time)
+        if (s_buzzer_ctrl.tick >= s_buzzer_ctrl.off_time)
         {
             my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_BUZZER_ON);
-            g_buzzer_ctrl.state = 1;
-            g_buzzer_ctrl.tick = 0;
+            s_buzzer_ctrl.state = 1;
+            s_buzzer_ctrl.tick = 0;
         }
     }
 
@@ -1593,13 +1593,13 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
     ARG_UNUSED(p2);
     ARG_UNUSED(p3);
 
-    MSG_S msg;
+    msg_t msg;
 
     MY_LOG_INF("Control thread started");
 
     for (;;)
     {
-        my_recv_msg(&my_ctrl_msgq, (void *)&msg, sizeof(MSG_S), K_FOREVER);
+        my_recv_msg(&my_ctrl_msgq, (void *)&msg, sizeof(msg_t), K_FOREVER);
 
         switch (msg.msgID)
         {
@@ -1636,12 +1636,12 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
                 break;
 
             case MY_MSG_CTRL_LOCK_LED:
-                my_lock_led_set_mode(*(MY_LOCK_LED_MODE *)msg.pData);
+                my_lock_led_set_mode(*(my_lock_led_mode_t *)msg.pData);
                 break;
 
             case MY_MSG_CLOSE_LED_SHOW:
                 /* 关闭所有LED显示功能 */
-                k_timer_stop(&s_lock_led_ctrl.timer);
+                k_timer_stop(&lock_led_ctrl_t.timer);
                 k_timer_stop(g_chg_led_ctrl.timer);
                 k_timer_stop(g_batt_led_ctrl.timer);
                 batt_led_set_level(0);//关闭电池LED
@@ -1657,7 +1657,7 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
             case MY_MSG_CTRL_BUZZER_MODE:
                 if (msg.pData)
                 {
-                    my_buzzer_play(*(my_buzzer_mode *)msg.pData);
+                    my_buzzer_play(*(my_buzzer_mode_t *)msg.pData);
                     //释放内存
                     MY_FREE_BUFFER(msg.pData);
                     msg.pData = NULL;
@@ -1714,7 +1714,7 @@ int my_ctrl_init(k_tid_t *tid)
     my_init_msg_handler(MOD_CTRL, &my_ctrl_msgq);
 
     // 启动控制线程
-    *tid = k_thread_create(&my_ctrl_task_data, my_ctrl_task_stack,
+    *tid = k_thread_create(&s_my_ctrl_task_data, my_ctrl_task_stack,
                            K_THREAD_STACK_SIZEOF(my_ctrl_task_stack),
                            my_ctrl_task, NULL, NULL, NULL,
                            MY_CTRL_TASK_PRIORITY, 0, K_NO_WAIT);
@@ -1747,7 +1747,7 @@ int my_ctrl_init(k_tid_t *tid)
     /* 启动时响一声提示音 */
     my_ctrl_buzzer_play_tone(2000, 100);
 
-    k_timer_init(&buzzer_timer, buzzer_timer_handler, NULL);
+    k_timer_init(&s_buzzer_timer, buzzer_timer_handler, NULL);
 
     MY_LOG_INF("Control module initialized");
     return 0;

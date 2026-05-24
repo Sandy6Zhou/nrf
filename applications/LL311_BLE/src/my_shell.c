@@ -17,7 +17,7 @@
 #define LOG_MODULE_NAME my_shell
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 
-uint8_t shell_test_buff[256] = {0};
+uint8_t g_shell_test_buff[256] = {0};
 
 /********************************************************************
 **函数名称:  cmd_system_info
@@ -117,7 +117,7 @@ static int cmd_gsensor_read(const struct shell *shell, size_t argc, char **argv)
 static int cmd_switch_mode(const struct shell *sh, size_t argc, char **argv)
 {
     gsensor_state_t gsensor_state;
-    MY_WORK_MODE current_workmode;
+    work_mode_t current_workmode;
     const char *mode_str;
     const char *state_str;
 
@@ -273,7 +273,7 @@ static int cmd_get_time(const struct shell *sh, size_t argc, char **argv)
 *********************************************************************/
 static int cmd_modeset(const struct shell *sh, size_t argc, char **argv)
 {
-    DeviceWorkModeConfig *p_workmode;
+    device_work_mode_config_t *p_workmode;
     char *endptr;
     uint32_t mode_flag;
     uint32_t report_interval, static_int, land_int, land_distance, sea_int;
@@ -457,18 +457,18 @@ static int shell_at_test(const struct shell *sh, size_t argc, char **argv)
         return -EINVAL;
     }
 
-    memset(shell_test_buff, 0, sizeof(shell_test_buff));
+    memset(g_shell_test_buff, 0, sizeof(g_shell_test_buff));
 
     len = strlen(argv[1]);
-    memcpy(shell_test_buff, argv[1], len);
+    memcpy(g_shell_test_buff, argv[1], len);
     // 手动增加\r\n，使得my_shell_handle_rx能识别到
-    shell_test_buff[len++] = '\r';
-    shell_test_buff[len++] = '\n';
-    shell_test_buff[len] = 0;
+    g_shell_test_buff[len++] = '\r';
+    g_shell_test_buff[len++] = '\n';
+    g_shell_test_buff[len] = 0;
 
     shell_print(sh, "param: %s, len: %d", argv[1], len);
 
-    my_shell_handle_rx(shell_test_buff, len);
+    my_shell_handle_rx(g_shell_test_buff, len);
 
     return 0;
 }
@@ -534,7 +534,7 @@ static int cmd_nfc_poll(const struct shell *shell, size_t argc, char **argv)
 *********************************************************************/
 static int cmd_shutdown(const struct shell *shell, size_t argc, char **argv)
 {
-    MSG_S msg;
+    msg_t msg;
 
     ARG_UNUSED(argc);
     ARG_UNUSED(argv);
@@ -625,7 +625,7 @@ static int cmd_ble_log_test(const struct shell *shell, size_t argc, char **argv)
 *********************************************************************/
 static int cmd_ble_log_config(const struct shell *shell, size_t argc, char **argv)
 {
-    BleLogConfig_t *config;
+    ble_log_config_t *config;
     int ret;
     uint8_t level;
     uint8_t mod_id;
@@ -882,11 +882,11 @@ static int cmd_ble_test(const struct shell *sh, size_t argc, char **argv)
         return -EINVAL;
     }
 
-    memset(shell_test_buff, 0, sizeof(shell_test_buff));
+    memset(g_shell_test_buff, 0, sizeof(g_shell_test_buff));
 
     len = strlen(argv[1]);
-    memcpy(shell_test_buff, argv[1], len);
-    shell_test_buff[len] = 0;
+    memcpy(g_shell_test_buff, argv[1], len);
+    g_shell_test_buff[len] = 0;
 
     shell_print(sh, "param: %s, len: %d", argv[1], len);
 
@@ -914,11 +914,11 @@ static int cmd_buzzer_test(const struct shell *sh, size_t argc, char **argv)
         return -EINVAL;
     }
 
-    memset(shell_test_buff, 0, sizeof(shell_test_buff));
+    memset(g_shell_test_buff, 0, sizeof(g_shell_test_buff));
 
     len = strlen(argv[1]);
-    memcpy(shell_test_buff, argv[1], len);
-    shell_test_buff[len] = 0;
+    memcpy(g_shell_test_buff, argv[1], len);
+    g_shell_test_buff[len] = 0;
 
     shell_print(sh, "param: %s, len: %d", argv[1], len);
     my_set_buzzer_mode(atoi(argv[1]));
@@ -947,11 +947,11 @@ static int cmd_nfctrig_test(const struct shell *sh, size_t argc, char **argv)
         return -EINVAL;
     }
 
-    memset(shell_test_buff, 0, sizeof(shell_test_buff));
+    memset(g_shell_test_buff, 0, sizeof(g_shell_test_buff));
 
     len = strlen(argv[1]);
-    memcpy(shell_test_buff, argv[1], len);
-    shell_test_buff[len] = 0;
+    memcpy(g_shell_test_buff, argv[1], len);
+    g_shell_test_buff[len] = 0;
 
     shell_print(sh, "param: %s, len: %d", argv[1], len);
 
@@ -1005,12 +1005,12 @@ static int cmd_nfc_swip_test(const struct shell *sh, size_t argc, char **argv)
         return -EINVAL;
     }
 
-    memset(shell_test_buff, 0, sizeof(shell_test_buff));
+    memset(g_shell_test_buff, 0, sizeof(g_shell_test_buff));
 
     len = strlen(argv[1]);
     select = atoi(argv[1]);
-    memcpy(shell_test_buff, argv[1], len);
-    shell_test_buff[len] = 0;
+    memcpy(g_shell_test_buff, argv[1], len);
+    g_shell_test_buff[len] = 0;
 
     shell_print(sh, "param: %s, len: %d", argv[1], len);
     if (select < 1 || select > 10)
@@ -1189,11 +1189,11 @@ static int cmd_retransmit_check_test(const struct shell *sh, size_t argc, char *
         return -EINVAL;
     }
 
-    memset(shell_test_buff, 0, sizeof(shell_test_buff));
+    memset(g_shell_test_buff, 0, sizeof(g_shell_test_buff));
 
     len = strlen(argv[1]);
-    memcpy(shell_test_buff, argv[1], len);
-    shell_test_buff[len] = 0;
+    memcpy(g_shell_test_buff, argv[1], len);
+    g_shell_test_buff[len] = 0;
 
     // 检查是否有第二个参数
     if (argc >= 3)

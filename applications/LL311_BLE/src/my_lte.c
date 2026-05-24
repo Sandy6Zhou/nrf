@@ -61,7 +61,7 @@ typedef enum
     MSG_STATE_IDLE = 0, // 空闲可用
     MSG_STATE_PENDING,   // 等待ACK
     MSG_STATE_TIMEOUT    // 超时
-} MsgStateEnum;
+} msg_state_enum_t;
 
 typedef struct
 {
@@ -69,10 +69,10 @@ typedef struct
     char *param;        // 发送的参数内容
     int retry_count;    // 当前重试次数
     time_t send_time;   // 最后一次发送的时间(秒时间戳)
-    MsgStateEnum state; // 当前状态
-} Retransmission_Item;
+    msg_state_enum_t state; // 当前状态
+} retransmission_item_t;
 
-Retransmission_Item g_retrans_queue[RETRANSMISSION_QUEUE_SIZE]; // 重传队列
+static retransmission_item_t s_retrans_queue[RETRANSMISSION_QUEUE_SIZE]; // 重传队列
 
 // ========== 需要特殊处理的指令前缀列表 ==========
 static const char *s_special_cmd_prefixes[] = {
@@ -82,7 +82,7 @@ static const char *s_special_cmd_prefixes[] = {
 };
 
 // 重传检查定时器
-struct k_timer retrans_check_timer;
+static struct k_timer s_retrans_check_timer;
 
 // LTE UART 空闲挂起定时器（3秒无收发自动挂起UART）
 typedef struct
@@ -100,7 +100,7 @@ static int lte_pm_suspend(void);
 static int lte_pm_resume(void);
 
 // LTE 电源管理操作回调结构体
-static const struct PM_DEVICE_OPS lte_pm_ops =
+static const pm_device_ops_t lte_pm_ops =
 {
     .init = lte_pm_init,
     .suspend = lte_pm_suspend,
@@ -134,7 +134,7 @@ typedef struct
 async_resp_tiem_t g_async_queue[ASYNC_QUEUE_SIZE];
 
 /* LTE电源状态跟踪 */
-static bool g_lte_power_state = false;  // false=关闭, true=开启
+static bool s_lte_power_state = false;  // false=关闭, true=开启
 
 // 4G模块是否完成开机，开机后可以进行正常数据收发
 // 0: 未开机； 1: 已开机(并发送了开机消息LTE+PWRON)
@@ -156,45 +156,45 @@ static struct gpio_callback lte_wake_cb;
 
 /* 接收LTE+CMD响应回复缓冲区大小 */
 #define LTE_CMD_RESPBUF_SIZE 1024
-char g_lte_cmd_resp_buf[LTE_CMD_RESPBUF_SIZE] = {0};
+static char s_lte_cmd_resp_buf[LTE_CMD_RESPBUF_SIZE] = {0};
 
 // 定义一个串口发送状态信号量，初始值为1(表示UART空闲)
 static struct k_sem s_TxDoneSem;
 /* LTE缓存消息队列 */
-static lte_msg_queue_t g_lte_msg_queue = {0};
+static lte_msg_queue_t s_lte_msg_queue = {0};
 
 // 4G上电状态，0：蓝牙正常唤醒4G，1：异常重启
-lte_power_state_t g_4GPoweronStatus = 0;
+static lte_power_state_t s_4GPoweronStatus = 0;
 // 4G版本号缓存
 char g_lte4GVersion[32] = {0};
 // LTE开机原因
-lte_boot_reason_t g_lteBootReason = LTE_BOOT_REASON_RESERVED;
+static lte_boot_reason_t s_lteBootReason = LTE_BOOT_REASON_RESERVED;
 
 /* UART驱动层使用的接收双缓冲 */
-static uint8_t lte_rx_buf_1[LTE_UART_BUF_SIZE];
-static uint8_t lte_rx_buf_2[LTE_UART_BUF_SIZE];
-static uint8_t *lte_next_buf = lte_rx_buf_2;
+static uint8_t s_lte_rx_buf_1[LTE_UART_BUF_SIZE];
+static uint8_t s_lte_rx_buf_2[LTE_UART_BUF_SIZE];
+static uint8_t *lte_next_buf = s_lte_rx_buf_2;
 
 // 串口接收循环缓冲区（建议用2的幂，如1024，取模效率更高）
 #define LTE_UART_RB_SIZE    512
-static uint8_t g_lte_rb_buf[LTE_UART_RB_SIZE];
-static ring_buffer_t g_lte_rb;
+static uint8_t s_lte_rb_buf[LTE_UART_RB_SIZE];
+static ring_buffer_t s_lte_rb;
 
 /* 消息队列定义 */
-K_MSGQ_DEFINE(my_lte_msgq, sizeof(MSG_S), 10, 4);
+K_MSGQ_DEFINE(my_lte_msgq, sizeof(msg_t), 10, 4);
 
 /* 线程数据与栈定义 */
 K_THREAD_STACK_DEFINE(my_lte_task_stack, MY_LTE_TASK_STACK_SIZE);
-static struct k_thread my_lte_task_data;
+static struct k_thread s_my_lte_task_data;
 
 // 产测指令
 const char FACTORY_CMD_HEADER[] = "AT^GT_CM=";
 
 // 4G进入产测模式（0 = exit, 1:enter）
-uint8_t g_lte_factory = 0;
+static uint8_t s_lte_factory = 0;
 
 /* { visible, command, help, function } */
-CMD_STRUC AT_CMD_INNER[] = {
+cmd_struct_t AT_CMD_INNER[] = {
 
     {1, "TEST",      "AT CMD TEST",             my_at_test},
 
@@ -207,7 +207,7 @@ static void send_lte_pulse(void);
 net_unlock_ctrl_t g_net_unlock = {0};
 
 // 脉冲消息计数器
-static uint16_t g_lte_pulse_count = 0;
+static uint16_t s_lte_pulse_count = 0;
 
 // 网络状态
 uint8_t g_lte_net_flag = 0;
@@ -299,7 +299,7 @@ static int lte_pm_resume(void)
 {
     int ret;
 
-    ret = uart_rx_enable(lte_uart_dev, lte_rx_buf_1, LTE_UART_BUF_SIZE, 10 * USEC_PER_MSEC);
+    ret = uart_rx_enable(lte_uart_dev, s_lte_rx_buf_1, LTE_UART_BUF_SIZE, 10 * USEC_PER_MSEC);
     if ((ret != 0) && (ret != -EBUSY))
     {
         MY_LOG_ERR("Failed to enable LTE UART RX in resume (err %d)", ret);
@@ -325,7 +325,7 @@ static int lte_uart_ensure_active(void)
 {
     int ret;
 
-    if (!g_lte_power_state)
+    if (!s_lte_power_state)
     {
         return -ENODEV;
     }
@@ -356,9 +356,9 @@ static bool lte_uart_can_suspend(void)
 {
     bool can_suspend;
 
-    can_suspend = (g_lte_msg_queue.count == 0);
+    can_suspend = (s_lte_msg_queue.count == 0);
 
-    if (my_rb_get_used_size(&g_lte_rb) > 0)
+    if (my_rb_get_used_size(&s_lte_rb) > 0)
     {
         can_suspend = false;
     }
@@ -434,23 +434,23 @@ void init_retransmission_queue(void)
     // 将整个队列的内存块清零
     for (i = 0; i < RETRANSMISSION_QUEUE_SIZE; i++)
     {
-        if (g_retrans_queue[i].param)
+        if (s_retrans_queue[i].param)
         {
-            MY_FREE_BUFFER(g_retrans_queue[i].param);
-            g_retrans_queue[i].param = NULL;
+            MY_FREE_BUFFER(s_retrans_queue[i].param);
+            s_retrans_queue[i].param = NULL;
         }
 
-        memset(g_retrans_queue[i].cmd_name, 0, sizeof(g_retrans_queue[i].cmd_name));
-        g_retrans_queue[i].retry_count = 0;
-        g_retrans_queue[i].send_time = 0;
-        g_retrans_queue[i].state = 0;
+        memset(s_retrans_queue[i].cmd_name, 0, sizeof(s_retrans_queue[i].cmd_name));
+        s_retrans_queue[i].retry_count = 0;
+        s_retrans_queue[i].send_time = 0;
+        s_retrans_queue[i].state = 0;
     }
 
     // 停止定时器
-    if (k_timer_remaining_get(&retrans_check_timer) != 0)
+    if (k_timer_remaining_get(&s_retrans_check_timer) != 0)
     {
-        k_timer_stop(&retrans_check_timer);
-        MY_LOG_INF("retrans_check_timer : STOP");
+        k_timer_stop(&s_retrans_check_timer);
+        MY_LOG_INF("s_retrans_check_timer : STOP");
     }
 
     MY_LOG_INF("Retransmission queue initialized with size %d", RETRANSMISSION_QUEUE_SIZE);
@@ -470,7 +470,7 @@ int retrans_queue_is_empty(void)
     int i = 0;
     for (i = 0; i < RETRANSMISSION_QUEUE_SIZE; i++)
     {
-        if (g_retrans_queue[i].state == MSG_STATE_PENDING)
+        if (s_retrans_queue[i].state == MSG_STATE_PENDING)
         {
             return 0; // 非空
         }
@@ -495,25 +495,25 @@ void check_ack(char *cmd_name)
     for (i = 0; i < RETRANSMISSION_QUEUE_SIZE; i++)
     {
         // 当前收到的应答消息是重传队列中的消息且处于等待应答阶段
-        if (g_retrans_queue[i].state == MSG_STATE_PENDING &&
-            (strcmp(g_retrans_queue[i].cmd_name, cmd_name) == 0))
+        if (s_retrans_queue[i].state == MSG_STATE_PENDING &&
+            (strcmp(s_retrans_queue[i].cmd_name, cmd_name) == 0))
         {
-            MY_LOG_INF("Received ACK for pending message[%d]:%s", i, g_retrans_queue[i].cmd_name);
+            MY_LOG_INF("Received ACK for pending message[%d]:%s", i, s_retrans_queue[i].cmd_name);
             // 释放当前param
-            if (g_retrans_queue[i].param)
+            if (s_retrans_queue[i].param)
             {
-                MY_FREE_BUFFER(g_retrans_queue[i].param);
-                g_retrans_queue[i].param = NULL;
+                MY_FREE_BUFFER(s_retrans_queue[i].param);
+                s_retrans_queue[i].param = NULL;
             }
             // 前移
-            for (j = i; j < RETRANSMISSION_QUEUE_SIZE - 1 && g_retrans_queue[j + 1].state == MSG_STATE_PENDING; j++)
+            for (j = i; j < RETRANSMISSION_QUEUE_SIZE - 1 && s_retrans_queue[j + 1].state == MSG_STATE_PENDING; j++)
             {
-                memcpy(&g_retrans_queue[j], &g_retrans_queue[j + 1], sizeof(Retransmission_Item));
-                g_retrans_queue[j + 1].param = NULL;
+                memcpy(&s_retrans_queue[j], &s_retrans_queue[j + 1], sizeof(retransmission_item_t));
+                s_retrans_queue[j + 1].param = NULL;
             }
 
             //清空最后一个
-            memset(&g_retrans_queue[j], 0, sizeof(Retransmission_Item));
+            memset(&s_retrans_queue[j], 0, sizeof(retransmission_item_t));
             break;
         }
     }
@@ -522,10 +522,10 @@ void check_ack(char *cmd_name)
     if (retrans_queue_is_empty())
     {
         // 停止定时器
-        if (k_timer_remaining_get(&retrans_check_timer) != 0)
+        if (k_timer_remaining_get(&s_retrans_check_timer) != 0)
         {
-            k_timer_stop(&retrans_check_timer);
-            MY_LOG_INF("retrans_check_timer : STOP");
+            k_timer_stop(&s_retrans_check_timer);
+            MY_LOG_INF("s_retrans_check_timer : STOP");
         }
     }
 }
@@ -553,15 +553,15 @@ void retransmission_check(void)
     for (i = 0; i < RETRANSMISSION_QUEUE_SIZE; i++)
     {
         // 只有处于等待阶段的消息才需要进行重传检查
-        if (g_retrans_queue[i].state == MSG_STATE_PENDING)
+        if (s_retrans_queue[i].state == MSG_STATE_PENDING)
         {
             // 检查是否超时，没超时则不进行重发
-            if ((current_time - g_retrans_queue[i].send_time) >= ACK_TIMEOUT_S)
+            if ((current_time - s_retrans_queue[i].send_time) >= ACK_TIMEOUT_S)
             {
-                if (g_retrans_queue[i].retry_count < MAX_RETRIES)
+                if (s_retrans_queue[i].retry_count < MAX_RETRIES)
                 {
-                    MY_LOG_INF("Retransmitting message: %s (Retry %d)", g_retrans_queue[i].cmd_name, g_retrans_queue[i].retry_count + 1);
-                    strcpy(cmd_name, g_retrans_queue[i].cmd_name);
+                    MY_LOG_INF("Retransmitting message: %s (Retry %d)", s_retrans_queue[i].cmd_name, s_retrans_queue[i].retry_count + 1);
+                    strcpy(cmd_name, s_retrans_queue[i].cmd_name);
 
                     // 检查是否需要映射回原始指令名
                     for (j = 0; s_special_cmd_prefixes[j] != NULL; j++)
@@ -569,8 +569,8 @@ void retransmission_check(void)
                         prefix_len = strlen(s_special_cmd_prefixes[j]);
 
                         // 检查是否以 "PREFIX_" 开头
-                        if (strncmp(g_retrans_queue[i].cmd_name, s_special_cmd_prefixes[j],
-                            prefix_len) == 0 && g_retrans_queue[i].cmd_name[prefix_len] == '_')
+                        if (strncmp(s_retrans_queue[i].cmd_name, s_special_cmd_prefixes[j],
+                            prefix_len) == 0 && s_retrans_queue[i].cmd_name[prefix_len] == '_')
                         {
                             // 提取原始指令名（如 MACINFO_001 → MACINFO）
                             strcpy(cmd_name, s_special_cmd_prefixes[j]);
@@ -579,21 +579,21 @@ void retransmission_check(void)
                     }
 
                     // 执行重传
-                    lte_send_command(cmd_name, g_retrans_queue[i].param);
-                    g_retrans_queue[i].retry_count++;
-                    g_retrans_queue[i].send_time = current_time;
+                    lte_send_command(cmd_name, s_retrans_queue[i].param);
+                    s_retrans_queue[i].retry_count++;
+                    s_retrans_queue[i].send_time = current_time;
                 }
                 else
                 {
                     // 超过最大重试次数，标记为超时失败
-                    MY_LOG_INF("Message failed after %d retries: %s", MAX_RETRIES, g_retrans_queue[i].cmd_name);
-                    g_retrans_queue[i].state = MSG_STATE_TIMEOUT;
+                    MY_LOG_INF("Message failed after %d retries: %s", MAX_RETRIES, s_retrans_queue[i].cmd_name);
+                    s_retrans_queue[i].state = MSG_STATE_TIMEOUT;
 
                     // 释放param
-                    if (g_retrans_queue[i].param)
+                    if (s_retrans_queue[i].param)
                     {
-                        MY_FREE_BUFFER(g_retrans_queue[i].param);
-                        g_retrans_queue[i].param = NULL;
+                        MY_FREE_BUFFER(s_retrans_queue[i].param);
+                        s_retrans_queue[i].param = NULL;
                     }
 
                     // 清空存储的tag和MAC信息
@@ -626,7 +626,7 @@ void lte_send_cmd_with_retry(const char *cmd_name, const char *param)
 {
     int ret;
     char *command;
-    MSG_S msg;
+    msg_t msg;
     int command_len;
 
     // 1. 先尝试发送
@@ -718,14 +718,14 @@ void add_to_retrans_queue(char *command)
     //  将消息添加到重传队列
     for (i = 0; i < RETRANSMISSION_QUEUE_SIZE; i++)
     {
-        if (g_retrans_queue[i].state != MSG_STATE_PENDING)
+        if (s_retrans_queue[i].state != MSG_STATE_PENDING)
         {
             // 释放旧内存（防止复用时泄漏）
             //  检查是否为NULL
-            if (g_retrans_queue[i].param)
+            if (s_retrans_queue[i].param)
             {
-                MY_FREE_BUFFER(g_retrans_queue[i].param);
-                g_retrans_queue[i].param = NULL;
+                MY_FREE_BUFFER(s_retrans_queue[i].param);
+                s_retrans_queue[i].param = NULL;
             }
 
             // 动态分配 param
@@ -733,16 +733,16 @@ void add_to_retrans_queue(char *command)
             {
                 len = strlen(param) + 1;
 
-                MY_MALLOC_BUFFER(g_retrans_queue[i].param, len);
-                if (g_retrans_queue[i].param == NULL) // 内存分配失败
+                MY_MALLOC_BUFFER(s_retrans_queue[i].param, len);
+                if (s_retrans_queue[i].param == NULL) // 内存分配失败
                 {
-                    MY_LOG_ERR("g_retrans_queue[%d].param failed", i);
+                    MY_LOG_ERR("s_retrans_queue[%d].param failed", i);
                     return;
                 }
 
-                if (g_retrans_queue[i].param)
+                if (s_retrans_queue[i].param)
                 {
-                    memcpy(g_retrans_queue[i].param, param, len);
+                    memcpy(s_retrans_queue[i].param, param, len);
                 }
                 else
                 {
@@ -751,12 +751,12 @@ void add_to_retrans_queue(char *command)
                 }
             }
 
-            strncpy(g_retrans_queue[i].cmd_name, cmd_name, sizeof(g_retrans_queue[i].cmd_name) - 1);
-            g_retrans_queue[i].cmd_name[sizeof(g_retrans_queue[i].cmd_name) - 1] = '\0';
+            strncpy(s_retrans_queue[i].cmd_name, cmd_name, sizeof(s_retrans_queue[i].cmd_name) - 1);
+            s_retrans_queue[i].cmd_name[sizeof(s_retrans_queue[i].cmd_name) - 1] = '\0';
 
-            g_retrans_queue[i].retry_count = 0;
-            g_retrans_queue[i].send_time = my_get_system_time_sec();
-            g_retrans_queue[i].state = MSG_STATE_PENDING;
+            s_retrans_queue[i].retry_count = 0;
+            s_retrans_queue[i].send_time = my_get_system_time_sec();
+            s_retrans_queue[i].state = MSG_STATE_PENDING;
             break;
         }
         else
@@ -772,9 +772,9 @@ void add_to_retrans_queue(char *command)
     }
 
     // 如果定时器未启动，开启定时器重传检查
-    if (k_timer_remaining_get(&retrans_check_timer) == 0)
+    if (k_timer_remaining_get(&s_retrans_check_timer) == 0)
     {
-        k_timer_start(&retrans_check_timer, K_MSEC(RETRANSMIT_TIMER_PERIOD_MS), K_MSEC(RETRANSMIT_TIMER_PERIOD_MS));
+        k_timer_start(&s_retrans_check_timer, K_MSEC(RETRANSMIT_TIMER_PERIOD_MS), K_MSEC(RETRANSMIT_TIMER_PERIOD_MS));
     }
 }
 
@@ -812,10 +812,10 @@ void retransmission_poll(void)
     if (retrans_queue_is_empty())
     {
         // 停止定时器
-        if (k_timer_remaining_get(&retrans_check_timer) != 0)
+        if (k_timer_remaining_get(&s_retrans_check_timer) != 0)
         {
-            k_timer_stop(&retrans_check_timer);
-            MY_LOG_INF("retrans_check_timer : STOP");
+            k_timer_stop(&s_retrans_check_timer);
+            MY_LOG_INF("s_retrans_check_timer : STOP");
         }
     }
 }
@@ -857,7 +857,7 @@ int async_match_and_resp(char *data)
     int i = 0;
     int index = -1;
     char cmd_name[16];
-    MSG_S msg;
+    msg_t msg;
     char *resp;
     char id[16];
 
@@ -920,9 +920,9 @@ int async_match_and_resp(char *data)
  ********************************************************************/
 static int my_lte_msg_queue_init(void)
 {
-    g_lte_msg_queue.head = 0;
-    g_lte_msg_queue.tail = 0;
-    g_lte_msg_queue.count = 0;
+    s_lte_msg_queue.head = 0;
+    s_lte_msg_queue.tail = 0;
+    s_lte_msg_queue.count = 0;
 
     return 0;
 }
@@ -949,19 +949,19 @@ static int my_lte_enqueue_msg(const char *msg_content, uint16_t msg_len)
     }
 
     // 如果队列已满，移除最旧的消息（head位置）
-    if (g_lte_msg_queue.count >= LTE_MSG_QUEUE_SIZE)
+    if (s_lte_msg_queue.count >= LTE_MSG_QUEUE_SIZE)
     {
         // 释放最旧消息的内存
-        if (g_lte_msg_queue.queue[g_lte_msg_queue.head].msg_content != NULL)
+        if (s_lte_msg_queue.queue[s_lte_msg_queue.head].msg_content != NULL)
         {
-            MY_LOG_INF("Release old message: %s", g_lte_msg_queue.queue[g_lte_msg_queue.head].msg_content);
-            MY_FREE_BUFFER(g_lte_msg_queue.queue[g_lte_msg_queue.head].msg_content);
-            g_lte_msg_queue.queue[g_lte_msg_queue.head].msg_content = NULL;
+            MY_LOG_INF("Release old message: %s", s_lte_msg_queue.queue[s_lte_msg_queue.head].msg_content);
+            MY_FREE_BUFFER(s_lte_msg_queue.queue[s_lte_msg_queue.head].msg_content);
+            s_lte_msg_queue.queue[s_lte_msg_queue.head].msg_content = NULL;
         }
 
         // 移动head指针，移除最旧元素
-        g_lte_msg_queue.head = (g_lte_msg_queue.head + 1) % LTE_MSG_QUEUE_SIZE;
-        g_lte_msg_queue.count--;
+        s_lte_msg_queue.head = (s_lte_msg_queue.head + 1) % LTE_MSG_QUEUE_SIZE;
+        s_lte_msg_queue.count--;
     }
 
     // 为新消息内容分配内存并复制
@@ -976,14 +976,14 @@ static int my_lte_enqueue_msg(const char *msg_content, uint16_t msg_len)
     new_msg[msg_len] = '\0';  // 确保字符串终止
 
     // 存储到队列尾部
-    g_lte_msg_queue.queue[g_lte_msg_queue.tail].msg_content = new_msg;
-    g_lte_msg_queue.queue[g_lte_msg_queue.tail].msg_len = msg_len;
+    s_lte_msg_queue.queue[s_lte_msg_queue.tail].msg_content = new_msg;
+    s_lte_msg_queue.queue[s_lte_msg_queue.tail].msg_len = msg_len;
 
-    // MY_LOG_INF("Enqueue message: %s", g_lte_msg_queue.queue[g_lte_msg_queue.tail].msg_content);
+    // MY_LOG_INF("Enqueue message: %s", s_lte_msg_queue.queue[s_lte_msg_queue.tail].msg_content);
 
     // 更新队列指针
-    g_lte_msg_queue.tail = (g_lte_msg_queue.tail + 1) % LTE_MSG_QUEUE_SIZE;
-    g_lte_msg_queue.count++;
+    s_lte_msg_queue.tail = (s_lte_msg_queue.tail + 1) % LTE_MSG_QUEUE_SIZE;
+    s_lte_msg_queue.count++;
 
 exit:
     return ret;
@@ -1002,9 +1002,9 @@ static void my_lte_process_queued_msgs(void)
     lte_pending_msg_t *pending_msg;
 
     // 遍历并发送所有排队的消息
-    while (g_lte_msg_queue.count > 0)
+    while (s_lte_msg_queue.count > 0)
     {
-        pending_msg = &g_lte_msg_queue.queue[g_lte_msg_queue.head];
+        pending_msg = &s_lte_msg_queue.queue[s_lte_msg_queue.head];
 
         // 直接发送到LTE模块，不修改消息内容
         if (pending_msg->msg_content != NULL)
@@ -1021,8 +1021,8 @@ static void my_lte_process_queued_msgs(void)
         }
 
         // 移动队列头部指针
-        g_lte_msg_queue.head = (g_lte_msg_queue.head + 1) % LTE_MSG_QUEUE_SIZE;
-        g_lte_msg_queue.count--;
+        s_lte_msg_queue.head = (s_lte_msg_queue.head + 1) % LTE_MSG_QUEUE_SIZE;
+        s_lte_msg_queue.count--;
     }
 }
 
@@ -1039,17 +1039,17 @@ static void my_lte_msg_queue_clear(void)
 
     for (i = 0; i < LTE_MSG_QUEUE_SIZE; i++)
     {
-        if (g_lte_msg_queue.queue[i].msg_content != NULL)
+        if (s_lte_msg_queue.queue[i].msg_content != NULL)
         {
-            MY_FREE_BUFFER(g_lte_msg_queue.queue[i].msg_content);
-            g_lte_msg_queue.queue[i].msg_content = NULL;
+            MY_FREE_BUFFER(s_lte_msg_queue.queue[i].msg_content);
+            s_lte_msg_queue.queue[i].msg_content = NULL;
         }
-        g_lte_msg_queue.queue[i].msg_len = 0;
+        s_lte_msg_queue.queue[i].msg_len = 0;
     }
 
-    g_lte_msg_queue.head = 0;
-    g_lte_msg_queue.tail = 0;
-    g_lte_msg_queue.count = 0;
+    s_lte_msg_queue.head = 0;
+    s_lte_msg_queue.tail = 0;
+    s_lte_msg_queue.count = 0;
 }
 
 /********************************************************************
@@ -1067,10 +1067,10 @@ static void my_lte_pwroff_handle(void)
     int ret;
 
     // OTA进行中 或 产测模式下，拒绝整个关机流程，保持所有状态不变
-    if (g_lte_ota_in_progress || g_lte_factory)
+    if (g_lte_ota_in_progress || s_lte_factory)
     {
         MY_LOG_INF("LTE pwr off blocked: ota=%d factory=%d",
-                    g_lte_ota_in_progress, g_lte_factory);
+                    g_lte_ota_in_progress, s_lte_factory);
         return;
     }
 
@@ -1094,7 +1094,7 @@ static void my_lte_pwroff_handle(void)
     // 强制清理状态，防止异常场景下信号量或标志位未复位
     s_lte_uart_ctx.tx_busy = false;
     k_sem_give(&s_TxDoneSem);
-    my_rb_clear(&g_lte_rb);
+    my_rb_clear(&s_lte_rb);
     my_lte_msg_queue_clear();
 
     // 断LTE的电源
@@ -1150,7 +1150,7 @@ static int my_lte_send_msg(const char *msg_content, uint16_t msg_len)
 *********************************************************************/
 void set_lte_boot_reason(lte_boot_reason_t reason)
 {
-    g_lteBootReason = reason;
+    s_lteBootReason = reason;
 }
 
 /********************************************************************
@@ -1162,7 +1162,7 @@ void set_lte_boot_reason(lte_boot_reason_t reason)
 *********************************************************************/
 lte_boot_reason_t get_lte_boot_reason(void)
 {
-    return g_lteBootReason;
+    return s_lteBootReason;
 }
 
 /********************************************************************
@@ -1178,7 +1178,7 @@ static void my_lte_task(void *p1, void *p2, void *p3)
     ARG_UNUSED(p2);
     ARG_UNUSED(p3);
 
-    MSG_S msg;
+    msg_t msg;
 
     MY_LOG_INF("LTE thread started");
 
@@ -1187,7 +1187,7 @@ static void my_lte_task(void *p1, void *p2, void *p3)
     {
         lte_send_command("OTA", "EXIT");
         gConfigParam.ota_config.ble_ota_reboot = false;
-        my_user_data_write(ZMS_ID_OTA_CONFIG, &gConfigParam.ota_config, sizeof(OtaConfig_t));
+        my_user_data_write(ZMS_ID_OTA_CONFIG, &gConfigParam.ota_config, sizeof(ota_config_t));
     }
 
     // 初始化时间指令,从4G网络获取时间同步
@@ -1199,7 +1199,7 @@ static void my_lte_task(void *p1, void *p2, void *p3)
 
     for (;;)
     {
-        my_recv_msg(&my_lte_msgq, (void *)&msg, sizeof(MSG_S), K_FOREVER);
+        my_recv_msg(&my_lte_msgq, (void *)&msg, sizeof(msg_t), K_FOREVER);
 
         switch (msg.msgID)
         {
@@ -1239,7 +1239,7 @@ static void my_lte_task(void *p1, void *p2, void *p3)
                     memset(read_buf, 0, sizeof(read_buf));
 
                     // 读取数据（无锁安全）
-                    len = my_rb_read(&g_lte_rb, read_buf, sizeof(read_buf));
+                    len = my_rb_read(&s_lte_rb, read_buf, sizeof(read_buf));
                     if (len > 0)
                     {
                         my_lte_handle_recv(read_buf, len);
@@ -1325,7 +1325,7 @@ static void lte_uart_cb(const struct device *dev, struct uart_event *evt, void *
             my_lte_uart_send(&evt->data.rx.buf[evt->data.rx.offset], evt->data.rx.len);
 #else
             // 将收到的数据写入循环缓冲区
-            my_rb_write(&g_lte_rb, &evt->data.rx.buf[evt->data.rx.offset], evt->data.rx.len);
+            my_rb_write(&s_lte_rb, &evt->data.rx.buf[evt->data.rx.offset], evt->data.rx.len);
             // 通知LTE线程读取循环缓冲区数据
             my_send_msg(MOD_MAIN, MOD_LTE, MY_MSG_LTE_REV);
 #endif
@@ -1345,7 +1345,7 @@ static void lte_uart_cb(const struct device *dev, struct uart_event *evt, void *
             // uart活跃时，才允许重新开启
             if (s_lte_uart_ctx.active)
             {
-                uart_rx_enable(dev, lte_rx_buf_1, LTE_UART_BUF_SIZE, 10 * USEC_PER_MSEC);
+                uart_rx_enable(dev, s_lte_rx_buf_1, LTE_UART_BUF_SIZE, 10 * USEC_PER_MSEC);
             }
             break;
 
@@ -1450,7 +1450,7 @@ int my_lte_uart_send(const uint8_t *data, uint16_t len)
 *********************************************************************/
 bool get_lte_power_state(void)
 {
-    return g_lte_power_state;
+    return s_lte_power_state;
 }
 
 /********************************************************************
@@ -1465,7 +1465,7 @@ int my_lte_pwr_on(bool on)
     int err;
 
     /* 检查当前电源状态，避免重复操作 */
-    if (g_lte_power_state == on)
+    if (s_lte_power_state == on)
     {
         /* 状态相同，无需操作 */
         MY_LOG_INF("LTE Power: already %s", on ? "ON" : "OFF");
@@ -1477,7 +1477,7 @@ int my_lte_pwr_on(bool on)
     if (err == 0)
     {
         /* 操作成功，更新状态 */
-        g_lte_power_state = on;
+        s_lte_power_state = on;
         MY_LOG_INF("LTE Power Control: %s", on ? "Power ON" : "Power OFF");
     }
     else
@@ -1499,11 +1499,11 @@ int my_lte_pwr_on(bool on)
 static char *my_handle_at_pcba_cmd(char **pParam, int nParam)
 {
     static char resp[256];
-    const lic_ff_struct *lic_ff;
-    const lic_gg_struct *lic_gg;
+    const lic_ff_t *lic_ff;
+    const lic_gg_t *lic_gg;
     uint16_t ECDH_GValue;
     uint8_t data_buff[64] = {0};
-    const GsmImei_t *gsmImei;
+    const gsm_imei_t *gsmImei;
     const uint8_t *edr_addr;
     uint8_t version = 0;
     int ret;
@@ -1954,9 +1954,9 @@ static void send_lte_pulse(void)
     char buf[10] = {0};
 
     // 脉冲计数器增加
-    g_lte_pulse_count++;
+    s_lte_pulse_count++;
     // 构造脉冲消息: LTE+PULSE=<脉冲计数器>
-    snprintf(buf, sizeof(buf), "%d", g_lte_pulse_count);
+    snprintf(buf, sizeof(buf), "%d", s_lte_pulse_count);
 
     #if RETRANSMIT_CHECK_ENABLED
         lte_send_cmd_with_retry("PULSE", buf);
@@ -1999,7 +1999,7 @@ static int my_lte_handle_power_on(char *data)
     my_get_str_at_pos(data, 1, ',', power_reason_str, sizeof(power_reason_str));
     my_get_str_at_pos(data, 2, ',', g_lte4GVersion, sizeof(g_lte4GVersion));
 
-    g_4GPoweronStatus = atoi(power_state_str);
+    s_4GPoweronStatus = atoi(power_state_str);
 
     MY_LOG_INF("LTE PWRON state=%s reason=%s ver=%s", power_state_str, power_reason_str, g_lte4GVersion);
 
@@ -2007,7 +2007,7 @@ static int my_lte_handle_power_on(char *data)
     g_bLteReady = 1;
 
     // 构造应答报文: LTE+PWRON=OK,<开机原因>,<蓝牙版本号>,<UTC>
-    if (g_4GPoweronStatus == LTE_PWR_STATE_ABNORMAL)
+    if (s_4GPoweronStatus == LTE_PWR_STATE_ABNORMAL)
     {
         // 异常重启时，开机原因默认填255
         boot_reason = LTE_BOOT_REASON_RESERVED;
@@ -2035,7 +2035,7 @@ static int my_lte_handle_power_on(char *data)
     my_lte_process_queued_msgs();
 
     // 启动心跳定时器
-    g_lte_pulse_count = 0;
+    s_lte_pulse_count = 0;
     my_start_timer(MY_TIMER_LTE_PULSE, 60 * 1000, true, lte_pulse_timer_handler);
 
     return 0;
@@ -2193,12 +2193,12 @@ static int my_lte_handle_fota(char *data)
 *********************************************************************/
 int my_lte_handle_cmd(char *data)
 {
-    at_cmd_struc at_cmd_msg = {0};
+    at_cmd_t at_cmd_msg = {0};
     int len = 0;
     char id[16] = {0};
     int ret = 0;
 
-    memset(g_lte_cmd_resp_buf, 0, sizeof(g_lte_cmd_resp_buf));
+    memset(s_lte_cmd_resp_buf, 0, sizeof(s_lte_cmd_resp_buf));
 
     //后续有参数
     if (my_get_str_at_pos(data, 0, ',', id, sizeof(id)))
@@ -2222,19 +2222,19 @@ int my_lte_handle_cmd(char *data)
         }
 
         // 拼接回复消息(LTE+CMD=id,cmd,resp)
-        snprintf(g_lte_cmd_resp_buf, LTE_CMD_RESPBUF_SIZE, "LTE+CMD=%s,%s,%s\r\n", id, at_cmd_msg.parm[0], at_cmd_msg.resp_msg);
-        g_lte_cmd_resp_buf[LTE_CMD_RESPBUF_SIZE - 1] = '\0'; // 确保字符串终止
+        snprintf(s_lte_cmd_resp_buf, LTE_CMD_RESPBUF_SIZE, "LTE+CMD=%s,%s,%s\r\n", id, at_cmd_msg.parm[0], at_cmd_msg.resp_msg);
+        s_lte_cmd_resp_buf[LTE_CMD_RESPBUF_SIZE - 1] = '\0'; // 确保字符串终止
     }
     else
     {
-        sprintf(g_lte_cmd_resp_buf,"LTE+CMD=%s,Missing command parameter\r\n", id);
+        sprintf(s_lte_cmd_resp_buf,"LTE+CMD=%s,Missing command parameter\r\n", id);
     }
 
-    MY_LOG_INF("lte handle cmd resp: %s", g_lte_cmd_resp_buf);
+    MY_LOG_INF("lte handle cmd resp: %s", s_lte_cmd_resp_buf);
 
     //直接回复
-    len = strlen(g_lte_cmd_resp_buf);
-    my_lte_send_msg(g_lte_cmd_resp_buf, len);
+    len = strlen(s_lte_cmd_resp_buf);
+    my_lte_send_msg(s_lte_cmd_resp_buf, len);
 
     return 0;
 }
@@ -2320,7 +2320,7 @@ out:
 //处理获取经纬度
 static int my_lte_handle_location_rsp(ble_rsp_result_t *result)
 {
-    MSG_S msg;
+    msg_t msg;
     ble_rsp_result_t *result_loc;
     // 动态分配内存存储回复消息
     MY_MALLOC_BUFFER(result_loc, sizeof(ble_rsp_result_t));
@@ -2532,11 +2532,11 @@ static int my_lte_handle_factory(char *data)
     {
         if (CMD_EQUAL(result, "ENTER"))
         {
-            g_lte_factory = 1;
+            s_lte_factory = 1;
         }
         else if (CMD_EQUAL(result, "EXIT"))
         {
-            g_lte_factory = 0;
+            s_lte_factory = 0;
         }
         memset(resp_buf, 0, sizeof(resp_buf));
         sprintf(resp_buf, "LTE+FACTORY=OK\r\n");
@@ -2682,7 +2682,7 @@ int my_lte_parse_cmd(char *cmd, int cmd_len)
     int i;
     char *p = cmd;
     int argc, num_commands;
-    MSG_S msg;
+    msg_t msg;
     char *lte_cmd;
     char *ble_cmd;
 
@@ -2906,7 +2906,7 @@ int my_lte_init(k_tid_t *tid)
     }
 
     // 初始化串口接收循环缓冲区
-    my_rb_init(&g_lte_rb, g_lte_rb_buf, LTE_UART_RB_SIZE);
+    my_rb_init(&s_lte_rb, s_lte_rb_buf, LTE_UART_RB_SIZE);
 
     // 初始值为1(表示UART空闲)
     k_sem_init(&s_TxDoneSem, 1, 1);
@@ -2934,7 +2934,7 @@ int my_lte_init(k_tid_t *tid)
     my_lte_msg_queue_init();
 
     /* 启动 LTE 线程 */
-    *tid = k_thread_create(&my_lte_task_data, my_lte_task_stack,
+    *tid = k_thread_create(&s_my_lte_task_data, my_lte_task_stack,
                            K_THREAD_STACK_SIZEOF(my_lte_task_stack),
                            my_lte_task, NULL, NULL, NULL,
                            MY_LTE_TASK_PRIORITY, 0, K_NO_WAIT);
@@ -2950,7 +2950,7 @@ int my_lte_init(k_tid_t *tid)
 #endif
 
     //重传检查定时器
-    k_timer_init(&retrans_check_timer, retrans_check_timer_handler, NULL);
+    k_timer_init(&s_retrans_check_timer, retrans_check_timer_handler, NULL);
 
     // 清空异步回复队列
     init_async_queue();

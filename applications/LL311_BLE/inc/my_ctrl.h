@@ -38,7 +38,7 @@ typedef enum
     BUZZER_EVENT_NFC_ACTIVATE,          // NFC激活提示: 蜂鸣器提示 100ms
 
     BUZZER_EVENT_READ_NFC_SUCCESS        // 9: NFC 读卡成功 200ms
-} my_buzzer_mode;
+} my_buzzer_mode_t;
 
 extern uint8_t g_nfc_card_index; // 处理NFC刷卡事件卡号索引
 extern int g_last_card_index;
@@ -49,14 +49,14 @@ typedef struct {
     int off_time;      // 停多久
     int repeat;        // 剩余次数（0表示无限;>0指定次数）
     uint8_t state;     // 0=关，1=开
-} BUZZER_Ctrl_S;
+} buzzer_ctrl_t;
 
 typedef enum
 {
     CLOSE_LED,   /* 关闭 LED */
     OPEN_LED,    /* 打开 LED */
     TOGGLE_LED,  /* 切换 LED 状态 */
-} MY_LED_CTRL_CMD;
+} my_led_ctrl_cmd_t;
 
 //定义了电池相关 LED ID，用于标识不同的 LED 指示灯
 typedef enum
@@ -64,7 +64,7 @@ typedef enum
     BATT_LED1,  /**< 电池 LED 1 */
     BATT_LED2,  /**< 电池 LED 2 */
     BATT_LED3,  /**< 电池 LED 3 */
-} MY_LED_ID;
+} my_led_id_t;
 
 typedef enum
 {
@@ -72,7 +72,7 @@ typedef enum
     LOCK_LED_NFC_START,          /**< NFC 启动模式，LED 以 200ms 亮、500ms 灭的频率闪烁*/
     LOCK_LED_LOCKED,   /**< 解锁中和上锁中模式，LED 以 200ms 亮、200ms 灭的频率持续闪烁 */
     LOCK_LED_UNLOCK,             /**< 已解锁模式，LED 以 500ms 亮、1000ms 灭的频率闪烁，持续 18 秒 */
-} MY_LOCK_LED_MODE;
+} my_lock_led_mode_t;
 
 // 用于刷卡执行联调指令（申请空间到蓝牙线程处理）
 typedef struct {
@@ -140,20 +140,20 @@ void handle_nfc_card_event(uint8_t *card_id, uint8_t id_len);
 
 /*********************************************************************
 **函数名称:  my_lock_led_set_mode
-**入口参数:  mode  ---        LED 显示模式，使用 MY_LOCK_LED_MODE 枚举类型
+**入口参数:  mode  ---        LED 显示模式，使用 my_lock_led_mode_t 枚举类型
 **出口参数:  无
 **函数功能:  该函数根据传入的模式参数，设置锁 LED 的不同显示模式，
 **          包括关闭、NFC启动、解锁中和上锁中和已解锁模式。
 *********************************************************************/
-void my_lock_led_set_mode(MY_LOCK_LED_MODE mode);
+void my_lock_led_set_mode(my_lock_led_mode_t mode);
 
 /*********************************************************************
 **函数名称:  my_lock_led_msg_send
-**入口参数:  mode  ---        LED 显示模式，使用 MY_LOCK_LED_MODE 枚举类型
+**入口参数:  mode  ---        LED 显示模式，使用 my_lock_led_mode_t 枚举类型
 **出口参数:  无
 **函数功能:  用于发送锁 LED 控制消息到控制模块，设置锁 LED 的显示模式
 *********************************************************************/
-void my_lock_led_msg_send(MY_LOCK_LED_MODE mode);
+void my_lock_led_msg_send(my_lock_led_mode_t mode);
 
 /********************************************************************
 **函数名称:  get_lockpin_insert_state
@@ -168,7 +168,7 @@ bool get_lockpin_insert_state(void);
 /**
 ********************************************************************
 **函数名称：  my_set_buzzer_mode
-**入口参数：  buzzer_mode - 蜂鸣器模式枚举值 (my_buzzer_mode)
+**入口参数：  buzzer_mode - 蜂鸣器模式枚举值 (my_buzzer_mode_t)
 **                        例如: BUZZER_STOP, BUZZER_EVENT_NFC_SUCCESS 等
 **出口参数：  无
 **函数功能：  设置蜂鸣器工作模式并触发控制任务处理
@@ -176,7 +176,7 @@ bool get_lockpin_insert_state(void);
 **功能描述：  向控制模块 (MOD_CTRL) 发送消息 (MY_MSG_CTRL_BUZZER_MODE)
 ********************************************************************
 */
-void my_set_buzzer_mode(my_buzzer_mode buzzer_mode);
+void my_set_buzzer_mode(my_buzzer_mode_t buzzer_mode);
 
 /********************************************************************
 **函数名称:  send_alarm_message_to_lte

@@ -45,8 +45,8 @@ typedef struct {
     int16_t z;
 } sensor_data_t;
 
-StateMachine sm_batch;                          // 状态机实例
-BayesianClassifier bayes_clf;                  /* 贝叶斯分类器实例 */
+state_machine_t sm_batch;                          // 状态机实例
+bayesian_classifier_t bayes_clf;                  /* 贝叶斯分类器实例 */
 
 /* 注册 G-Sensor 模块日志 */
 LOG_MODULE_REGISTER(my_gsensor, LOG_LEVEL_INF);
@@ -59,8 +59,8 @@ static const struct device *i2c_dev = DEVICE_DT_GET(I2C_NODE);
 static const struct gpio_dt_spec gsensor_pwr_gpio = GPIO_DT_SPEC_GET(GSENSOR_PWR_NODE, gpios);
 
 static const struct gpio_dt_spec gsen_int = GPIO_DT_SPEC_GET(DT_ALIAS(gsensor_int), gpios);
-static struct gpio_callback gsensor_gpio_cb;
-static gsensor_int_ctrl_t g_gsensor_int_ctrl;
+static struct gpio_callback s_gsensor_gpio_cb;
+static gsensor_int_ctrl_t s_gsensor_int_ctrl;
 
 /* LSM6DSV16X I2C 从机地址 */
 #define MY_LSM6DSV16X_I2C_ADDR 0x6A
@@ -103,11 +103,11 @@ static stmdev_ctx_t lsm_ctx = {
 };
 
 /* 消息队列定义 */
-K_MSGQ_DEFINE(my_gsensor_msgq, sizeof(MSG_S), 10, 4);
+K_MSGQ_DEFINE(my_gsensor_msgq, sizeof(msg_t), 10, 4);
 
 /* 线程数据与栈定义 */
 K_THREAD_STACK_DEFINE(my_gsensor_task_stack, MY_GSENSOR_TASK_STACK_SIZE);
-static struct k_thread my_gsensor_task_data;
+static struct k_thread s_my_gsensor_task_data;
 
 /* 电源管理回调函数前置声明 */
 static int gsensor_pm_init(void);
@@ -115,7 +115,7 @@ static int gsensor_pm_suspend(void);
 static int gsensor_pm_resume(void);
 
 /* GSENSOR 电源管理操作回调结构体 */
-static const struct PM_DEVICE_OPS gsensor_pm_ops =
+static const pm_device_ops_t gsensor_pm_ops =
 {
     .init = gsensor_pm_init,
     .suspend = gsensor_pm_suspend,
@@ -167,7 +167,7 @@ static void gsensor_int_timer_handler(struct k_timer *timer)
         my_send_msg(MOD_GSENSOR, MOD_GSENSOR, MY_MSG_GSENSOR_FIFO_INT);
     }
 
-    g_gsensor_int_ctrl.debouncing = false;
+    s_gsensor_int_ctrl.debouncing = false;
 }
 
 /********************************************************************
@@ -179,10 +179,10 @@ static void gsensor_int_timer_handler(struct k_timer *timer)
 *********************************************************************/
 static void gsensor_int_edge_handler(void)
 {
-    if (g_gsensor_int_ctrl.debouncing != true)
+    if (s_gsensor_int_ctrl.debouncing != true)
     {
-        g_gsensor_int_ctrl.debouncing = true;
-        k_timer_start(&g_gsensor_int_ctrl.timer, K_MSEC(GSENSOR_INT_DEBOUNCE_MS), K_NO_WAIT);
+        s_gsensor_int_ctrl.debouncing = true;
+        k_timer_start(&s_gsensor_int_ctrl.timer, K_MSEC(GSENSOR_INT_DEBOUNCE_MS), K_NO_WAIT);
     }
 }
 
@@ -408,7 +408,7 @@ bool lsm6dsvd_read_fifo_entry(uint8_t *tag, sensor_data_t *data)
 **函数功能:  分析GSENSOR数据，采用贝叶斯分类器判断运动状态,并更新状态机状态
 **返 回 值:  -1:表示数据不足, 0:表示数据可用
 *********************************************************************/
-static int analyze_gsensor_state(const struct gsensor_data *data)
+static int analyze_gsensor_state(const gsensor_data_t *data)
 {
     static gsensor_state_t last_state = STATE_UNKNOWN;
     float ax, ay, az;
@@ -417,7 +417,7 @@ static int analyze_gsensor_state(const struct gsensor_data *data)
     float rem = 0.0f;                     /* 剩余概率 */
     int m = 0;                            /* 模式索引 */
     int ret = 0;
-    ClassificationResult br = {0};
+    classification_result_t br = {0};
 
     // 1. 原始数据转换为实际加速度（单位：m/s^2）
     ax = data->acc_raw_x * LSM6DSVD_ACC_SENSITIVITY * 1e-3f * 10.0f;
@@ -733,7 +733,7 @@ static void gsensor_handle_read_msg(void)
     uint16_t entries = 0;
     uint8_t tag;
     sensor_data_t data;
-    struct gsensor_data sensor_data;
+    gsensor_data_t sensor_data;
 
     // 传感器未就绪
     if (g_gsensor_runtime_ctx.sensor_ready != true)
@@ -806,7 +806,7 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
     ARG_UNUSED(p2);
     ARG_UNUSED(p3);
 
-    MSG_S msg;
+    msg_t msg;
     int ret;
 
     /* 注册 G-Sensor 到电源管理模块 */
@@ -827,7 +827,7 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
 
     for (;;)
     {
-        my_recv_msg(&my_gsensor_msgq, (void *)&msg, sizeof(MSG_S), K_FOREVER);
+        my_recv_msg(&my_gsensor_msgq, (void *)&msg, sizeof(msg_t), K_FOREVER);
 
         switch (msg.msgID)
         {
@@ -1046,12 +1046,12 @@ int my_gsensor_init(k_tid_t *tid)
         return err;
     }
 
-    gpio_init_callback(&gsensor_gpio_cb, gsensor_gpio_isr, BIT(gsen_int.pin));
-    gpio_add_callback(gsen_int.port, &gsensor_gpio_cb);
+    gpio_init_callback(&s_gsensor_gpio_cb, gsensor_gpio_isr, BIT(gsen_int.pin));
+    gpio_add_callback(gsen_int.port, &s_gsensor_gpio_cb);
 
-    k_timer_init(&g_gsensor_int_ctrl.timer, gsensor_int_timer_handler, NULL);
-    g_gsensor_int_ctrl.debouncing = false;
-    g_gsensor_int_ctrl.wakeup_mode_enter_ms = 0;
+    k_timer_init(&s_gsensor_int_ctrl.timer, gsensor_int_timer_handler, NULL);
+    s_gsensor_int_ctrl.debouncing = false;
+    s_gsensor_int_ctrl.wakeup_mode_enter_ms = 0;
 
     /* 3. 初始化 LSM6DSV16X 传感器 */
     err = my_lsm6dsv16x_init();
@@ -1068,7 +1068,7 @@ int my_gsensor_init(k_tid_t *tid)
     my_init_msg_handler(MOD_GSENSOR, &my_gsensor_msgq);
 
     /* 5. 启动 G-Sensor 线程 */
-    *tid = k_thread_create(&my_gsensor_task_data, my_gsensor_task_stack,
+    *tid = k_thread_create(&s_my_gsensor_task_data, my_gsensor_task_stack,
                            K_THREAD_STACK_SIZEOF(my_gsensor_task_stack),
                            my_gsensor_task, NULL, NULL, NULL,
                            MY_GSENSOR_TASK_PRIORITY, 0, K_NO_WAIT);

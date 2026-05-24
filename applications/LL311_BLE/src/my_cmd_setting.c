@@ -40,38 +40,38 @@ uint8_t g_lte_cmdSource;
 // 用于存储整包返回的数据内容(仅在蓝牙线程使用)
 char g_resp_buf[RESP_STRING_LENGTH_MAX];
 
-static int remalm_cmd_handler(at_cmd_struc* msg);
-static int lockpincyt_cmd_handler(at_cmd_struc* msg);
-static int lockerr_cmd_handler(at_cmd_struc* msg);
-static int pinstat_cmd_handler(at_cmd_struc* msg);
-static int lockstat_cmd_handler(at_cmd_struc* msg);
-static int motdet_cmd_handler(at_cmd_struc* msg);
-static int batlevel_cmd_handler(at_cmd_struc* msg);
-static int chargesta_cmd_handler(at_cmd_struc* msg);
-static int shockalarm_cmd_handler(at_cmd_struc* msg);
-static int pwsave_cmd_handler(at_cmd_struc* msg);
-static int startr_cmd_handler(at_cmd_struc* msg);
-static int cbmt_cmd_handler(at_cmd_struc* msg);
-static int bt_crfpwr_cmd_handler(at_cmd_struc* msg);
-static int bt_updata_cmd_handler(at_cmd_struc* msg);
-static int tag_cmd_handler(at_cmd_struc* msg);
-static int jatag_cmd_handler(at_cmd_struc* msg);
-static int jgtag_cmd_handler(at_cmd_struc* msg);
-static int lockcd_cmd_handler(at_cmd_struc* msg);
-static int led_cmd_handler(at_cmd_struc* msg);
-static int buzzer_cmd_handler(at_cmd_struc* msg);
-static int nfctrig_cmd_handler(at_cmd_struc* msg);
-static int nfcauth_cmd_handler(at_cmd_struc* msg);
-static int btlog_cmd_handler(at_cmd_struc* msg);
-static int bkey_cmd_handler(at_cmd_struc* msg);
-static int bunlock_cmd_handler(at_cmd_struc* msg);
-static int block_cmd_handler(at_cmd_struc* msg);
-static int version_cmd_handler(at_cmd_struc* msg);
-static int modeset_cmd_handler(at_cmd_struc* msg);
-static int cunlock_cmd_handler(at_cmd_struc* msg);
-static int clock_cmd_handler(at_cmd_struc* msg);
-static int bt_parmac_cmd_handler(at_cmd_struc* msg);
-static int status_cmd_handler(at_cmd_struc* msg);
+static int remalm_cmd_handler(at_cmd_t* msg);
+static int lockpincyt_cmd_handler(at_cmd_t* msg);
+static int lockerr_cmd_handler(at_cmd_t* msg);
+static int pinstat_cmd_handler(at_cmd_t* msg);
+static int lockstat_cmd_handler(at_cmd_t* msg);
+static int motdet_cmd_handler(at_cmd_t* msg);
+static int batlevel_cmd_handler(at_cmd_t* msg);
+static int chargesta_cmd_handler(at_cmd_t* msg);
+static int shockalarm_cmd_handler(at_cmd_t* msg);
+static int pwsave_cmd_handler(at_cmd_t* msg);
+static int startr_cmd_handler(at_cmd_t* msg);
+static int cbmt_cmd_handler(at_cmd_t* msg);
+static int bt_crfpwr_cmd_handler(at_cmd_t* msg);
+static int bt_updata_cmd_handler(at_cmd_t* msg);
+static int tag_cmd_handler(at_cmd_t* msg);
+static int jatag_cmd_handler(at_cmd_t* msg);
+static int jgtag_cmd_handler(at_cmd_t* msg);
+static int lockcd_cmd_handler(at_cmd_t* msg);
+static int led_cmd_handler(at_cmd_t* msg);
+static int buzzer_cmd_handler(at_cmd_t* msg);
+static int nfctrig_cmd_handler(at_cmd_t* msg);
+static int nfcauth_cmd_handler(at_cmd_t* msg);
+static int btlog_cmd_handler(at_cmd_t* msg);
+static int bkey_cmd_handler(at_cmd_t* msg);
+static int bunlock_cmd_handler(at_cmd_t* msg);
+static int block_cmd_handler(at_cmd_t* msg);
+static int version_cmd_handler(at_cmd_t* msg);
+static int modeset_cmd_handler(at_cmd_t* msg);
+static int cunlock_cmd_handler(at_cmd_t* msg);
+static int clock_cmd_handler(at_cmd_t* msg);
+static int bt_parmac_cmd_handler(at_cmd_t* msg);
+static int status_cmd_handler(at_cmd_t* msg);
 
 static const at_cmd_attr_t at_cmd_attr_table[] =
 {
@@ -135,7 +135,7 @@ static const char* lte_cmd_attr_table[] =
 int lte_send_command(const char *cmd_name, const char *param)
 {
     char *p_msg = NULL;  // 动态分配的消息内存
-    MSG_S msg;  // 消息结构体
+    msg_t msg;  // 消息结构体
     int buf_len;
 
     // 检查LTE模块电源状态,如果关闭则先开启
@@ -182,7 +182,7 @@ int lte_send_command(const char *cmd_name, const char *param)
 //TODO: 不知道指令透传数据参数检查是否需要，后续再看
 #if 0
 
-static bool validate_lte_cmd_params(at_cmd_struc* msg)
+static bool validate_lte_cmd_params(at_cmd_t* msg)
 {
     // 根据命令名称验证参数
     if (strcmp(msg->parm[0], "MILEAGE") == 0)
@@ -271,7 +271,7 @@ static bool validate_lte_cmd_params(at_cmd_struc* msg)
 **函数功能:  LTE透传命令处理
 **返 回 值:  BLE_DATA_TYPE_PACKET_MULTIPLE 表示返回分包传输类型的数据
 *********************************************************************/
-static int lte_cmd_handler(at_cmd_struc* msg)
+static int lte_cmd_handler(at_cmd_t* msg)
 {
     char* lte_cmd_msg = NULL;    // LTE命令消息缓冲区
     uint16_t remaining;            // 响应消息缓冲区的剩余空间
@@ -357,7 +357,7 @@ static int lte_cmd_handler(at_cmd_struc* msg)
 **函数功能:  设置工作模式
 **返 回 值:  0 表示成功，-1 表示失败（模式非法）
 *********************************************************************/
-int set_work_mode(DeviceWorkModeConfig *p_workmode, MY_WORK_MODE mode)
+int set_work_mode(device_work_mode_config_t *p_workmode, work_mode_t mode)
 {
     if (p_workmode == NULL) return -1;
 
@@ -381,7 +381,7 @@ int set_work_mode(DeviceWorkModeConfig *p_workmode, MY_WORK_MODE mode)
 **函数功能:  设置长续航模式参数
 **返 回 值:  0 表示成功，-1 表示失败（参数非法）
 *********************************************************************/
-int set_long_battery_params(DeviceWorkModeConfig *p_workmode,
+int set_long_battery_params(device_work_mode_config_t *p_workmode,
                      uint16_t reporting_interval, const char *start_time_str)
 {
     int str_len;
@@ -460,7 +460,7 @@ int set_long_battery_params(DeviceWorkModeConfig *p_workmode,
 **函数功能:  设置智能模式参数
 **返 回 值:  0 表示成功，-1 表示失败（参数非法）
 *********************************************************************/
-int set_intelligent_params(DeviceWorkModeConfig *p_workmode, uint32_t static_int,
+int set_intelligent_params(device_work_mode_config_t *p_workmode, uint32_t static_int,
                      uint32_t land_int, uint32_t land_distance, uint32_t sea_int, uint8_t sleep_sw)
 {
     if (p_workmode == NULL) return -1;
@@ -642,7 +642,7 @@ int at_cmd_str_analyse(char *str_data, char **tar_data, int limit, char startCha
 **函数功能:  解析接收到的AT指令并执行对应的处理函数
 **返回值:    成功返回处理函数返回的BLE数据类型，未匹配指令或处理失败返回0
 *********************************************************************/
-uint16_t at_recv_cmd_handler(at_cmd_struc *at_cmd_msg)
+uint16_t at_recv_cmd_handler(at_cmd_t *at_cmd_msg)
 {
     char *data_ptr, split_ch = ',';
     int par_len;
@@ -706,7 +706,7 @@ uint16_t at_recv_cmd_handler(at_cmd_struc *at_cmd_msg)
 *********************************************************************/
 uint16_t run_nfc_cmd(char *card_id, uint8_t *index)
 {
-    at_cmd_struc at_cmd_msg;
+    at_cmd_t at_cmd_msg;
     uint16_t cmd_type = 0;
     int i = 0;
     uint8_t found = 0;
@@ -754,7 +754,7 @@ uint16_t run_nfc_cmd(char *card_id, uint8_t *index)
 **          返回非0不代表command执行成功，具体看对应的执行函数resp_msg回复
 **          返回2代表需要异步回复
 *********************************************************************/
-uint16_t run_lte_cmd(at_cmd_struc *at_cmd_msg)
+uint16_t run_lte_cmd(at_cmd_t *at_cmd_msg)
 {
 
     uint16_t cmd_type = 0;
@@ -791,7 +791,7 @@ uint16_t run_lte_cmd(at_cmd_struc *at_cmd_msg)
 **           <M> - 报警上报方式: 0-不上报，1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int remalm_cmd_handler(at_cmd_struc* msg)
+static int remalm_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     int m_value;
@@ -847,7 +847,7 @@ static int remalm_cmd_handler(at_cmd_struc* msg)
     gConfigParam.remalm_config.remalm_mode = (uint8_t)m_value;
 
     /* 保存配置 */
-    my_user_data_write(ZMS_ID_REM_ALM_CONFIG, &gConfigParam.remalm_config, sizeof(RemAlmConfig_t));
+    my_user_data_write(ZMS_ID_REM_ALM_CONFIG, &gConfigParam.remalm_config, sizeof(remalm_config_t));
 
     LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
 
@@ -875,7 +875,7 @@ param_invalid:
 **           [Buzzer] - 蜂鸣器报警方式: 0-不报警, 1-报警30s, 2-持续报警
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int lockpincyt_cmd_handler(at_cmd_struc* msg)
+static int lockpincyt_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     int report_value;
@@ -921,7 +921,7 @@ static int lockpincyt_cmd_handler(at_cmd_struc* msg)
     gConfigParam.lockpincyt_config.lockpincyt_buzzer = (uint8_t)buzzer_value;
 
     /* 保存配置 */
-    my_user_data_write(ZMS_ID_LOCK_PIN_CYT_CONFIG, &gConfigParam.lockpincyt_config, sizeof(LockPinCytConfig_t));
+    my_user_data_write(ZMS_ID_LOCK_PIN_CYT_CONFIG, &gConfigParam.lockpincyt_config, sizeof(lockpin_cyt_config_t));
 
     LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
 
@@ -951,7 +951,7 @@ param_invalid:
 **           [参数2](Buzzer) - 蜂鸣器报警方式: 0-不报警(默认), 1-报警30s, 2-持续报警
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int lockerr_cmd_handler(at_cmd_struc* msg)
+static int lockerr_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     int report_value;
@@ -997,7 +997,7 @@ static int lockerr_cmd_handler(at_cmd_struc* msg)
     gConfigParam.lockerr_config.lockerr_buzzer = (uint8_t)buzzer_value;
 
     /* 保存配置 */
-    my_user_data_write(ZMS_ID_LOCK_ERR_CONFIG, &gConfigParam.lockerr_config, sizeof(LockErrConfig_t));
+    my_user_data_write(ZMS_ID_LOCK_ERR_CONFIG, &gConfigParam.lockerr_config, sizeof(lock_err_config_t));
 
     LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
 
@@ -1027,7 +1027,7 @@ param_invalid:
 **           [Trigger] - 触发上报方式: 0-都不触发, 1-插入触发, 2-拔出触发, 3-插入拔出均触发
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int pinstat_cmd_handler(at_cmd_struc* msg)
+static int pinstat_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     int report_value;
@@ -1073,7 +1073,7 @@ static int pinstat_cmd_handler(at_cmd_struc* msg)
     gConfigParam.pinstat_config.pinstat_trigger = (uint8_t)trigger_value;
 
     /* 保存配置 */
-    my_user_data_write(ZMS_ID_PIN_STAT_CONFIG, &gConfigParam.pinstat_config, sizeof(PinStatConfig_t));
+    my_user_data_write(ZMS_ID_PIN_STAT_CONFIG, &gConfigParam.pinstat_config, sizeof(pin_stat_config_t));
 
     LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
 
@@ -1103,7 +1103,7 @@ param_invalid:
 **           [Trigger] - 触发上报方式: 0-都不触发, 1-上锁触发, 2-解锁触发, 3-上锁解锁均触发
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int lockstat_cmd_handler(at_cmd_struc* msg)
+static int lockstat_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     int report_value;
@@ -1149,7 +1149,7 @@ static int lockstat_cmd_handler(at_cmd_struc* msg)
     gConfigParam.lockstat_config.lockstat_trigger = (uint8_t)trigger_value;
 
     /* 保存配置 */
-    my_user_data_write(ZMS_ID_LOCK_STAT_CONFIG, &gConfigParam.lockstat_config, sizeof(LockStatConfig_t));
+    my_user_data_write(ZMS_ID_LOCK_STAT_CONFIG, &gConfigParam.lockstat_config, sizeof(lock_stat_config_t));
 
     LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
 
@@ -1182,7 +1182,7 @@ param_invalid:
 **           [Report Type] - 模式切换上报方式: 0-GPRS, 1-GPRS+SMS, 2-GPRS+SMS+CALL
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int motdet_cmd_handler(at_cmd_struc* msg)
+static int motdet_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     int static_g_value;
@@ -1263,7 +1263,7 @@ static int motdet_cmd_handler(at_cmd_struc* msg)
     gConfigParam.motdet_config.motdet_report_type = (uint8_t)report_type_value;
 
     /* 保存配置 */
-    my_user_data_write(ZMS_ID_MOT_DET_CONFIG, &gConfigParam.motdet_config, sizeof(MotDetConfig_t));
+    my_user_data_write(ZMS_ID_MOT_DET_CONFIG, &gConfigParam.motdet_config, sizeof(mot_det_config_t));
 
     LOG_INF("%s=>%s,%s,%s,%s,%s,%s", __func__, msg->parm[0], msg->parm[1],
            msg->parm[2], msg->parm[3], msg->parm[4], msg->parm[5]);
@@ -1298,7 +1298,7 @@ param_invalid:
 **默认设置: BATLEVEL,1,1,1,1,1,1#
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int batlevel_cmd_handler(at_cmd_struc* msg)
+static int batlevel_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     int param_values[6];
@@ -1348,7 +1348,7 @@ static int batlevel_cmd_handler(at_cmd_struc* msg)
     gConfigParam.batlevel_config.batlevel_full_rpt = (uint8_t)param_values[5];
 
     /* 保存配置 */
-    my_user_data_write(ZMS_ID_BAT_LEVEL_CONFIG, &gConfigParam.batlevel_config, sizeof(BatlevelConfig_t));
+    my_user_data_write(ZMS_ID_BAT_LEVEL_CONFIG, &gConfigParam.batlevel_config, sizeof(bat_level_config_t));
 
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
@@ -1376,7 +1376,7 @@ param_invalid:
 **参数说明:  [RPT] - 状态变化时的上报方式: 0-不上报, 1-GPRS(默认), 2-GPRS+SMS, 3-GPRS+SMS+CALL
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int chargesta_cmd_handler(at_cmd_struc* msg)
+static int chargesta_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     int report_value;
@@ -1413,7 +1413,7 @@ static int chargesta_cmd_handler(at_cmd_struc* msg)
     gConfigParam.batlevel_config.chargesta_report = (uint8_t)report_value;
 
     /* 保存配置 */
-    my_user_data_write(ZMS_ID_BAT_LEVEL_CONFIG, &gConfigParam.batlevel_config, sizeof(BatlevelConfig_t));
+    my_user_data_write(ZMS_ID_BAT_LEVEL_CONFIG, &gConfigParam.batlevel_config, sizeof(bat_level_config_t));
 
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
@@ -1442,7 +1442,7 @@ param_invalid:
 **           [Type of Alarm] - 告警上报方式: 0-GPRS, 1-GPRS+SMS, 2-GPRS+SMS+CALL
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int shockalarm_cmd_handler(at_cmd_struc* msg)
+static int shockalarm_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     int level_value;
@@ -1511,7 +1511,7 @@ static int shockalarm_cmd_handler(at_cmd_struc* msg)
     gConfigParam.shockalarm_config.shockalarm_type = (uint8_t)type_value;
 
     /* 保存配置 */
-    my_user_data_write(ZMS_ID_SHOCK_ALARM_CONFIG, &gConfigParam.shockalarm_config, sizeof(ShockAlarmConfig_t));
+    my_user_data_write(ZMS_ID_SHOCK_ALARM_CONFIG, &gConfigParam.shockalarm_config, sizeof(shock_alarm_config_t));
 
     LOG_INF("%s=>%s,%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3]);
 
@@ -1547,7 +1547,7 @@ void shutdown_timeout_timer(void *param)
 **参数说明:  ON - 开启低功耗运输状态
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int pwsave_cmd_handler(at_cmd_struc* msg)
+static int pwsave_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
 
@@ -1611,7 +1611,7 @@ static int pwsave_cmd_handler(at_cmd_struc* msg)
 **参数说明:  [A] - ON/OFF; ON:开启数据记录功能; OFF:关闭数据记录功能(默认)
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int startr_cmd_handler(at_cmd_struc* msg)
+static int startr_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
 
@@ -1661,7 +1661,7 @@ static int startr_cmd_handler(at_cmd_struc* msg)
     /* 所有参数验证通过,生成成功响应 */
     gConfigParam.startr_config.flag = FLAG_VALID;
     /* 保存配置 */
-    my_user_data_write(ZMS_ID_STARTR_CONFIG, &gConfigParam.startr_config, sizeof(StartrConfig_t));
+    my_user_data_write(ZMS_ID_STARTR_CONFIG, &gConfigParam.startr_config, sizeof(startr_config_t));
 
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
     LOG_INF("STARTR: SW=%d", gConfigParam.startr_config.startr_sw);
@@ -1688,7 +1688,7 @@ param_invalid:
 **           VBATTEMP: 电池温度(单位: ℃)
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int cbmt_cmd_handler(at_cmd_struc* msg)
+static int cbmt_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     uint16_t battery_voltage_mv;
@@ -1744,7 +1744,7 @@ static int cbmt_cmd_handler(at_cmd_struc* msg)
 **参数说明:  A - 功率值(默认：0)，单位dBm，可选值：-8,-4,0,3,5,7,12
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int bt_crfpwr_cmd_handler(at_cmd_struc* msg)
+static int bt_crfpwr_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     int a_value;
@@ -1782,7 +1782,7 @@ static int bt_crfpwr_cmd_handler(at_cmd_struc* msg)
     ble_set_tx_power(gConfigParam.ble_tx_power.tx_power);
 
     /* 保存配置 */
-    my_user_data_write(ZMS_ID_BLE_TX_POWER, &gConfigParam.ble_tx_power, sizeof(BleTxPower_t));
+    my_user_data_write(ZMS_ID_BLE_TX_POWER, &gConfigParam.ble_tx_power, sizeof(ble_tx_power_t));
 
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
@@ -1814,7 +1814,7 @@ param_invalid:
 **           Updata interval - 蓝牙唤醒间隔(默认：14400秒)，范围：1-86400秒
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int bt_updata_cmd_handler(at_cmd_struc* msg)
+static int bt_updata_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     int mode_value;
@@ -1900,7 +1900,7 @@ static int bt_updata_cmd_handler(at_cmd_struc* msg)
     gConfigParam.bt_updata_config.bt_updata_updata_interval = updata_interval_value;
 
     /* 保存配置 */
-    my_user_data_write(ZMS_ID_BT_UPDATA_CONFIG, &gConfigParam.bt_updata_config, sizeof(BtUpdataConfig_t));
+    my_user_data_write(ZMS_ID_BT_UPDATA_CONFIG, &gConfigParam.bt_updata_config, sizeof(bt_updata_config_t));
 
     LOG_INF("%s=>%s,%s,%s,%s,%s", __func__, msg->parm[0], msg->parm[1],
            msg->parm[2], msg->parm[3], msg->parm[4]);
@@ -1940,7 +1940,7 @@ param_invalid:
 **           Interval - 广播间隔(默认：2000ms)，范围：100ms-60000ms(分辨率100ms)
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int tag_cmd_handler(at_cmd_struc* msg)
+static int tag_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     int interval_value;
@@ -2005,7 +2005,7 @@ static int tag_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 保存配置 */
-    my_user_data_write(ZMS_ID_TAG_CONFIG, &gConfigParam.tag_config, sizeof(TagConfig_t));
+    my_user_data_write(ZMS_ID_TAG_CONFIG, &gConfigParam.tag_config, sizeof(tag_config_t));
 
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
     if (msg->parm_count == 2)
@@ -2040,7 +2040,7 @@ param_invalid:
 **           OFF：关闭
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int jatag_cmd_handler(at_cmd_struc* msg)
+static int jatag_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     int sw_value;
@@ -2093,7 +2093,7 @@ static int jatag_cmd_handler(at_cmd_struc* msg)
     my_no_con_start_adv(gConfigParam.tag_config.tag_sw);
 
     /* 保存配置 */
-    my_user_data_write(ZMS_ID_ADV_VALID, &gConfigParam.adv_valid_value, sizeof(AdvValidValue_t));
+    my_user_data_write(ZMS_ID_ADV_VALID, &gConfigParam.adv_valid_value, sizeof(adv_valid_value_t));
 
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
@@ -2121,7 +2121,7 @@ param_invalid:
 **           OFF：关闭
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int jgtag_cmd_handler(at_cmd_struc* msg)
+static int jgtag_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     int sw_value;
@@ -2174,7 +2174,7 @@ static int jgtag_cmd_handler(at_cmd_struc* msg)
     my_no_con_start_adv(gConfigParam.tag_config.tag_sw);
 
     /* 保存配置 */
-    my_user_data_write(ZMS_ID_ADV_VALID, &gConfigParam.adv_valid_value, sizeof(AdvValidValue_t));
+    my_user_data_write(ZMS_ID_ADV_VALID, &gConfigParam.adv_valid_value, sizeof(adv_valid_value_t));
 
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
@@ -2199,7 +2199,7 @@ param_invalid:
 **参数说明:  Count down time - 插入后上锁倒计时(单位：s)，范围：0-3600秒；设置为0代表不自动上锁，默认值：3秒
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int lockcd_cmd_handler(at_cmd_struc* msg)
+static int lockcd_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     int countdown_value;
@@ -2237,7 +2237,7 @@ static int lockcd_cmd_handler(at_cmd_struc* msg)
     gConfigParam.locked_config.lockcd_countdown = (uint16_t)countdown_value;
 
     /* 保存配置 */
-    my_user_data_write(ZMS_ID_LOCKED_CONFIG, &gConfigParam.locked_config, sizeof(LockedConfig_t));
+    my_user_data_write(ZMS_ID_LOCKED_CONFIG, &gConfigParam.locked_config, sizeof(locked_config_t));
 
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
@@ -2264,7 +2264,7 @@ param_invalid:
 **参数说明:  A - 设备LED是否全时显示，可选值：OFF(关闭，默认)、ON(开启)
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int led_cmd_handler(at_cmd_struc* msg)
+static int led_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     int display_value;
@@ -2326,7 +2326,7 @@ static int led_cmd_handler(at_cmd_struc* msg)
     gConfigParam.led_config.led_display = (uint8_t)display_value;
 
     /* 保存配置 */
-    my_user_data_write(ZMS_ID_LED_CONFIG, &gConfigParam.led_config, sizeof(LedConfig_t));
+    my_user_data_write(ZMS_ID_LED_CONFIG, &gConfigParam.led_config, sizeof(led_config_t));
 
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
@@ -2359,7 +2359,7 @@ param_invalid:
 **           5：一般报警音(200ms ON，300ms OFF，持续30s)
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int buzzer_cmd_handler(at_cmd_struc* msg)
+static int buzzer_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     int operator_value;
@@ -2397,7 +2397,7 @@ static int buzzer_cmd_handler(at_cmd_struc* msg)
     gConfigParam.buzzer_config.buzzer_operator = (uint8_t)operator_value;
 
     /* 保存配置 */
-    my_user_data_write(ZMS_ID_BUZZER_CONFIG, &gConfigParam.buzzer_config, sizeof(BuzzerConfig_t));
+    my_user_data_write(ZMS_ID_BUZZER_CONFIG, &gConfigParam.buzzer_config, sizeof(buzzer_config_t));
 
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
@@ -2435,7 +2435,7 @@ param_invalid:
 **
 ** 返 回 值:  BLE数据类型
 *********************************************************************/
-static int nfctrig_cmd_handler(at_cmd_struc* msg)
+static int nfctrig_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     int nfc_no_len;
@@ -2515,7 +2515,7 @@ static int nfctrig_cmd_handler(at_cmd_struc* msg)
         gConfigParam.nfctrig_config.flag = FLAG_VALID;
 
         /* 保存配置 */
-        my_user_data_write(ZMS_ID_NFTRIG_CONFIG, &gConfigParam.nfctrig_config, sizeof(NfctrigConfig_t));
+        my_user_data_write(ZMS_ID_NFTRIG_CONFIG, &gConfigParam.nfctrig_config, sizeof(nfctrig_config_t));
 
         LOG_INF("%s=>%s,%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3]);
 
@@ -2585,7 +2585,7 @@ static int nfctrig_cmd_handler(at_cmd_struc* msg)
             gConfigParam.nfctrig_config.flag = FLAG_VALID;
 
             /* 保存配置 */
-            my_user_data_write(ZMS_ID_NFTRIG_CONFIG, &gConfigParam.nfctrig_config, sizeof(NfctrigConfig_t));
+            my_user_data_write(ZMS_ID_NFTRIG_CONFIG, &gConfigParam.nfctrig_config, sizeof(nfctrig_config_t));
 
             LOG_INF("%s=>DEL ALL", __func__);
             msg->resp_length = snprintf(msg->resp_msg, remaining, "NFCTRIG Delete ALL Success.");
@@ -2618,7 +2618,7 @@ static int nfctrig_cmd_handler(at_cmd_struc* msg)
             {
                 gConfigParam.nfctrig_config.flag = FLAG_VALID;
                 /* 保存配置 */
-                my_user_data_write(ZMS_ID_NFTRIG_CONFIG, &gConfigParam.nfctrig_config, sizeof(NfctrigConfig_t));
+                my_user_data_write(ZMS_ID_NFTRIG_CONFIG, &gConfigParam.nfctrig_config, sizeof(nfctrig_config_t));
 
                 LOG_INF("%s=>DEL,%s", __func__, msg->parm[2]);
                 msg->resp_length = snprintf(msg->resp_msg, remaining, "NFCTRIG %s Delete Success.", msg->parm[2]);
@@ -2675,7 +2675,7 @@ param_invalid:
 **           Unlock Times - 可用次数，0表示不限次数，范围0/1~999
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int nfcauth_cmd_handler(at_cmd_struc* msg)
+static int nfcauth_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     int i;
@@ -2876,7 +2876,7 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
 
         gConfigParam.nfcauth_config.flag = FLAG_VALID;
         /* 保存配置 */
-        my_user_data_write(ZMS_ID_NFCAUTH_CONFIG, &gConfigParam.nfcauth_config, sizeof(NfcauthConfig_t));
+        my_user_data_write(ZMS_ID_NFCAUTH_CONFIG, &gConfigParam.nfcauth_config, sizeof(nfcauth_config_t));
 
         LOG_INF("%s=>SET,%s,%d,%d,%d,%u,%s,%s,%d,%u", __func__,
                 gConfigParam.nfcauth_config.nfcauth_cards[index].nfc_no,
@@ -2948,7 +2948,7 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
         gConfigParam.nfcauth_config.flag = FLAG_VALID;
 
         /* 保存配置 */
-        my_user_data_write(ZMS_ID_NFCAUTH_CONFIG, &gConfigParam.nfcauth_config, sizeof(NfcauthConfig_t));
+        my_user_data_write(ZMS_ID_NFCAUTH_CONFIG, &gConfigParam.nfcauth_config, sizeof(nfcauth_config_t));
 
         LOG_INF("%s=>PSET,%s", __func__, gConfigParam.nfcauth_config.nfcauth_cards[index].nfc_no);
 
@@ -2972,7 +2972,7 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
             gConfigParam.nfcauth_config.nfcauth_card_count = 0;
             gConfigParam.nfcauth_config.flag = FLAG_VALID;
             /* 保存配置 */
-            my_user_data_write(ZMS_ID_NFCAUTH_CONFIG, &gConfigParam.nfcauth_config, sizeof(NfcauthConfig_t));
+            my_user_data_write(ZMS_ID_NFCAUTH_CONFIG, &gConfigParam.nfcauth_config, sizeof(nfcauth_config_t));
 
             LOG_INF("%s=>DEL ALL", __func__);
             msg->resp_length = snprintf(msg->resp_msg, remaining, "NFC Delete ALL Success.");
@@ -2992,11 +2992,11 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
                     {
                         memcpy(&gConfigParam.nfcauth_config.nfcauth_cards[index],
                                &gConfigParam.nfcauth_config.nfcauth_cards[index + 1],
-                               sizeof(NfcAuthCard));
+                               sizeof(nfc_auth_card_t));
                     }
                     /* 清空最后一个位置 */
                     memset(&gConfigParam.nfcauth_config.nfcauth_cards[gConfigParam.nfcauth_config.nfcauth_card_count - 1],
-                           0, sizeof(NfcAuthCard));
+                           0, sizeof(nfc_auth_card_t));
                     gConfigParam.nfcauth_config.nfcauth_card_count--;
                     break;
                 }
@@ -3006,7 +3006,7 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
             {
                 gConfigParam.nfcauth_config.flag = FLAG_VALID;
                 /* 保存配置 */
-                my_user_data_write(ZMS_ID_NFCAUTH_CONFIG, &gConfigParam.nfcauth_config, sizeof(NfcauthConfig_t));
+                my_user_data_write(ZMS_ID_NFCAUTH_CONFIG, &gConfigParam.nfcauth_config, sizeof(nfcauth_config_t));
 
                 LOG_INF("%s=>DEL,%s", __func__, msg->parm[2]);
                 msg->resp_length = snprintf(msg->resp_msg, remaining, "NFC %s Delete Success.", msg->parm[2]);
@@ -3117,10 +3117,10 @@ param_invalid:
 **           无参数 - 查询当前状态
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int btlog_cmd_handler(at_cmd_struc* msg)
+static int btlog_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
-    BleLogConfig_t *config;
+    ble_log_config_t *config;
 
     remaining = RESP_STRING_LENGTH_MAX;
     config = my_param_get_ble_log_config();
@@ -3191,7 +3191,7 @@ param_invalid:
 **           [New key] - 新密钥，6位数字，不可与当前密钥相同
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int bkey_cmd_handler(at_cmd_struc* msg)
+static int bkey_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     uint8_t digit_len;
@@ -3213,7 +3213,7 @@ static int bkey_cmd_handler(at_cmd_struc* msg)
         strcpy(gConfigParam.bkey_config.bt_key, default_key);
         gConfigParam.bkey_config.flag = FLAG_VALID;
         /* 保存配置 */
-        my_user_data_write(ZMS_ID_BT_KEY_CONFIG, &gConfigParam.bkey_config, sizeof(BkeyConfig_t));
+        my_user_data_write(ZMS_ID_BT_KEY_CONFIG, &gConfigParam.bkey_config, sizeof(bkey_config_t));
 
         LOG_INF("%s=>RESET to default key", __func__);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "Key reset success.");
@@ -3276,7 +3276,7 @@ static int bkey_cmd_handler(at_cmd_struc* msg)
 
         gConfigParam.bkey_config.flag = FLAG_VALID;
         /* 保存配置 */
-        my_user_data_write(ZMS_ID_BT_KEY_CONFIG, &gConfigParam.bkey_config, sizeof(BkeyConfig_t));
+        my_user_data_write(ZMS_ID_BT_KEY_CONFIG, &gConfigParam.bkey_config, sizeof(bkey_config_t));
 
         LOG_INF("%s=>key updated:%s", __func__, gConfigParam.bkey_config.bt_key);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "Key update success.");
@@ -3306,7 +3306,7 @@ invalid_key:
 **参数说明:  [key] - 解锁固定密钥，由6位数字组成
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int bunlock_cmd_handler(at_cmd_struc* msg)
+static int bunlock_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     bool already_unlocked;
@@ -3388,7 +3388,7 @@ key_error:
 **参数说明:  [key] - 上锁固定密钥，由6位数字组成
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int block_cmd_handler(at_cmd_struc* msg)
+static int block_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     bool already_locked;
@@ -3483,7 +3483,7 @@ key_error:
 **返回值说明: [VERSION] [版本号]
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int version_cmd_handler(at_cmd_struc* msg)
+static int version_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;  // 响应消息缓冲区的剩余空间
     int ret;             // snprintf 函数的返回值
@@ -3531,10 +3531,10 @@ static int version_cmd_handler(at_cmd_struc* msg)
 **           MODESET,2,3600,60,500,14400,2  // 设置智能模式，各状态间隔和睡眠开关
 **           MODESET,3             // 切换到连续模式
 *********************************************************************/
-static int modeset_cmd_handler(at_cmd_struc* msg)
+static int modeset_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;  // 响应消息缓冲区的剩余空间
-    DeviceWorkModeConfig param_work_mode_config;  // 工作模式配置结构体
+    device_work_mode_config_t param_work_mode_config;  // 工作模式配置结构体
 
     remaining = RESP_STRING_LENGTH_MAX;  // 计算响应消息缓冲区的大小
 
@@ -3559,7 +3559,7 @@ static int modeset_cmd_handler(at_cmd_struc* msg)
 
         gConfigParam.device_workmode_config.flag = FLAG_VALID;
         /* 保存配置 */
-        my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(DeviceWorkModeConfig));
+        my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(device_work_mode_config_t));
 
         /* 生成成功响应 */
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
@@ -3600,7 +3600,7 @@ static int modeset_cmd_handler(at_cmd_struc* msg)
         gConfigParam.device_workmode_config.workmode_config.continuous_tracking.reporting_interval_dis = param_work_mode_config.continuous_tracking.reporting_interval_dis;
         gConfigParam.device_workmode_config.flag = FLAG_VALID;
         /* 保存配置 */
-        my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(DeviceWorkModeConfig));
+        my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(device_work_mode_config_t));
 
         if (gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_CONTINUOUS)
         {
@@ -3632,7 +3632,7 @@ static int modeset_cmd_handler(at_cmd_struc* msg)
 
         gConfigParam.device_workmode_config.flag = FLAG_VALID;
         /* 保存配置 */
-        my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(DeviceWorkModeConfig));
+        my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(device_work_mode_config_t));
 
         if (gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_LONG_LIFE)
         {
@@ -3675,7 +3675,7 @@ static int modeset_cmd_handler(at_cmd_struc* msg)
 
         gConfigParam.device_workmode_config.flag = FLAG_VALID;
         /* 保存配置 */
-        my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(DeviceWorkModeConfig));
+        my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(device_work_mode_config_t));
 
         if (gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_SMART)
         {
@@ -3722,7 +3722,7 @@ param_invalid:
 **             2: 需异步回复
 **返 回 值:  int
 *********************************************************************/
-static int cunlock_cmd_handler(at_cmd_struc* msg)
+static int cunlock_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     int delay_time = 0;
@@ -3925,7 +3925,7 @@ param_invalid:
 **             2: 需异步回复
 **返 回 值:  int
 *********************************************************************/
-static int clock_cmd_handler(at_cmd_struc *msg)
+static int clock_cmd_handler(at_cmd_t *msg)
 {
     uint16_t remaining;
     bool pin_inserted;
@@ -3999,7 +3999,7 @@ static int clock_cmd_handler(at_cmd_struc *msg)
 **           ALL             - 删除全部已配置MAC地址
 **返 回 值:  BLE_DATA_TYPE_AT_CMD
 *********************************************************************/
-static int bt_parmac_cmd_handler(at_cmd_struc* msg)
+static int bt_parmac_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     uint8_t hex_buf[6];
@@ -4055,7 +4055,7 @@ static int bt_parmac_cmd_handler(at_cmd_struc* msg)
         // 更新配置参数
         gConfigParam.bparmac_config.flag = FLAG_VALID;
         // 保存配置参数到flash
-        my_user_data_write(ZMS_ID_BT_PARMAC_CONFIG, &gConfigParam.bparmac_config, sizeof(BparmacConfig_t));
+        my_user_data_write(ZMS_ID_BT_PARMAC_CONFIG, &gConfigParam.bparmac_config, sizeof(bparmac_config_t));
 
         LOG_INF("ADD %d MACs, total: %d", add_count, gConfigParam.bparmac_config.bt_parmac_mac_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_ADD_OK", msg->parm[0]);
@@ -4077,7 +4077,7 @@ static int bt_parmac_cmd_handler(at_cmd_struc* msg)
             // 更新配置参数
             gConfigParam.bparmac_config.flag = FLAG_VALID;
             // 保存配置参数到flash
-            my_user_data_write(ZMS_ID_BT_PARMAC_CONFIG, &gConfigParam.bparmac_config, sizeof(BparmacConfig_t));
+            my_user_data_write(ZMS_ID_BT_PARMAC_CONFIG, &gConfigParam.bparmac_config, sizeof(bparmac_config_t));
             return BLE_DATA_TYPE_PACKET_MULTIPLE;
         }
         // BT_PARMAC,DEL,[MAC]#
@@ -4106,7 +4106,7 @@ static int bt_parmac_cmd_handler(at_cmd_struc* msg)
             // 更新配置参数
             gConfigParam.bparmac_config.flag = FLAG_VALID;
             // 保存配置参数到flash
-            my_user_data_write(ZMS_ID_BT_PARMAC_CONFIG, &gConfigParam.bparmac_config, sizeof(BparmacConfig_t));
+            my_user_data_write(ZMS_ID_BT_PARMAC_CONFIG, &gConfigParam.bparmac_config, sizeof(bparmac_config_t));
         }
     }
     else if (strcmp(msg->parm[1], "CHECK") == 0)
@@ -4166,7 +4166,7 @@ param_invalid:
 **指令格式:  STATUS#
 **返 回 值:  BLE_DATA_TYPE_AT_CMD
 *********************************************************************/
-static int status_cmd_handler(at_cmd_struc* msg)
+static int status_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;  // 响应消息缓冲区的剩余空间
     int ret;             // snprintf 函数的返回值

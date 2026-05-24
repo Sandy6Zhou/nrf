@@ -288,7 +288,7 @@ static float autocorr_max(const float *signal, int n, int max_lag)
     4. 频域特征: FFT主频率/频带能量比
     5. 周期性特征: 自相关峰值
 *********************************************************************/
-void extract_features(const IMUReading *readings, int n, Features *feat)
+void extract_features(const imu_reading_t *readings, int n, features_t *feat)
 {
     int i = 0;       // 循环索引
     int fft_n = 0;   /* FFT长度 */
@@ -497,7 +497,7 @@ void extract_features(const IMUReading *readings, int n, Features *feat)
     [6] acc_periodicity:  加速度周期性(海运最高)
     [7] gyro_periodicity: 角速度周期性(海运最高)
 *********************************************************************/
-static void features_to_vector(const Features *f, float vec[FEATURE_DIM])
+static void features_to_vector(const features_t *f, float vec[FEATURE_DIM])
 {
     vec[0] = f->acc_std;             /* 加速度标准差 */
     vec[1] = f->acc_linear_rms;      /* 线性加速度RMS */
@@ -534,7 +534,7 @@ static const int transition_allowed[NUM_MODES][NUM_MODES] =
 **函数功能:  初始化状态机
 **  默认状态为静止, 概率全部分配给静止
 *********************************************************************/
-void sm_init(StateMachine *sm)
+void sm_init(state_machine_t *sm)
 {
     sm->current_mode = STATE_UNKNOWN;     /* 初始状态: 未知 */
     sm->candidate_mode = STATE_UNKNOWN;   /* 候选模式: 未知 */
@@ -612,7 +612,7 @@ int mode_to_best(gsensor_state_t mode)
 **    2. 非法转移拦截: Still不能直接跳到Sea
 **    3. N次确认: 连续N次检测到新模式才切换
 *********************************************************************/
-gsensor_state_t sm_update(StateMachine *sm, const float raw_prob[NUM_MODES])
+gsensor_state_t sm_update(state_machine_t *sm, const float raw_prob[NUM_MODES])
 {
     int m = 0;    /* 模式索引 */
     int best = 0; /* 最大概率模式索引 */
@@ -695,7 +695,7 @@ gsensor_state_t sm_update(StateMachine *sm, const float raw_prob[NUM_MODES])
 **函数功能:  初始化贝叶斯分类器
 **  先验概率设为均匀分布(1/3)
 *********************************************************************/
-void bayes_init(BayesianClassifier *bclf)
+void bayes_init(bayesian_classifier_t *bclf)
 {
     int m = 0;          // 模式索引
 
@@ -720,7 +720,7 @@ void bayes_init(BayesianClassifier *bclf)
 **    - 如果上一时刻是Land:  大概率继续Land, 可能转Still或Sea
 **    - 如果上一时刻是Sea:   大概率继续Sea, 可能转Land, 不可能转Still
 *********************************************************************/
-void bayes_set_dynamic_prior(BayesianClassifier *bclf, gsensor_state_t prev_mode)
+void bayes_set_dynamic_prior(bayesian_classifier_t *bclf, gsensor_state_t prev_mode)
 {
     switch (prev_mode)
     {                                       /* 根据上一时刻模式 */
@@ -756,19 +756,19 @@ void bayes_set_dynamic_prior(BayesianClassifier *bclf, gsensor_state_t prev_mode
 **入口参数:  readings  ---        IMU数据指针
 **入口参数:  n  ---        数据长度
 **函数功能:  贝叶斯分类器核心推理函数
-**出口参数: ClassificationResult(模式+置信度+特征)
+**出口参数: classification_result_t(模式+置信度+特征)
 **贝叶斯定理: P(mode|features) = P(features|mode) * P(mode) / P(features)
 **    P(features|mode) = 似然 = prod_d Gaussian(x_d; mean_d, std_d)
 **    P(mode) = 先验(动态调整)
 **    对数空间计算避免下溢: log_posterior = log_lik + log_prior
 *********************************************************************/
-ClassificationResult classify_bayesian(BayesianClassifier *bclf,
-                                       const IMUReading *readings, int n)
+classification_result_t classify_bayesian(bayesian_classifier_t *bclf,
+                                       const imu_reading_t *readings, int n)
 {
     int m = 0;                            /* 模式索引 */
     int d = 0;                            /* 特征维度索引 */
-    Features feat;                        /* 特征结构体 */
-    ClassificationResult result = {STATE_UNKNOWN, 0.0, {0}};        /* 返回结果 */
+    features_t feat;                        /* 特征结构体 */
+    classification_result_t result = {STATE_UNKNOWN, 0.0, {0}};        /* 返回结果 */
     float vec[FEATURE_DIM];              /* 8维特征向量 */
     float log_posterior[NUM_MODES]; /* 各模式对数后验 */
     float log_lik = 0; /* 对数似然累加器 */

@@ -25,8 +25,8 @@
 LOG_MODULE_REGISTER(my_ble_log, LOG_LEVEL_INF);
 
 /* 蓝牙日志发送就绪标志和时间戳 */
-static bool ble_log_ready = false;
-static int64_t ble_log_ready_time = 0;
+static bool s_ble_log_ready = false;
+static int64_t s_ble_log_ready_time = 0;
 #define BLE_LOG_READY_DELAY_MS  1000    /* 就绪后等待1秒才允许发送 */
 
 /********************************************************************
@@ -42,7 +42,7 @@ static int64_t ble_log_ready_time = 0;
 *********************************************************************/
 bool ble_log_check_enabled(uint8_t mod_id, uint8_t level)
 {
-    BleLogConfig_t *config;
+    ble_log_config_t *config;
 
     config = my_param_get_ble_log_config();
 
@@ -101,15 +101,15 @@ bool ble_log_check_enabled(uint8_t mod_id, uint8_t level)
 *********************************************************************/
 void ble_log_set_ready(bool ready)
 {
-    ble_log_ready = ready;
+    s_ble_log_ready = ready;
     if (ready)
     {
-        ble_log_ready_time = k_uptime_get();
+        s_ble_log_ready_time = k_uptime_get();
         LOG_INF("BLE log will be ready after %d ms", BLE_LOG_READY_DELAY_MS);
     }
     else
     {
-        ble_log_ready_time = 0;
+        s_ble_log_ready_time = 0;
     }
 }
 
@@ -122,13 +122,13 @@ void ble_log_set_ready(bool ready)
 *********************************************************************/
 bool ble_log_is_ready(void)
 {
-    if (!ble_log_ready)
+    if (!s_ble_log_ready)
     {
         return false;
     }
 
     /* 检查是否已过延迟时间 */
-    if (k_uptime_get() - ble_log_ready_time < BLE_LOG_READY_DELAY_MS)
+    if (k_uptime_get() - s_ble_log_ready_time < BLE_LOG_READY_DELAY_MS)
     {
         return false;
     }

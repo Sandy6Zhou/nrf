@@ -27,7 +27,7 @@ LOG_MODULE_REGISTER(my_nfc, LOG_LEVEL_INF);
 static const struct gpio_dt_spec nfc_npd_gpio = GPIO_DT_SPEC_GET(NFC_NPD_NODE, gpios);
 
 /* 内部状态管理 */
-struct my_nfc_context
+struct my_nfc_context_t
 {
     bool is_working;
     bool card_present;
@@ -39,19 +39,19 @@ struct my_nfc_context
 #define NFC_DEFAULT_POLL_TIMEOUT_S 10
 
 /* 定时器用于轮询超时 */
-static struct k_timer nfc_poll_timer;
+static struct k_timer s_nfc_poll_timer;
 
-static struct my_nfc_context nfc_ctx;
+static struct my_nfc_context_t s_nfc_ctx;
 
 /* 消息队列定义 */
-K_MSGQ_DEFINE(my_nfc_msgq, sizeof(MSG_S), 10, 4);
+K_MSGQ_DEFINE(my_nfc_msgq, sizeof(msg_t), 10, 4);
 
 /* 线程数据与栈定义 */
 K_THREAD_STACK_DEFINE(my_nfc_task_stack, MY_NFC_TASK_STACK_SIZE);
-static struct k_thread my_nfc_task_data;
+static struct k_thread s_my_nfc_task_data;
 
 /* 卡片信息缓冲区 */
-static struct nfc_card_info card_info_buffer;
+static struct nfc_card_info s_card_info_buffer;
 
 /* 电源管理回调函数前置声明 */
 static int nfc_pm_init(void);
@@ -59,7 +59,7 @@ static int nfc_pm_suspend(void);
 static int nfc_pm_resume(void);
 
 /* NFC 电源管理操作回调结构体 */
-static const struct PM_DEVICE_OPS nfc_pm_ops = {
+static const pm_device_ops_t s_nfc_pm_ops = {
     .init = nfc_pm_init,
     .suspend = nfc_pm_suspend,
     .resume = nfc_pm_resume,
@@ -97,22 +97,22 @@ static void my_nfc_card_detected_cb(nfc_card_type_t type,
 {
     MY_LOG_DBG("Card detected, type: %d", type);
     MY_LOG_DBG("UID: %02X%02X%02X%02X", uid[0], uid[1], uid[2], uid[3]);
-    nfc_ctx.card_present = true;
+    s_nfc_ctx.card_present = true;
 
     /* 保存卡片信息 */
-    card_info_buffer.type = type;
-    card_info_buffer.uid_len = uid_len;
-    memcpy(card_info_buffer.uid, uid, uid_len);
-    card_info_buffer.data_len = data_len;
+    s_card_info_buffer.type = type;
+    s_card_info_buffer.uid_len = uid_len;
+    memcpy(s_card_info_buffer.uid, uid, uid_len);
+    s_card_info_buffer.data_len = data_len;
     if (data_len > 0)
     {
-        memcpy(card_info_buffer.data, data, data_len);
+        memcpy(s_card_info_buffer.data, data, data_len);
     }
 
     /* 发送卡片事件消息到主任务 */
-    MSG_S msg;
+    msg_t msg;
     msg.msgID = MY_MSG_NFC_CARD_EVENT;
-    msg.pData = &card_info_buffer;
+    msg.pData = &s_card_info_buffer;
     msg.DataLen = sizeof(struct nfc_card_info);
     my_send_msg_data(MOD_NFC, MOD_MAIN, &msg);
 
@@ -135,24 +135,24 @@ static void my_nfc_task(void *p1, void *p2, void *p3)
     ARG_UNUSED(p2);
     ARG_UNUSED(p3);
 
-    MSG_S msg;
+    msg_t msg;
     uint32_t timeout_ms;
     int ret;
 
     MY_LOG_INF("NFC thread started");
 
     /* 初始化定时器 */
-    k_timer_init(&nfc_poll_timer, my_nfc_poll_timeout_handler, NULL);
+    k_timer_init(&s_nfc_poll_timer, my_nfc_poll_timeout_handler, NULL);
 
     MY_LOG_INF("NFC timer initialized");
 
     /* 初始化状态, 默认不工作 */
-    nfc_ctx.is_working = false;
-    nfc_ctx.card_present = false;
-    nfc_ctx.in_hpd_mode = false;
+    s_nfc_ctx.is_working = false;
+    s_nfc_ctx.card_present = false;
+    s_nfc_ctx.in_hpd_mode = false;
 
     /* 注册 NFC 到电源管理模块 */
-    ret = my_pm_device_register(MY_PM_DEV_NFC, &nfc_pm_ops);
+    ret = my_pm_device_register(MY_PM_DEV_NFC, &s_nfc_pm_ops);
     if (ret < 0)
     {
         MY_LOG_ERR("NFC PM registration failed");
@@ -165,12 +165,12 @@ static void my_nfc_task(void *p1, void *p2, void *p3)
 
     for (;;)
     {
-        my_recv_msg(&my_nfc_msgq, (void *)&msg, sizeof(MSG_S), K_FOREVER);
+        my_recv_msg(&my_nfc_msgq, (void *)&msg, sizeof(msg_t), K_FOREVER);
 
         switch (msg.msgID)
         {
             case MY_MSG_NFC_START_POLL:
-                if (nfc_ctx.is_working)
+                if (s_nfc_ctx.is_working)
                 {
                     MY_LOG_INF("NFC polling already running");
                     break;
@@ -189,18 +189,18 @@ static void my_nfc_task(void *p1, void *p2, void *p3)
                 /* 从消息中获取超时时间（秒） */
                 if (msg.DataLen >= sizeof(uint32_t))
                 {
-                    nfc_ctx.poll_timeout_s = *(uint32_t *)msg.pData;
+                    s_nfc_ctx.poll_timeout_s = *(uint32_t *)msg.pData;
                 }
                 else
                 {
-                    nfc_ctx.poll_timeout_s = NFC_DEFAULT_POLL_TIMEOUT_S;
+                    s_nfc_ctx.poll_timeout_s = NFC_DEFAULT_POLL_TIMEOUT_S;
                 }
-                timeout_ms = nfc_ctx.poll_timeout_s * 1000;
-                MY_LOG_INF("Starting NFC polling for %d s", nfc_ctx.poll_timeout_s);
-                nfc_ctx.is_working = true;
-                nfc_ctx.card_present = false;
+                timeout_ms = s_nfc_ctx.poll_timeout_s * 1000;
+                MY_LOG_INF("Starting NFC polling for %d s", s_nfc_ctx.poll_timeout_s);
+                s_nfc_ctx.is_working = true;
+                s_nfc_ctx.card_present = false;
                 nfc_api_poll_start();
-				k_timer_start(&nfc_poll_timer, K_MSEC(timeout_ms), K_NO_WAIT);
+				k_timer_start(&s_nfc_poll_timer, K_MSEC(timeout_ms), K_NO_WAIT);
 
                 /* 开始轮询后闪烁LED*/
                 my_lock_led_msg_send(LOCK_LED_NFC_START);
@@ -208,14 +208,14 @@ static void my_nfc_task(void *p1, void *p2, void *p3)
 
             case MY_MSG_NFC_STOP_POLL:
             case MY_MSG_NFC_POLL_TIMEOUT:
-                if (!nfc_ctx.is_working)
+                if (!s_nfc_ctx.is_working)
                 {
                     MY_LOG_INF("NFC polling already stopped");
                     return;
                 }
 
                 /* 停止轮询定时器 */
-                k_timer_stop(&nfc_poll_timer);
+                k_timer_stop(&s_nfc_poll_timer);
 
                 /* 关闭 NFC 指示灯 */
                 my_lock_led_msg_send(LOCK_LED_CLOSE);
@@ -227,7 +227,7 @@ static void my_nfc_task(void *p1, void *p2, void *p3)
                 break;
 
             case MY_MSG_NFC_LED_SHOW:
-                if (nfc_ctx.is_working)
+                if (s_nfc_ctx.is_working)
                 {
                     my_lock_led_msg_send(LOCK_LED_NFC_START);
                     MY_LOG_INF("NFC polling already running");
@@ -257,7 +257,7 @@ static int nfc_pm_resume(void)
 
     /* NPD 拉高，唤醒芯片 */
     gpio_pin_set_dt(&nfc_npd_gpio, 1);
-    nfc_ctx.in_hpd_mode = false;
+    s_nfc_ctx.in_hpd_mode = false;
 
     /* 等待芯片稳定（datasheet 要求至少 5ms） */
     k_msleep(5);
@@ -281,7 +281,7 @@ static int nfc_pm_resume(void)
         MY_LOG_ERR("Failed to reinitialize NFC API after %d attempts: %d", retry_count, result);
         /* 恢复失败，重新进入低功耗 */
         gpio_pin_set_dt(&nfc_npd_gpio, 0);
-        nfc_ctx.in_hpd_mode = true;
+        s_nfc_ctx.in_hpd_mode = true;
         return -EIO;
     }
 
@@ -301,16 +301,16 @@ static int nfc_pm_resume(void)
 static int nfc_pm_suspend(void)
 {
     /* 停止轮询 */
-    if (nfc_ctx.is_working)
+    if (s_nfc_ctx.is_working)
     {
-        k_timer_stop(&nfc_poll_timer);
+        k_timer_stop(&s_nfc_poll_timer);
         nfc_api_poll_stop();
-        nfc_ctx.is_working = false;
+        s_nfc_ctx.is_working = false;
     }
 
     /* NPD 拉低，芯片进入 600nA 低功耗模式 */
     gpio_pin_set_dt(&nfc_npd_gpio, 0);
-    nfc_ctx.in_hpd_mode = true;
+    s_nfc_ctx.in_hpd_mode = true;
 
     MY_LOG_INF("NFC suspended (NPD low, ~600nA)");
     return 0;
@@ -347,7 +347,7 @@ static int nfc_pm_init(void)
     }
 
     /* 标记为已进入低功耗模式 */
-    nfc_ctx.in_hpd_mode = true;
+    s_nfc_ctx.in_hpd_mode = true;
 
     MY_LOG_INF("NFC initialized in low power mode (600nA)");
     return 0;
@@ -362,7 +362,7 @@ static int nfc_pm_init(void)
 *********************************************************************/
 int my_nfc_start_poll(uint32_t timeout_s)
 {
-    MSG_S msg;
+    msg_t msg;
     static uint32_t timeout_storage; /* 静态存储，确保消息处理时有效 */
 
     if (timeout_s == 0)
@@ -406,16 +406,16 @@ int my_nfc_stop_poll(void)
 int my_nfc_init(k_tid_t *tid)
 {
     /* 初始化状态 */
-    nfc_ctx.is_working = false;
-    nfc_ctx.card_present = false;
-    nfc_ctx.in_hpd_mode = false;
-    nfc_ctx.poll_timeout_s = NFC_DEFAULT_POLL_TIMEOUT_S;
+    s_nfc_ctx.is_working = false;
+    s_nfc_ctx.card_present = false;
+    s_nfc_ctx.in_hpd_mode = false;
+    s_nfc_ctx.poll_timeout_s = NFC_DEFAULT_POLL_TIMEOUT_S;
 
     /* 初始化消息队列 */
     my_init_msg_handler(MOD_NFC, &my_nfc_msgq);
 
     /* 启动 NFC 线程 */
-    *tid = k_thread_create(&my_nfc_task_data, my_nfc_task_stack,
+    *tid = k_thread_create(&s_my_nfc_task_data, my_nfc_task_stack,
                            K_THREAD_STACK_SIZEOF(my_nfc_task_stack),
                            my_nfc_task, NULL, NULL, NULL,
                            MY_NFC_TASK_PRIORITY, 0, K_NO_WAIT);

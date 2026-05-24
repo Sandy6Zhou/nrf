@@ -39,7 +39,7 @@ typedef enum
     MY_PM_DEV_BLE,     /* BLE模块：由协议栈管理，仅作状态同步 */
     MY_PM_DEV_CTRL,    /* Control模块：LED、蜂鸣器等 */
     MY_PM_DEV_MAX      /* 最大设备数量 */
-} MY_PM_DEV_ID_T;
+} my_pm_dev_id_t;
 
 /* ========== 电源管理状态枚举 ========== */
 typedef enum
@@ -47,22 +47,20 @@ typedef enum
     MY_PM_STATE_NOT_INIT = 0, /* 未初始化 */
     MY_PM_STATE_SUSPENDED,    /* 已初始化但挂起（低功耗就绪） */
     MY_PM_STATE_RESUME,       /* 已初始化并正常工作 */
-} MY_PM_STATE_T;
+} my_pm_state_t;
 
 /* ========== 设备操作回调结构体 ========== */
-struct PM_DEVICE_OPS
-{
+typedef struct {
     int (*suspend)(void); /* 模块进入低功耗 */
     int (*resume)(void);  /* 模块恢复正常工作 */
     int (*init)(void);    /* 模块初始化（首次） */
-};
+} pm_device_ops_t;
 
 /* ========== 设备电源管理上下文 ========== */
-struct PM_DEVICE_CTX
-{
-    MY_PM_STATE_T state;             /* 当前状态 */
-    const struct PM_DEVICE_OPS *ops; /* 操作回调 */
-};
+typedef struct {
+    my_pm_state_t state;             /* 当前状态 */
+    const pm_device_ops_t *ops; /* 操作回调 */
+} pm_device_ctx_t;
 
 /********************************************************************
 **函数名称:  my_pm_device_register
@@ -77,7 +75,7 @@ struct PM_DEVICE_CTX
 **           3. 必须在设备对应的线程上下文内调用此函数
 **返 回 值:  0 表示成功，负值表示错误码
 *********************************************************************/
-int my_pm_device_register(MY_PM_DEV_ID_T dev_id, const struct PM_DEVICE_OPS *ops);
+int my_pm_device_register(my_pm_dev_id_t dev_id, const pm_device_ops_t *ops);
 
 /********************************************************************
 **函数名称:  my_pm_device_suspend
@@ -88,7 +86,7 @@ int my_pm_device_register(MY_PM_DEV_ID_T dev_id, const struct PM_DEVICE_OPS *ops
 **           2. 如果是最后一个使用总线的设备，suspend 总线
 **返 回 值:  0 表示成功，负值表示错误码
 *********************************************************************/
-int my_pm_device_suspend(MY_PM_DEV_ID_T dev_id);
+int my_pm_device_suspend(my_pm_dev_id_t dev_id);
 
 /********************************************************************
 **函数名称:  my_pm_device_resume
@@ -99,7 +97,7 @@ int my_pm_device_suspend(MY_PM_DEV_ID_T dev_id);
 **           2. 调用模块的 resume 回调
 **返 回 值:  0 表示成功，负值表示错误码
 *********************************************************************/
-int my_pm_device_resume(MY_PM_DEV_ID_T dev_id);
+int my_pm_device_resume(my_pm_dev_id_t dev_id);
 
 /********************************************************************
 **函数名称:  my_pm_device_get_state
@@ -108,7 +106,7 @@ int my_pm_device_resume(MY_PM_DEV_ID_T dev_id);
 **函数功能:  获取指定设备的当前电源状态
 **返 回 值:  当前状态（pm_state_t）
 *********************************************************************/
-MY_PM_STATE_T my_pm_device_get_state(MY_PM_DEV_ID_T dev_id);
+my_pm_state_t my_pm_device_get_state(my_pm_dev_id_t dev_id);
 
 /********************************************************************
 **函数名称:  my_pm_init

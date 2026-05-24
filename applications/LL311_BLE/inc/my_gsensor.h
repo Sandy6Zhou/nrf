@@ -36,15 +36,14 @@ typedef enum
 } gsensor_state_t;
 
 /* 三轴数据结构体 */
-struct gsensor_data
-{
+typedef struct {
     int16_t acc_raw_x;
     int16_t acc_raw_y;
     int16_t acc_raw_z;
     int16_t gyro_raw_x;
     int16_t gyro_raw_y;
     int16_t gyro_raw_z;
-};
+} gsensor_data_t;
 
 /* ============================================================
  *  IMU原始数据结构: 单个采样点的6轴数据
@@ -56,13 +55,13 @@ typedef struct {
     float gyro_x;
     float gyro_y;
     float gyro_z;               /* 三轴角速度 (rad/s) */
-} IMUReading;
+} imu_reading_t;
 
 /* GSENSOR 运行时上下文结构体 */
 typedef struct
 {
     /* 滑动窗口相关 */
-    IMUReading imu_readings[WINDOW_SIZE];
+    imu_reading_t imu_readings[WINDOW_SIZE];
     uint16_t window_index;                       // 当前窗口写入索引
 
     /* 传感器状态 */
@@ -102,7 +101,7 @@ int my_gsensor_pwr_on(bool on);
 **函数功能:  读取当前加速度传感器的三轴原始数据
 **返 回 值:  0 表示成功，负值表示失败
 *********************************************************************/
-int my_gsensor_read_data(struct gsensor_data *data);
+int my_gsensor_read_data(gsensor_data_t *data);
 
 /********************************************************************
 **函数名称:  my_lsm6dsv16x_init

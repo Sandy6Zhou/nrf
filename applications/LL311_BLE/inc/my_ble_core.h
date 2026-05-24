@@ -19,7 +19,7 @@
 typedef enum {
     APPLE_ADV_TYPE,
     GOOGLE_ADV_TYPE
-} MY_ADV_TYPE;
+} my_adv_t;
 
 /*
  * BLE 核心初始化参数：
@@ -57,7 +57,7 @@ int my_ble_core_start(void);
 **函数功能:  设置指定类型广播的有效状态
 **返 回 值:  无
 *********************************************************************/
-void set_adv_valid_status(MY_ADV_TYPE index, int status);
+void set_adv_valid_status(my_adv_t index, int status);
 
 /********************************************************************
 **函数名称:  bt_get_mac_addr

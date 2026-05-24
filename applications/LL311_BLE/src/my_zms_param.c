@@ -7,31 +7,31 @@ LOG_MODULE_REGISTER(my_zms_param, LOG_LEVEL_INF);
 
 #define DEFAULT_ECDH_G_VALUE      0x83A5
 /* 全局配置参数 */
-ConfigParamStruct    gConfigParam = {0};
+config_param_t    gConfigParam = {0};
 /* 全局 ZMS 文件系统对象 */
-static struct zms_fs user_data_fs;
+static struct zms_fs s_user_data_fs;
 
-const AdvValidValue_t gDefaultAdvValidValue =
+const adv_valid_value_t gDefaultAdvValidValue =
 {
     .flag = FLAG_VALID,
     .AppleValid = 1,
     .GoogleValid = 0,
 };
 
-const GsmImei_t gDefaultImeiValue =
+const gsm_imei_t gDefaultImeiValue =
 {
     .flag = 0,
     .hex = {'1','2','3','4','5','6','7','8','9','0','1','2','3','4','5'}
 };
 
-const GsmImei_t gDefaultMacAddr =
+const gsm_imei_t gDefaultMacAddr =
 {
     .flag = 0,
     .hex = {0x66, 0x55, 0x44, 0x33, 0x22, 0x11}
 };
 
 /* 蓝牙默认_TX_POWER配置 */
-const BleTxPower_t gDefaultBleTxPower =
+const ble_tx_power_t gDefaultBleTxPower =
 {
     .flag = FLAG_VALID,
     .tx_power = 0  /* 默认 0 dBm ，范围：-8dbm ~ +8dbm */
@@ -45,7 +45,7 @@ const BleTxPower_t gDefaultBleTxPower =
  * - CMD 模块 (bit10): 蓝牙指令处理模块，指令响应已通过 BLE 通道返回
  * 以上模块即使开启开关，也应保持 mod_level 为 LOG_LEVEL_NONE
  */
-const BleLogConfig_t gDefaultBleLogConfig =
+const ble_log_config_t gDefaultBleLogConfig =
 {
     .flag = FLAG_VALID,
     .global_en = 0,                         /* 默认关闭总开关 */
@@ -85,7 +85,7 @@ const BleLogConfig_t gDefaultBleLogConfig =
     }
 };
 
-const WorkModeConfig_t gDefaultWorkModeConfig =
+const work_mode_config_t gDefaultWorkModeConfig =
 {
     .flag = FLAG_VALID,
     .workmode_config =                          // 默认工作模式配置
@@ -112,42 +112,42 @@ const WorkModeConfig_t gDefaultWorkModeConfig =
     }
 };
 
-const RemAlmConfig_t gDefaultRemAlmConfig =
+const remalm_config_t gDefaultRemAlmConfig =
 {
     .flag = FLAG_VALID,
     .remalm_sw = 0,                    /* 默认关闭 */
     .remalm_mode = REPORT_MODE_GPRS,                  /* 默认GPRS */
 };
 
-const LockPinCytConfig_t gDefaultLockPinCytConfig =
+const lockpin_cyt_config_t gDefaultLockPinCytConfig =
 {
     .flag = FLAG_VALID,
     .lockpincyt_report = REPORT_MODE_GPRS,             /* 默认GPRS */
     .lockpincyt_buzzer = ALARM_TEMPORARY,             /* 默认报警30s */
 };
 
-const LockErrConfig_t gDefaultLockErrConfig =
+const lock_err_config_t gDefaultLockErrConfig =
 {
     .flag = FLAG_VALID,
     .lockerr_report = REPORT_MODE_GPRS,               /* 默认GPRS */
     .lockerr_buzzer = ALARM_TEMPORARY,               /* 默认报警30s */
 };
 
-const PinStatConfig_t gDefaultPinStatConfig =
+const pin_stat_config_t gDefaultPinStatConfig =
 {
     .flag = FLAG_VALID,
     .pinstat_report = REPORT_MODE_GPRS,               /* 默认GPRS */
     .pinstat_trigger = PINSTAT_TRIGGER_MODE_BOTH,              /* 默认都触发 */
 };
 
-const LockStatConfig_t gDefaultLockStatConfig =
+const lock_stat_config_t gDefaultLockStatConfig =
 {
     .flag = FLAG_VALID,
     .lockstat_report = REPORT_MODE_GPRS,              /* 默认GPRS */
     .lockstat_trigger = LOCK_TRIGGER_NONE,             /* 默认都不触发 */
 };
 
-const MotDetConfig_t gDefaultMotDetConfig =
+const mot_det_config_t gDefaultMotDetConfig =
 {
     .flag = FLAG_VALID,
     .motdet_static_g = 10,             /* 默认10 mg */
@@ -157,7 +157,7 @@ const MotDetConfig_t gDefaultMotDetConfig =
     .motdet_report_type = REPORT_MODE_GPRS,           /* 默认GPRS */
 };
 
-const BatlevelConfig_t gDefaultBatlevelConfig =
+const bat_level_config_t gDefaultBatlevelConfig =
 {
     .flag = FLAG_VALID,
     .batlevel_empty_rpt = REPORT_MODE_GPRS,           /* 默认GPRS */
@@ -169,7 +169,7 @@ const BatlevelConfig_t gDefaultBatlevelConfig =
     .chargesta_report = REPORT_MODE_GPRS,             /* 默认GPRS */
 };
 
-const ShockAlarmConfig_t gDefaultShockAlarmConfig =
+const shock_alarm_config_t gDefaultShockAlarmConfig =
 {
     .flag = FLAG_VALID,
     .shockalarm_sw = 0,                /* 默认关闭 */
@@ -177,19 +177,19 @@ const ShockAlarmConfig_t gDefaultShockAlarmConfig =
     .shockalarm_type = REPORT_MODE_GPRS,              /* 默认GPRS */
 };
 
-const StartrConfig_t gDefaultStartrConfig =
+const startr_config_t gDefaultStartrConfig =
 {
     .flag = FLAG_VALID,
     .startr_sw = 0,                    /* 默认关闭 */
 };
 
-const PWRsaveConfig_t gDefaultPWRsaveConfig =
+const pwr_save_config_t gDefaultPWRsaveConfig =
 {
     .flag = FLAG_VALID,
     .pwsave_sw = 0,                    /* 默认关闭 */
 };
 
-const BtUpdataConfig_t gDefaultBtUpdataConfig =
+const bt_updata_config_t gDefaultBtUpdataConfig =
 {
     .flag = FLAG_VALID,
     .bt_updata_mode = 0,               /* 默认不开启 */
@@ -198,56 +198,56 @@ const BtUpdataConfig_t gDefaultBtUpdataConfig =
     .bt_updata_updata_interval = 14400,/* 默认14400秒 */
 };
 
-const TagConfig_t gDefaultTagConfig =
+const tag_config_t gDefaultTagConfig =
 {
     .flag = FLAG_VALID,
     .tag_sw = 0,                       /* 默认关闭 */
     .tag_interval = 2000,              /* 默认2000ms */
 };
 
-const LockedConfig_t gDefaultLockedConfig =
+const locked_config_t gDefaultLockedConfig =
 {
     .flag = FLAG_VALID,
     .lockcd_countdown = 3,             /* 默认3秒 */
 };
 
-const LedConfig_t gDefaultLedConfig =
+const led_config_t gDefaultLedConfig =
 {
     .flag = FLAG_VALID,
     .led_display = 0,                  /* 默认关闭 */
 };
 
-const BuzzerConfig_t gDefaultBuzzerConfig =
+const buzzer_config_t gDefaultBuzzerConfig =
 {
     .flag = FLAG_VALID,
     .buzzer_operator = 0,             /* 默认停止 */
 };
 
-const NfctrigConfig_t gDefaultNfctrigConfig =
+const nfctrig_config_t gDefaultNfctrigConfig =
 {
     .flag = FLAG_VALID,
     .nfctrig_table = 0,                    /* 默认关闭 */
 };
 
-const NfcauthConfig_t gDefaultNfcauthConfig =
+const nfcauth_config_t gDefaultNfcauthConfig =
 {
     .flag = FLAG_VALID,
     .nfcauth_card_count = 0,         /* 默认0张卡 */
 };
 
-const BkeyConfig_t gDefaultBkeyConfig =
+const bkey_config_t gDefaultBkeyConfig =
 {
     .flag = FLAG_VALID,
     .bt_key = "000000",              /* 默认密钥 */
 };
 
-const OtaConfig_t gDefaultOtaConfig =
+const ota_config_t gDefaultOtaConfig =
 {
     .flag = FLAG_VALID,
     .ble_ota_reboot = false,
 };
 
-const BparmacConfig_t gDefaultBparmacConfig =
+const bparmac_config_t gDefaultBparmacConfig =
 {
     .flag = FLAG_VALID,
     .bt_parmac_mac_count = 0,         /* 默认0个MAC地址 */
@@ -286,17 +286,17 @@ static int my_user_data_storage_init(void)
     }
 
     /* 填充 zms_fs 关键字段 */
-    user_data_fs.offset       = fa->fa_off;   /* 分区起始偏移 */
-    user_data_fs.flash_device = fa->fa_dev;   /* 底层 RRAM 设备 */
+    s_user_data_fs.offset       = fa->fa_off;   /* 分区起始偏移 */
+    s_user_data_fs.flash_device = fa->fa_dev;   /* 底层 RRAM 设备 */
 
     /* 下面两行需要根据 nRF54L15 RRAM 的擦除块大小来设置：
      * ZMS 要求 sector_size 是擦除块大小的整数倍，sector_count 为扇区个数。
      * nRF54L15 RRAM 的擦除块为 4 kB
      */
-    user_data_fs.sector_size  = 4096U;
-    user_data_fs.sector_count = fa->fa_size / user_data_fs.sector_size;
+    s_user_data_fs.sector_size  = 4096U;
+    s_user_data_fs.sector_count = fa->fa_size / s_user_data_fs.sector_size;
 
-    err = zms_mount(&user_data_fs);
+    err = zms_mount(&s_user_data_fs);
     if (err) {
         MY_LOG_INF("zms_mount failed: %d", err);
         flash_area_close(fa);
@@ -323,7 +323,7 @@ int my_user_data_write(uint32_t id, const void *data, int len)
         return -EINVAL;
     }
 
-    ret = zms_write(&user_data_fs, id, data, len);
+    ret = zms_write(&s_user_data_fs, id, data, len);
     if (ret < 0) {
         MY_LOG_INF("write data failed: %d (id=0x%08x)", (int)ret, id);
     }
@@ -346,7 +346,7 @@ static int my_user_data_read(uint32_t id, void *data, int len)
         return -EINVAL;
     }
 
-    ret = zms_read(&user_data_fs, id, data, len);
+    ret = zms_read(&s_user_data_fs, id, data, len);
     if (ret < 0) {
         MY_LOG_INF("read data failed: %d (id=0x%08x)", (int)ret, id);
     }
@@ -375,7 +375,7 @@ void my_param_load_config(void)
     }
 
     //--------Load license ff data ---------------------
-    length = sizeof(lic_ff_struct);
+    length = sizeof(lic_ff_t);
     ret = my_user_data_read(ZMS_ID_FF, &gConfigParam.lic_ff, length);
     if (ret != length)
     {
@@ -384,7 +384,7 @@ void my_param_load_config(void)
     }
 
     //--------Load license gg data ---------------------
-    length = sizeof(lic_gg_struct);
+    length = sizeof(lic_gg_t);
     ret = my_user_data_read(ZMS_ID_GG, &gConfigParam.lic_gg, length);
     if (ret != length)
     {
@@ -393,7 +393,7 @@ void my_param_load_config(void)
     }
 
     //--------Load adv valid value data ---------------------
-    length = sizeof(AdvValidValue_t);
+    length = sizeof(adv_valid_value_t);
     ret = my_user_data_read(ZMS_ID_ADV_VALID, &gConfigParam.adv_valid_value, length);
     if (ret != length)
     {
@@ -416,7 +416,7 @@ void my_param_load_config(void)
     }
 
     //--------Load IMEI Value ---------------------
-    length = sizeof(GsmImei_t);
+    length = sizeof(gsm_imei_t);
     ret = my_user_data_read(ZMS_ID_IMEI, &gConfigParam.gsm_imei, length);
     if (ret != length)
     {
@@ -437,7 +437,7 @@ void my_param_load_config(void)
     }
 
     //--------Load BLE TX Power ---------------------
-    length = sizeof(BleTxPower_t);
+    length = sizeof(ble_tx_power_t);
     ret = my_user_data_read(ZMS_ID_BLE_TX_POWER, &gConfigParam.ble_tx_power, length);
     if (ret != length)
     {
@@ -450,7 +450,7 @@ void my_param_load_config(void)
     }
 
     //--------Load BLE Log Config ---------------------
-    length = sizeof(BleLogConfig_t);
+    length = sizeof(ble_log_config_t);
     ret = my_user_data_read(ZMS_ID_BLE_LOG_CONFIG, &gConfigParam.ble_log_config, length);
     if (ret != length)
     {
@@ -464,7 +464,7 @@ void my_param_load_config(void)
     }
 
     //--------Load Device Workmode Config ---------------------
-    length = sizeof(WorkModeConfig_t);
+    length = sizeof(work_mode_config_t);
     ret = my_user_data_read(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, length);
     if (ret != length)
     {
@@ -473,7 +473,7 @@ void my_param_load_config(void)
     }
 
     //--------Load Remote Alarm Config ---------------------
-    length = sizeof(RemAlmConfig_t);
+    length = sizeof(remalm_config_t);
     ret = my_user_data_read(ZMS_ID_REM_ALM_CONFIG, &gConfigParam.remalm_config, length);
     if (ret != length)
     {
@@ -488,7 +488,7 @@ void my_param_load_config(void)
     }
 
     //--------Load Lock Pin CyT Config ---------------------
-    length = sizeof(LockPinCytConfig_t);
+    length = sizeof(lockpin_cyt_config_t);
     ret = my_user_data_read(ZMS_ID_LOCK_PIN_CYT_CONFIG, &gConfigParam.lockpincyt_config, length);
     if (ret != length)
     {
@@ -503,7 +503,7 @@ void my_param_load_config(void)
     }
 
     //--------Load Lock Err Config ---------------------
-    length = sizeof(LockErrConfig_t);
+    length = sizeof(lock_err_config_t);
     ret = my_user_data_read(ZMS_ID_LOCK_ERR_CONFIG, &gConfigParam.lockerr_config, length);
     if (ret != length)
     {
@@ -518,7 +518,7 @@ void my_param_load_config(void)
     }
 
     //--------Load Pin Stat Config ---------------------
-    length = sizeof(PinStatConfig_t);
+    length = sizeof(pin_stat_config_t);
     ret = my_user_data_read(ZMS_ID_PIN_STAT_CONFIG, &gConfigParam.pinstat_config, length);
     if (ret != length)
     {
@@ -533,7 +533,7 @@ void my_param_load_config(void)
     }
 
     //--------Load Lock Stat Config ---------------------
-    length = sizeof(LockStatConfig_t);
+    length = sizeof(lock_stat_config_t);
     ret = my_user_data_read(ZMS_ID_LOCK_STAT_CONFIG, &gConfigParam.lockstat_config, length);
     if (ret != length)
     {
@@ -548,7 +548,7 @@ void my_param_load_config(void)
     }
 
     //--------Load Mot Det Config ---------------------
-    length = sizeof(MotDetConfig_t);
+    length = sizeof(mot_det_config_t);
     ret = my_user_data_read(ZMS_ID_MOT_DET_CONFIG, &gConfigParam.motdet_config, length);
     if (ret != length)
     {
@@ -569,7 +569,7 @@ void my_param_load_config(void)
     }
 
     //--------Load Batlevel Config ---------------------
-    length = sizeof(BatlevelConfig_t);
+    length = sizeof(bat_level_config_t);
     ret = my_user_data_read(ZMS_ID_BAT_LEVEL_CONFIG, &gConfigParam.batlevel_config, length);
     if (ret != length)
     {
@@ -592,7 +592,7 @@ void my_param_load_config(void)
     }
 
     //--------Load Shock Alarm Config ---------------------
-    length = sizeof(ShockAlarmConfig_t);
+    length = sizeof(shock_alarm_config_t);
     ret = my_user_data_read(ZMS_ID_SHOCK_ALARM_CONFIG, &gConfigParam.shockalarm_config, length);
     if (ret != length)
     {
@@ -609,7 +609,7 @@ void my_param_load_config(void)
     }
 
     //--------Load Startr Config ---------------------
-    length = sizeof(StartrConfig_t);
+    length = sizeof(startr_config_t);
     ret = my_user_data_read(ZMS_ID_STARTR_CONFIG, &gConfigParam.startr_config, length);
     if (ret != length)
     {
@@ -622,7 +622,7 @@ void my_param_load_config(void)
     }
 
     //--------Load PWRsave Config ---------------------
-    length = sizeof(PWRsaveConfig_t);
+    length = sizeof(pwr_save_config_t);
     ret = my_user_data_read(ZMS_ID_PWSAVE_CONFIG, &gConfigParam.pwsave_config, length);
     if (ret != length)
     {
@@ -635,7 +635,7 @@ void my_param_load_config(void)
     }
 
     //--------Load BTUPDATA Config ---------------------
-    length = sizeof(BtUpdataConfig_t);
+    length = sizeof(bt_updata_config_t);
     ret = my_user_data_read(ZMS_ID_BT_UPDATA_CONFIG, &gConfigParam.bt_updata_config, length);
     if (ret != length)
     {
@@ -652,7 +652,7 @@ void my_param_load_config(void)
     }
 
     //--------Load Tag Config ---------------------
-    length = sizeof(TagConfig_t);
+    length = sizeof(tag_config_t);
     ret = my_user_data_read(ZMS_ID_TAG_CONFIG, &gConfigParam.tag_config, length);
     if (ret != length)
     {
@@ -665,7 +665,7 @@ void my_param_load_config(void)
     }
 
     //--------Load Locked Config ---------------------
-    length = sizeof(LockedConfig_t);
+    length = sizeof(locked_config_t);
     ret = my_user_data_read(ZMS_ID_LOCKED_CONFIG, &gConfigParam.locked_config, length);
     if (ret != length)
     {
@@ -678,7 +678,7 @@ void my_param_load_config(void)
     }
 
     //--------Load Led Config ---------------------
-    length = sizeof(LedConfig_t);
+    length = sizeof(led_config_t);
     ret = my_user_data_read(ZMS_ID_LED_CONFIG, &gConfigParam.led_config, length);
     if (ret != length)
     {
@@ -691,7 +691,7 @@ void my_param_load_config(void)
     }
 
     //--------Load Buzzer Config ---------------------
-    length = sizeof(BuzzerConfig_t);
+    length = sizeof(buzzer_config_t);
     ret = my_user_data_read(ZMS_ID_BUZZER_CONFIG, &gConfigParam.buzzer_config, length);
     if (ret != length)
     {
@@ -704,7 +704,7 @@ void my_param_load_config(void)
     }
 
     //--------Load Nfctrig Config ---------------------
-    length = sizeof(NfctrigConfig_t);
+    length = sizeof(nfctrig_config_t);
     ret = my_user_data_read(ZMS_ID_NFTRIG_CONFIG, &gConfigParam.nfctrig_config, length);
     if (ret != length)
     {
@@ -713,7 +713,7 @@ void my_param_load_config(void)
     }
 
     //--------Load Nfcauth Config ---------------------
-    length = sizeof(NfcauthConfig_t);
+    length = sizeof(nfcauth_config_t);
     ret = my_user_data_read(ZMS_ID_NFCAUTH_CONFIG, &gConfigParam.nfcauth_config, length);
     if (ret != length)
     {
@@ -726,7 +726,7 @@ void my_param_load_config(void)
     }
 
     //--------Load Bkey Config ---------------------
-    length = sizeof(BkeyConfig_t);
+    length = sizeof(bkey_config_t);
     ret = my_user_data_read(ZMS_ID_BT_KEY_CONFIG, &gConfigParam.bkey_config, length);
     if (ret != length)
     {
@@ -735,7 +735,7 @@ void my_param_load_config(void)
     }
 
     //--------Load Ota Config ---------------------
-    length = sizeof(OtaConfig_t);
+    length = sizeof(ota_config_t);
     ret = my_user_data_read(ZMS_ID_OTA_CONFIG, &gConfigParam.ota_config, length);
     MY_LOG_INF("Ota config loaded: ble_ota_reboot(%d)", gConfigParam.ota_config.ble_ota_reboot);
     if (ret != length)
@@ -745,7 +745,7 @@ void my_param_load_config(void)
     }
 
     //--------Load Bparmac Config ---------------------
-    length = sizeof(BparmacConfig_t);
+    length = sizeof(bparmac_config_t);
     ret = my_user_data_read(ZMS_ID_BT_PARMAC_CONFIG, &gConfigParam.bparmac_config, length);
     if (ret != length)
     {
@@ -768,7 +768,7 @@ void my_param_load_config(void)
 bool my_param_set_ff(char *param, uint8_t len)
 {
     int ret;
-    int lic_stuct_len = sizeof(lic_ff_struct);
+    int lic_stuct_len = sizeof(lic_ff_t);
 
     if (len != LICENSE_FF_STR_LEN)
     {
@@ -806,7 +806,7 @@ bool my_param_set_ff(char *param, uint8_t len)
 **函数功能:  获取iOS配置数据
 **返 回 值:  返回iOS许可证结构体指针
 *********************************************************************/
-const lic_ff_struct *my_param_get_ff(void)
+const lic_ff_t *my_param_get_ff(void)
 {
     return &gConfigParam.lic_ff;
 }
@@ -821,7 +821,7 @@ const lic_ff_struct *my_param_get_ff(void)
 bool my_param_set_gg(char *param, uint8_t len)
 {
     int ret;
-    int lic_stuct_len = sizeof(lic_gg_struct);
+    int lic_stuct_len = sizeof(lic_gg_t);
 
     if (len != LICENSE_GG_STR_LEN)
     {
@@ -859,7 +859,7 @@ bool my_param_set_gg(char *param, uint8_t len)
 **函数功能:  获取Google配置数据
 **返 回 值:  返回Google许可证结构体指针
 *********************************************************************/
-const lic_gg_struct *my_param_get_gg(void)
+const lic_gg_t *my_param_get_gg(void)
 {
     return &gConfigParam.lic_gg;
 }
@@ -873,7 +873,7 @@ const lic_gg_struct *my_param_get_gg(void)
 *********************************************************************/
 int my_param_set_jatag_or_jgtag(char *cmd, char *param)
 {
-    int valid_len = sizeof(AdvValidValue_t);
+    int valid_len = sizeof(adv_valid_value_t);
     int ret;
 
     if (cmd == NULL || param == NULL) {
@@ -1042,7 +1042,7 @@ const uint16_t my_param_get_Gvalue(void)
 int my_param_set_imei(char *param, uint8_t len)
 {
     int ret;
-    int GsmImei_struct_len = sizeof(GsmImei_t);
+    int GsmImei_struct_len = sizeof(gsm_imei_t);
 
     if (len != GSM_IMEI_LENGTH)
     {
@@ -1080,7 +1080,7 @@ int my_param_set_imei(char *param, uint8_t len)
 **函数功能:  获取IMEI配置数据
 **返 回 值:  返回IMEI结构体指针
 *********************************************************************/
-const GsmImei_t *my_param_get_imei(void)
+const gsm_imei_t *my_param_get_imei(void)
 {
     return &gConfigParam.gsm_imei;
 }
@@ -1155,10 +1155,10 @@ int8_t my_param_get_ble_tx_power(void)
 **函数功能:  设置蓝牙日志完整配置
 **返 回 值:  0表示成功，负值表示失败
 *********************************************************************/
-int my_param_set_ble_log_config(const BleLogConfig_t *config)
+int my_param_set_ble_log_config(const ble_log_config_t *config)
 {
     int ret;
-    int config_len = sizeof(BleLogConfig_t);
+    int config_len = sizeof(ble_log_config_t);
 
     if (config == NULL)
     {
@@ -1189,7 +1189,7 @@ int my_param_set_ble_log_config(const BleLogConfig_t *config)
 **函数功能:  获取蓝牙日志配置
 **返 回 值:  返回蓝牙日志配置结构体指针
 *********************************************************************/
-BleLogConfig_t *my_param_get_ble_log_config(void)
+ble_log_config_t *my_param_get_ble_log_config(void)
 {
     return &gConfigParam.ble_log_config;
 }
@@ -1203,7 +1203,7 @@ BleLogConfig_t *my_param_get_ble_log_config(void)
 *********************************************************************/
 int my_param_set_ble_log_global(uint8_t en)
 {
-    BleLogConfig_t *config;
+    ble_log_config_t *config;
 
     config = my_param_get_ble_log_config();
     config->global_en = (en != 0) ? 1 : 0;
@@ -1220,7 +1220,7 @@ int my_param_set_ble_log_global(uint8_t en)
 *********************************************************************/
 int my_param_set_ble_log_mod(uint8_t mod_id, uint8_t en)
 {
-    BleLogConfig_t *config;
+    ble_log_config_t *config;
 
     if (mod_id >= BLE_LOG_MOD_MAX || mod_id >= 32)
     {
@@ -1250,7 +1250,7 @@ int my_param_set_ble_log_mod(uint8_t mod_id, uint8_t en)
 *********************************************************************/
 int my_param_set_ble_log_level(uint8_t mod_id, uint8_t level)
 {
-    BleLogConfig_t *config;
+    ble_log_config_t *config;
 
     if (mod_id >= BLE_LOG_MOD_MAX)
     {

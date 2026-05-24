@@ -47,7 +47,7 @@ LOG_MODULE_REGISTER(my_pm, LOG_LEVEL_INF);
 #define BATTERY_ADC_NODE DT_PATH(zephyr_user)
 
 /* ========== 设备上下文数组 ========== */
-static struct PM_DEVICE_CTX l_st_pm_devices[MY_PM_DEV_MAX];
+static pm_device_ctx_t s_pm_devices[MY_PM_DEV_MAX];
 
 /********************************************************************
 **函数名称:  my_pm_get_i2c22_device
@@ -352,7 +352,7 @@ static int my_pm_battery_adc_suspend(void)
 **           3. 必须在设备对应的线程上下文内调用此函数
 **返 回 值:  0 表示成功，负值表示错误码
 *********************************************************************/
-int my_pm_device_register(MY_PM_DEV_ID_T dev_id, const struct PM_DEVICE_OPS *ops)
+int my_pm_device_register(my_pm_dev_id_t dev_id, const pm_device_ops_t *ops)
 {
     int ret;
 
@@ -369,8 +369,8 @@ int my_pm_device_register(MY_PM_DEV_ID_T dev_id, const struct PM_DEVICE_OPS *ops
     }
 
     /* 初始化设备状态为未初始化状态 */
-    l_st_pm_devices[dev_id].state = MY_PM_STATE_NOT_INIT;
-    l_st_pm_devices[dev_id].ops = ops;
+    s_pm_devices[dev_id].state = MY_PM_STATE_NOT_INIT;
+    s_pm_devices[dev_id].ops = ops;
 
     /* 如果提供了 init 回调，执行完整初始化流程，最后将设备状态设置为 SUSPENDED */
     if (ops->init != NULL)
@@ -380,7 +380,7 @@ int my_pm_device_register(MY_PM_DEV_ID_T dev_id, const struct PM_DEVICE_OPS *ops
         if (ret < 0)
         {
             MY_LOG_ERR("Device %d init failed: %d", dev_id, ret);
-            l_st_pm_devices[dev_id].ops = NULL;
+            s_pm_devices[dev_id].ops = NULL;
             return ret;
         }
         MY_LOG_INF("Device %d initialized", dev_id);
@@ -411,7 +411,7 @@ int my_pm_device_register(MY_PM_DEV_ID_T dev_id, const struct PM_DEVICE_OPS *ops
         if (ret < 0)
         {
             MY_LOG_ERR("Failed to resume bus for device %d: %d", dev_id, ret);
-            l_st_pm_devices[dev_id].ops = NULL;
+            s_pm_devices[dev_id].ops = NULL;
             return ret;
         }
 
@@ -443,14 +443,14 @@ int my_pm_device_register(MY_PM_DEV_ID_T dev_id, const struct PM_DEVICE_OPS *ops
             MY_LOG_WRN("Failed to suspend bus after init for device %d: %d", dev_id, ret);
 
             /* 初始化失败，标记为未初始化状态 */
-            l_st_pm_devices[dev_id].state = MY_PM_STATE_NOT_INIT;
-            l_st_pm_devices[dev_id].ops = NULL;
+            s_pm_devices[dev_id].state = MY_PM_STATE_NOT_INIT;
+            s_pm_devices[dev_id].ops = NULL;
             return ret;
         }
     }
 
     /* 注册成功：设备默认状态为 SUSPENDED（低功耗就绪） */
-    l_st_pm_devices[dev_id].state = MY_PM_STATE_SUSPENDED;
+    s_pm_devices[dev_id].state = MY_PM_STATE_SUSPENDED;
     MY_LOG_INF("Device %d registered in SUSPENDED state", dev_id);
     return 0;
 }
@@ -464,9 +464,9 @@ int my_pm_device_register(MY_PM_DEV_ID_T dev_id, const struct PM_DEVICE_OPS *ops
 **           2. 调用模块的 resume 回调
 **返 回 值:  0 表示成功，负值表示错误码
 *********************************************************************/
-int my_pm_device_resume(MY_PM_DEV_ID_T dev_id)
+int my_pm_device_resume(my_pm_dev_id_t dev_id)
 {
-    struct PM_DEVICE_CTX *ctx;
+    pm_device_ctx_t *ctx;
     int ret = 0;
 
     if (dev_id >= MY_PM_DEV_MAX)
@@ -476,7 +476,7 @@ int my_pm_device_resume(MY_PM_DEV_ID_T dev_id)
     }
 
     /* 获取设备上下文 */
-    ctx = &l_st_pm_devices[dev_id];
+    ctx = &s_pm_devices[dev_id];
 
     if (ctx->ops == NULL)
     {
@@ -583,9 +583,9 @@ int my_pm_device_resume(MY_PM_DEV_ID_T dev_id)
 **           2. 如果是 I2C 设备，最后 suspend 总线（引用计数）
 **返 回 值:  0 表示成功，负值表示错误码
 *********************************************************************/
-int my_pm_device_suspend(MY_PM_DEV_ID_T dev_id)
+int my_pm_device_suspend(my_pm_dev_id_t dev_id)
 {
-    struct PM_DEVICE_CTX *ctx;
+    pm_device_ctx_t *ctx;
     int ret = 0;
     int rollback_ret = 0;
 
@@ -596,7 +596,7 @@ int my_pm_device_suspend(MY_PM_DEV_ID_T dev_id)
     }
 
     /* 获取设备上下文 */
-    ctx = &l_st_pm_devices[dev_id];
+    ctx = &s_pm_devices[dev_id];
 
     if (ctx->ops == NULL)
     {
@@ -677,7 +677,7 @@ int my_pm_device_suspend(MY_PM_DEV_ID_T dev_id)
 **函数功能:  获取指定设备的当前电源状态
 **返 回 值:  当前状态（pm_state_t）
 *********************************************************************/
-MY_PM_STATE_T my_pm_device_get_state(MY_PM_DEV_ID_T dev_id)
+my_pm_state_t my_pm_device_get_state(my_pm_dev_id_t dev_id)
 {
     if (dev_id >= MY_PM_DEV_MAX)
     {
@@ -685,7 +685,7 @@ MY_PM_STATE_T my_pm_device_get_state(MY_PM_DEV_ID_T dev_id)
         return MY_PM_STATE_NOT_INIT;
     }
 
-    return l_st_pm_devices[dev_id].state;
+    return s_pm_devices[dev_id].state;
 }
 
 /********************************************************************
@@ -698,7 +698,7 @@ MY_PM_STATE_T my_pm_device_get_state(MY_PM_DEV_ID_T dev_id)
 int my_pm_init(void)
 {
     /* 清零设备上下文数组 */
-    memset(l_st_pm_devices, 0, sizeof(l_st_pm_devices));
+    memset(s_pm_devices, 0, sizeof(s_pm_devices));
 
     MY_LOG_INF("Power management subsystem initialized");
     return 0;

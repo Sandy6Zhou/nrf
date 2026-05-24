@@ -129,12 +129,12 @@
 #define BLE_RSP_PARAM_SUCCESS                   0x00
 #define BLE_RSP_PARAM_FAIL                      0x01
 
-extern uint16_t ble_server_mtu;
+extern uint16_t g_ble_server_mtu;
 
 #define BLE_SERVER_MAX_MTU CONFIG_BT_L2CAP_TX_MTU // MTU最大长度，系统用掉了3个字节,可用数据最大244字节
 #define BLE_SERVER_MIN_MTU 23                     // MTU默认最小长度
 
-#define BLE_SERVER_MAX_DATA_LEN    (ble_server_mtu - 3)
+#define BLE_SERVER_MAX_DATA_LEN    (g_ble_server_mtu - 3)
 #define BLE_SVC_RX_MAX_LEN         (BLE_SERVER_MAX_MTU - 3)
 #define BLE_SVC_TX_MAX_LEN         (BLE_SERVER_MAX_MTU - 3)
 
