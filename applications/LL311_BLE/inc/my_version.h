@@ -12,7 +12,19 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260524"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260525"
+/* 软件版本:        V1.0
+** 完成日期:        2026.05.24
+** 作    者:       周森达 (zhousenda@jimiiot.com)
+** 修改内容:        1.优化中断IO的触发方式(GPIOTE IN->PORT sense)
+**                 2.配置uart30 rx在default状态下内部上拉
+**                 3.取消开关锁限位检测配置的内部上拉(改用外部上拉)
+**                 4.增加PWM的PM管理
+**                 5.优化GSENSOR suspend后真正进休眠模式(LPM2)
+**                 说明：功耗保持在32uA,功耗测试是GPS的RTC供电未打开、RTT串口调试关闭的情况下测试的。
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260524"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.05.24
 ** 作    者:       周森达 (zhousenda@jimiiot.com)

@@ -37,7 +37,7 @@ typedef enum
     MY_PM_DEV_LTE,     /* LTE模块：UART + 电源控制 */
     MY_PM_DEV_BATTERY, /* Battery模块：ADC采样 */
     MY_PM_DEV_BLE,     /* BLE模块：由协议栈管理，仅作状态同步 */
-    MY_PM_DEV_CTRL,    /* Control模块：LED、蜂鸣器等 */
+    MY_PM_DEV_PWM,     /* Control模块：蜂鸣器 */
     MY_PM_DEV_MAX      /* 最大设备数量 */
 } my_pm_dev_id_t;
 

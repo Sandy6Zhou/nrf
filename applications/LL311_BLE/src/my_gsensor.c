@@ -250,6 +250,10 @@ static int gsensor_apply_wakeup_mode_config(void)
     ret = lsm6dsv16x_xl_full_scale_set(&lsm_ctx, LSM6DSV16X_2g);
     GSENSOR_REG_CHECK(ret);
 
+    // 进入LPM2低功耗休眠模式
+    ret = lsm6dsv16x_xl_mode_set(&lsm_ctx, LSM6DSV16X_XL_LOW_POWER_2_AVG_MD);
+    GSENSOR_REG_CHECK(ret);
+
     // TODO: 敲击与跌落检测
     // // 配置唤醒阈值（值2≈244mg，超过此加速度触发唤醒中断）
     // wake_up_ths.wk_ths = GSENSOR_WAKEUP_THRESHOLD;
@@ -562,7 +566,7 @@ static int gsensor_pm_init(void)
         MY_LOG_ERR("Failed to configure power GPIO: %d", err);
         return err;  // 返回配置错误
     }
-
+    g_gsensor_runtime_ctx.sensor_ready = false;
     MY_LOG_INF("G-Sensor pwr initialized in low power mode");
     return 0;  // 初始化成功
 }

@@ -46,6 +46,9 @@ LOG_MODULE_REGISTER(my_pm, LOG_LEVEL_INF);
 /* ========== Battery ADC 设备节点 ========== */
 #define BATTERY_ADC_NODE DT_PATH(zephyr_user)
 
+/* ========== PWM 蜂鸣器设备节点 ========== */
+#define BUZZER_PWM_NODE DT_ALIAS(buzzer_pwm)
+
 /* ========== 设备上下文数组 ========== */
 static pm_device_ctx_t s_pm_devices[MY_PM_DEV_MAX];
 
@@ -340,6 +343,78 @@ static int my_pm_battery_adc_suspend(void)
 }
 
 /********************************************************************
+**函数名称:  my_pm_get_buzzer_pwm_device
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取 PWM 蜂鸣器设备句柄
+**返 回 值:  PWM 设备指针，未就绪返回 NULL
+*********************************************************************/
+static const struct device *my_pm_get_buzzer_pwm_device(void)
+{
+    const struct pwm_dt_spec buzzer_pwm = PWM_DT_SPEC_GET(BUZZER_PWM_NODE);
+    const struct device *dev = buzzer_pwm.dev;
+    return buzzer_pwm.dev;
+}
+
+/********************************************************************
+**函数名称:  my_pm_buzzer_pwm_resume
+**入口参数:  无
+**出口参数:  无
+**函数功能:  恢复 PWM 蜂鸣器设备（使用 Runtime PM API）
+**返 回 值:  0 表示成功，负值表示错误码
+*********************************************************************/
+static int my_pm_buzzer_pwm_resume(void)
+{
+    const struct device *dev = my_pm_get_buzzer_pwm_device();
+    int ret = 0;
+
+    if (dev == NULL)
+    {
+        MY_LOG_ERR("PWM device not found");
+        return -ENODEV;
+    }
+
+    ret = pm_device_runtime_get(dev);
+    if (ret < 0)
+    {
+        MY_LOG_ERR("PWM runtime get failed: %d", ret);
+        return ret;
+    }
+
+    MY_LOG_DBG("PWM runtime get OK");
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  my_pm_buzzer_pwm_suspend
+**入口参数:  无
+**出口参数:  无
+**函数功能:  挂起 PWM 蜂鸣器设备（使用 Runtime PM API）
+**返 回 值:  0 表示成功，负值表示错误码
+*********************************************************************/
+static int my_pm_buzzer_pwm_suspend(void)
+{
+    const struct device *dev = my_pm_get_buzzer_pwm_device();
+    int ret = 0;
+
+    if (dev == NULL)
+    {
+        MY_LOG_ERR("PWM device not found");
+        return -ENODEV;
+    }
+
+    ret = pm_device_runtime_put(dev);
+    if (ret < 0)
+    {
+        MY_LOG_ERR("PWM runtime put failed: %d", ret);
+        return ret;
+    }
+
+    MY_LOG_DBG("PWM runtime put OK");
+    return 0;
+}
+
+/********************************************************************
 **函数名称:  my_pm_device_register
 **入口参数:  dev_id   ---        设备ID
 **           ops      ---        设备操作回调结构体指针
@@ -404,6 +479,10 @@ int my_pm_device_register(my_pm_dev_id_t dev_id, const pm_device_ops_t *ops)
                 ret = my_pm_battery_adc_resume();
                 break;
 
+            case MY_PM_DEV_PWM:
+                ret = my_pm_buzzer_pwm_resume();
+                break;
+
             default:
                 ret = -ENOTSUP;
                 break;
@@ -432,6 +511,10 @@ int my_pm_device_register(my_pm_dev_id_t dev_id, const pm_device_ops_t *ops)
 
             case MY_PM_DEV_BATTERY:
                 ret = my_pm_battery_adc_suspend();
+                break;
+
+            case MY_PM_DEV_PWM:
+                ret = my_pm_buzzer_pwm_suspend();
                 break;
 
             default:
@@ -519,6 +602,10 @@ int my_pm_device_resume(my_pm_dev_id_t dev_id)
             ret = my_pm_battery_adc_resume();
             break;
 
+        case MY_PM_DEV_PWM:
+            ret = my_pm_buzzer_pwm_resume();
+            break;
+
         default:
             MY_LOG_ERR("Device %d not supported", dev_id);
             return -ENOTSUP;
@@ -552,6 +639,10 @@ int my_pm_device_resume(my_pm_dev_id_t dev_id)
 
                 case MY_PM_DEV_LTE:
                     ret = my_pm_lte_uart_suspend();
+                    break;
+
+                case MY_PM_DEV_PWM:
+                    ret = my_pm_buzzer_pwm_suspend();
                     break;
 
                 default:
@@ -641,6 +732,10 @@ int my_pm_device_suspend(my_pm_dev_id_t dev_id)
 
         case MY_PM_DEV_BATTERY:
             ret = my_pm_battery_adc_suspend();
+            break;
+
+        case MY_PM_DEV_PWM:
+            ret = my_pm_buzzer_pwm_suspend();
             break;
 
         default:

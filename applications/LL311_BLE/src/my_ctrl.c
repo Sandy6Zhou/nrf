@@ -46,6 +46,15 @@ static const struct gpio_dt_spec batt_leds[] = {
     GPIO_DT_SPEC_GET(DT_ALIAS(battery_led2), gpios),
 };
 
+static int ctrl_pwm_pm_init(void);
+// PWM 电源管理操作回调结构体
+static const pm_device_ops_t s_ctrl_pwm_pm_ops =
+{
+    .init = ctrl_pwm_pm_init,
+    .suspend = NULL,
+    .resume = NULL,
+};
+
 /* 按键控制结构 */
 static struct
 {
@@ -1039,6 +1048,36 @@ static int misc_io_init(void)
 }
 
 /********************************************************************
+**函数名称:  ctrl_pwm_pm_init
+**入口参数:  无
+**出口参数:  无
+**函数功能:  PWM 电源管理初始化
+**返 回 值:  0 表示成功
+*********************************************************************/
+static int ctrl_pwm_pm_init(void)
+{
+    // 初始化蜂鸣器 PWM
+    if (!pwm_is_ready_dt(&buzzer))
+    {
+        MY_LOG_ERR("Buzzer PWM not ready");
+        return -ENODEV;
+    }
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  my_ctrl_pwm_pm_register
+**入口参数:  无
+**出口参数:  无
+**函数功能:  将 PWM 模块注册到统一 PM 框架
+**返 回 值:  0 表示成功，负值表示失败
+*********************************************************************/
+int my_ctrl_pwm_pm_register(void)
+{
+    return my_pm_device_register(MY_PM_DEV_PWM, &s_ctrl_pwm_pm_ops);
+}
+
+/********************************************************************
 **函数名称:  my_ctrl_stop_buzzer
 **入口参数:  无
 **出口参数:  无
@@ -1594,6 +1633,7 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
     ARG_UNUSED(p3);
 
     msg_t msg;
+    int ret;
 
     MY_LOG_INF("Control thread started");
 
@@ -1666,11 +1706,23 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
                break;
 
             case MY_MSG_CTRL_BUZZER_ON:
+                ret = my_pm_device_resume(MY_PM_DEV_PWM);
+                if (ret < 0)
+                {
+                    MY_LOG_ERR("Beep PM resume failed: %d", ret);
+                    break;
+                }
                 my_ctrl_start_buzzer();
                 break;
 
             case MY_MSG_CTRL_BUZZER_OFF:
                 my_ctrl_stop_buzzer();
+                ret = my_pm_device_suspend(MY_PM_DEV_PWM);
+                if (ret < 0)
+                {
+                    MY_LOG_ERR("Beep PM suspend failed: %d", ret);
+                    break;
+                }
                 break;
 
             case MY_MSG_CTRL_LIGHT_SENSOR_BRIGHT:
@@ -1737,11 +1789,11 @@ int my_ctrl_init(k_tid_t *tid)
         return ret;
     }
 
-    // 初始化蜂鸣器 PWM
-    if (!pwm_is_ready_dt(&buzzer))
+    ret = my_ctrl_pwm_pm_register();
+    if (ret < 0)
     {
-        MY_LOG_ERR("Buzzer PWM not ready");
-        return -ENODEV;
+        MY_LOG_ERR("PWM PM registration failed: %d", ret);
+        return ret;
     }
 
     /* 启动时响一声提示音 */

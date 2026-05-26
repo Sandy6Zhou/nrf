@@ -123,17 +123,17 @@
 		status = "okay";
 	};
 
-	/* P0.2: 位置检测 A，默认上拉 */
+	/* P0.2: 位置检测 A，外部上拉 */
 	motor_pos_a: motor-pos-a {
 		compatible = "nordic,gpio-pins";
-		gpios = <&gpio0 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+		gpios = <&gpio0 2 (GPIO_ACTIVE_LOW)>;
 		status = "okay";
 	};
 
-	/* P0.3: 位置检测 B，默认上拉 */
+	/* P0.3: 位置检测 B，外部上拉 */
 	motor_pos_b: motor-pos-b {
 		compatible = "nordic,gpio-pins";
-		gpios = <&gpio0 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+		gpios = <&gpio0 3 (GPIO_ACTIVE_LOW)>;
 		status = "okay";
 	};
 
@@ -158,10 +158,10 @@
 		status = "okay";
 	};
 
-	/* P1.8: 是否在充电的检测,默认上拉 */
+	/* P1.8: 是否在充电的检测,外部上拉 */
 	charge_det: charge-det {
 		compatible = "nordic,gpio-pins";
-		gpios = <&gpio1 8 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+		gpios = <&gpio1 8 (GPIO_ACTIVE_LOW)>;
 		status = "okay";
 	};
 
@@ -263,15 +263,21 @@
 
 	lte_uart30_default: lte_uart30_default {
 		group1 {
-			psels = <NRF_PSEL(UART_TX, 0, 0)>,
-				<NRF_PSEL(UART_RX, 0, 1)>;
+			/* TX 为输出，无需偏置 */
+			psels = <NRF_PSEL(UART_TX, 0, 0)>;
+		};
+		group2 {
+			/* RX 为输入，default 状态配置上拉 */
+			psels = <NRF_PSEL(UART_RX, 0, 1)>;
+			bias-pull-up;
 		};
 	};
 
 	lte_uart30_sleep: lte_uart30_sleep {
 		group1 {
+			/* sleep 状态配置低功耗模式(高阻态) */
 			psels = <NRF_PSEL(UART_TX, 0, 0)>,
-				<NRF_PSEL(UART_RX, 0, 1)>;
+					<NRF_PSEL(UART_RX, 0, 1)>;
 			low-power-enable;
 		};
 	};
@@ -355,7 +361,14 @@
 
 /* 用于P0.4唤醒 */
 &gpio0 {
-	wakeup-source;
+	// wakeup-source;
+	sense-edge-mask = <(BIT(4) | BIT(2) | BIT(3))>;  /* P0.4、P0.2 和 P0.3 */
+};
+
+/* 新增：为 gpio1 启用 sense 机制，降低功耗 */
+&gpio1 {
+	status = "okay";
+	sense-edge-mask = <(BIT(2) | BIT(7) | BIT(8) | BIT(9) | BIT(10) | BIT(11))>;  /* P1.2、P1.7 和 P1.8 */
 };
 
 /*
