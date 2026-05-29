@@ -25,6 +25,7 @@ static const struct gpio_dt_spec motor_pos_b = GPIO_DT_SPEC_GET(DT_ALIAS(motor_p
 #define LOCK_TIMEOUT_MAXTIME 5000   // 实测开关锁时间大概在3.8秒，这里设置开/关锁超时时间为5秒
 #define LOCK_DEBOUNCE_MS    100    /* 消抖时间：100ms */
 
+#define LOCK_INTERNAL_PULLUP 1      // 是否启用开关锁内部上拉电阻,现阶段硬件上是没有外部上拉的，所以现在软件上采用内部上拉，如果硬件上加了外部上拉，这个宏就需要关闭
 typedef enum
 {
     OPEN_LOCK,
@@ -77,6 +78,48 @@ void motor_power_set(bool on)
     gpio_pin_set_dt(&motor_pwr_en, on ? 1 : 0);
 }
 
+#if LOCK_INTERNAL_PULLUP
+/********************************************************************
+**函数名称:  motor_det_irq_disable
+**入口参数:  spec   ---        GPIO设备结构体指针
+            port   ---        GPIO端口号
+**出口参数:  无
+**函数功能:  断开电机检测引脚，关闭中断、输入缓冲及上拉电阻以降低功耗
+**返 回 值:  无
+*********************************************************************/
+void motor_det_irq_disable(const struct gpio_dt_spec *spec, uint8_t port)
+{
+    // 先关闭中断
+    gpio_pin_interrupt_configure_dt(spec, GPIO_INT_DISABLE);
+
+    // 断开输入缓冲 + 关闭上拉
+    nrf_gpio_cfg(
+        NRF_GPIO_PIN_MAP(port, spec->pin),
+        NRF_GPIO_PIN_DIR_INPUT,
+        NRF_GPIO_PIN_INPUT_DISCONNECT,  // 断开输入缓冲
+        NRF_GPIO_PIN_NOPULL,            // 关闭上拉，防止漏电
+        NRF_GPIO_PIN_S0S1,
+        NRF_GPIO_PIN_NOSENSE
+    );
+}
+
+/********************************************************************
+**函数名称:  motor_det_irq_enable
+**入口参数:  无
+**出口参数:  无
+**函数功能:  使能电机位置检测引脚中断，配置为输入上拉及双边沿触发
+**返 回 值:  无
+*********************************************************************/
+static void motor_det_irq_enable(void)
+{
+    gpio_pin_configure_dt(&motor_pos_a, GPIO_INPUT | GPIO_PULL_UP);
+    gpio_pin_interrupt_configure_dt(&motor_pos_a, GPIO_INT_EDGE_BOTH);
+
+    gpio_pin_configure_dt(&motor_pos_b, GPIO_INPUT | GPIO_PULL_UP);
+    gpio_pin_interrupt_configure_dt(&motor_pos_b, GPIO_INT_EDGE_BOTH);
+}
+#endif
+
 /********************************************************************
 **函数名称:  req_open_lock_action
 **入口参数:  无
@@ -86,6 +129,10 @@ void motor_power_set(bool on)
 *********************************************************************/
 void req_open_lock_action(void)
 {
+#if LOCK_INTERNAL_PULLUP
+    motor_det_irq_enable();
+#endif
+
     //开启电机电源
     motor_power_set(true);
     /* 标记正在开锁中 */
@@ -108,6 +155,10 @@ void req_open_lock_action(void)
 *********************************************************************/
 void req_close_lock_action(void)
 {
+#if LOCK_INTERNAL_PULLUP
+    motor_det_irq_enable();
+#endif
+
     //开启电机电源
     motor_power_set(true);
     k_timer_stop(&s_motor_timeout_timer);
@@ -266,6 +317,9 @@ static void openlock_posdet_timer_handler(struct k_timer *timer)
 
             //解锁成功提示音
             my_set_buzzer_mode(BUZZER_UNLOCK_SUCCESS);
+#if LOCK_INTERNAL_PULLUP
+            motor_det_irq_disable(&motor_pos_a, 0);
+#endif
         }
     }
 
@@ -323,6 +377,9 @@ static void closelock_posdet_timer_handler(struct k_timer *timer)
 
             //上锁成功提示
             my_set_buzzer_mode(BUZZER_EVENT_LOCK_SUCCESS);
+#if LOCK_INTERNAL_PULLUP
+            motor_det_irq_disable(&motor_pos_b, 0);
+#endif
         }
         else
         {
@@ -479,6 +536,9 @@ int motor_gpio_init(void)
     ret = gpio_pin_configure_dt(&motor_pwr_en, GPIO_OUTPUT_INACTIVE);
     if (ret) return ret;
 
+#if LOCK_INTERNAL_PULLUP
+    motor_det_irq_enable();
+#else
     /* 输入引脚配置：P0.2 / P0.3，默认上拉，高电平，下降沿触发 */
     ret = gpio_pin_configure_dt(&motor_pos_a, GPIO_INPUT);
     if (ret) return ret;
@@ -492,7 +552,7 @@ int motor_gpio_init(void)
     /* 配置中断为边沿触发 */
     ret = gpio_pin_interrupt_configure_dt(&motor_pos_b, GPIO_INT_EDGE_BOTH);
     if (ret) return ret;
-
+#endif
     /* 初始化开锁检测定时器和状态 */
     k_timer_init(&s_openlock_posdet.timer, openlock_posdet_timer_handler, NULL);
     s_openlock_posdet.state = false;
@@ -511,6 +571,11 @@ int motor_gpio_init(void)
     s_closelock_posdet.state = (closelockDetInitialLevel == 1);
     MY_LOG_INF("closelock det changed: %s", s_closelock_posdet.state ? "Closelocked" : "Unknown");
 
+#if LOCK_INTERNAL_PULLUP
+    // 初始化时断开两个引脚，不耗电
+    motor_det_irq_disable(&motor_pos_a, 0);
+    motor_det_irq_disable(&motor_pos_b, 0);
+#endif
     /* 注册回调 */
     gpio_init_callback(&s_motor_pos_cb, motor_pos_isr, BIT(motor_pos_a.pin) | BIT(motor_pos_b.pin));
     gpio_add_callback(motor_pos_a.port, &s_motor_pos_cb);

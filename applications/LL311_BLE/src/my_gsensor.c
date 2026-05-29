@@ -1035,6 +1035,8 @@ int my_gsensor_init(k_tid_t *tid)
         MY_LOG_ERR("Failed to configure GSENSOR Power GPIO (err %d)", err);
         return err;
     }
+    // 同步更新gsensor电源状态
+    my_gsensor_pwr_on(true);
 
     /* 2.1. 配置中断引脚 */
     err = gpio_pin_configure_dt(&gsen_int, GPIO_INPUT);
